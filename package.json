@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "audit:payroll:ph": "node scripts/payroll-ph-e2e-audit.mjs"
+    "audit:payroll:ph": "node scripts/payroll-ph-e2e-audit.mjs",
+    "backfill:payroll:calc-meta": "node scripts/backfill-payroll-calculation-meta.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",

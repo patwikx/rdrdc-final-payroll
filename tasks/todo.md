@@ -204,6 +204,18 @@ Last updated: 2026-02-09
     - Improved half-day DTR marker detection robustness (`[HALF_DAY]`, `HALF DAY`, `HALFDAY`).
     - Updated `ON_LEAVE` fallback behavior to avoid treating unmatched/unapproved leave days as payable.
     - Applied pre-tax recurring deductions to taxable income before withholding tax calculation.
+  - [x] Added payroll calculation traceability metadata for enterprise-grade auditability.
+    - Added `calculationVersion` and `formulaPolicy` stamping into calculation step notes.
+    - Added `employeeCalculationTraces` payload for per-employee input/output explainability.
+    - Extended PH payroll audit script to validate presence/readability of calculation trace metadata.
+    - Added and executed legacy metadata backfill script (`npm run backfill:payroll:calc-meta`) so existing step-3 records comply with trace/version audit checks.
+  - [x] Hardened payslip email security controls.
+    - Escaped dynamic email-template fields and sanitized subject lines.
+    - Replaced direct HTML preview rendering with sandboxed iframe preview.
+    - Added server-side email send rate limit and retry cooldown guards.
+  - [x] Added idempotency safeguards for close and email dispatch actions.
+    - `closePayrollRunAction` now returns safe idempotent success when run is already closed and uses guarded transition updates to avoid duplicate concurrent close transitions.
+    - Batch payslip send action now blocks immediate duplicate dispatch attempts within a short guard window.
   - [x] Restored quality-gate pass state across repository after payroll changes.
     - Fixed lint blocker in employee movements page by replacing inline-render component declarations with render-helper functions.
     - Verified `npm run lint` passes.

@@ -102,7 +102,12 @@ export function PayslipEmailPreviewModal({ companyId, payslipId, disabled = fals
             <div className="grid gap-3 md:grid-cols-2">
               <ScrollArea className="h-[340px] rounded-md border border-border/60 p-3">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">HTML Preview</p>
-                <div dangerouslySetInnerHTML={{ __html: preview.html }} />
+                <iframe
+                  title="Payslip email HTML preview"
+                  srcDoc={preview.html}
+                  sandbox=""
+                  className="h-[280px] w-full rounded border border-border/40 bg-white"
+                />
               </ScrollArea>
               <ScrollArea className="h-[340px] rounded-md border border-border/60 p-3">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plain Text</p>

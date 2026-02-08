@@ -36,6 +36,8 @@ const toNumber = (value: Prisma.Decimal | null | undefined): number => {
 
 const toDecimalText = (value: number): string => value.toFixed(2)
 
+const PAYROLL_CALCULATION_VERSION = "PH-PAYROLL-CALC-V2026.02.09"
+
 const stepBlueprint: Array<{ stepNumber: number; stepName: PayrollProcessStepName }> = [
   { stepNumber: 1, stepName: PayrollProcessStepName.CREATE_RUN },
   { stepNumber: 2, stepName: PayrollProcessStepName.VALIDATE_DATA },
@@ -1241,6 +1243,49 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         totalDeductions: number
         netPay: number
       }> = []
+      const employeeCalculationTraces: Array<{
+        employeeId: string
+        employeeNumber: string
+        employeeName: string
+        attendance: {
+          workingDays: number
+          payableDays: number
+          unpaidAbsences: number
+          tardinessMins: number
+          undertimeMins: number
+          overtimeHours: number
+          nightDiffHours: number
+        }
+        rates: {
+          salaryRateType: string
+          baseSalary: number
+          dailyRate: number
+          hourlyRate: number
+        }
+        earnings: {
+          basicPay: number
+          overtimePay: number
+          nightDiffPay: number
+          holidayPay: number
+          recurringEarnings: number
+          adjustmentEarnings: number
+          grossPay: number
+        }
+        deductions: {
+          tardiness: number
+          undertime: number
+          sss: number
+          philHealth: number
+          pagIbig: number
+          preTaxRecurring: number
+          withholdingTax: number
+          recurring: number
+          adjustments: number
+          loans: number
+          totalDeductions: number
+          netPay: number
+        }
+      }> = []
 
       const statutoryDiagnostics = {
         schedule: statutorySchedule,
@@ -1840,6 +1885,50 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         totalNet += netPay
         totalEmployerContributions += sssEmployer + philHealthEmployer + pagIbigEmployer
 
+        employeeCalculationTraces.push({
+          employeeId: employee.id,
+          employeeNumber: employee.employeeNumber,
+          employeeName: `${employee.lastName}, ${employee.firstName}`,
+          attendance: {
+            workingDays: attendanceSnapshot.totalWorkingDays,
+            payableDays: attendanceSnapshot.totalPayableDays,
+            unpaidAbsences: attendanceSnapshot.unpaidAbsences,
+            tardinessMins: attendanceSnapshot.tardinessMins,
+            undertimeMins: attendanceSnapshot.undertimeMins,
+            overtimeHours: attendanceSnapshot.overtimeHours,
+            nightDiffHours: attendanceSnapshot.nightDiffHours,
+          },
+          rates: {
+            salaryRateType: salary.salaryRateTypeCode,
+            baseSalary,
+            dailyRate,
+            hourlyRate,
+          },
+          earnings: {
+            basicPay,
+            overtimePay,
+            nightDiffPay,
+            holidayPay,
+            recurringEarnings: recurringEarningLines.reduce((sum, line) => sum + line.amount, 0),
+            adjustmentEarnings: manualAdjustmentEarnings.reduce((sum, line) => sum + line.amount, 0),
+            grossPay,
+          },
+          deductions: {
+            tardiness: tardinessDeduction,
+            undertime: undertimeDeduction,
+            sss: sssEmployee,
+            philHealth: philHealthEmployee,
+            pagIbig: pagIbigEmployee,
+            preTaxRecurring: preTaxRecurringTotal,
+            withholdingTax,
+            recurring: recurringDeductionLines.reduce((sum, line) => sum + line.amount, 0),
+            adjustments: manualAdjustmentDeductions.reduce((sum, line) => sum + line.amount, 0),
+            loans: loanDeductionLines.reduce((sum, line) => sum + line.amount, 0),
+            totalDeductions: totalDeductionsForPayslip,
+            netPay,
+          },
+        })
+
         employeeSummaries.push({
           employeeId: employee.id,
           employeeNumber: employee.employeeNumber,
@@ -1878,10 +1967,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           isCompleted: true,
           completedAt: new Date(),
           notes: JSON.stringify({
+            calculationVersion: PAYROLL_CALCULATION_VERSION,
+            formulaPolicy: {
+              locale: "PH",
+              timezone: "Asia/Manila",
+              preTaxRecurringReducesTaxableIncome: true,
+              leaveFallbackOnUnmatchedOnLeave: "UNPAID",
+            },
             processedEmployeeCount,
             skippedEmployeeCount,
             statutoryDiagnostics,
             employeeSummaries,
+            employeeCalculationTraces,
           }),
         },
       })
@@ -2256,6 +2353,10 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
     return { ok: false, error: "Payroll run not found." }
   }
 
+  if (run.statusCode === PayrollRunStatus.PAID) {
+    return { ok: true, message: "Payroll run is already closed and locked." }
+  }
+
   const closableStatuses = new Set<PayrollRunStatus>([PayrollRunStatus.FOR_PAYMENT, PayrollRunStatus.APPROVED])
 
   if (!closableStatuses.has(run.statusCode)) {
@@ -2269,8 +2370,11 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
 
   try {
     await db.$transaction(async (tx) => {
-      await tx.payrollRun.update({
-        where: { id: run.id },
+      const transition = await tx.payrollRun.updateMany({
+        where: {
+          id: run.id,
+          statusCode: { in: [PayrollRunStatus.FOR_PAYMENT, PayrollRunStatus.APPROVED] },
+        },
         data: {
           statusCode: PayrollRunStatus.PAID,
           currentStepNumber: 6,
@@ -2281,6 +2385,10 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
           approvedById: run.approvedById ?? context.userId,
         },
       })
+
+      if (transition.count === 0) {
+        throw new Error("Payroll run was already closed by another request.")
+      }
 
       await tx.payrollProcessStep.updateMany({
         where: { payrollRunId: run.id, stepNumber: { in: [4, 5] }, isCompleted: false },

@@ -104,6 +104,22 @@ const main = async () => {
   const periodsPerYear = Math.max(run.payPeriod.pattern.periodsPerYear ?? 1, 1)
 
   const stepByNumber = new Map(run.processSteps.map((step) => [step.stepNumber, step]))
+  const calculationStep = stepByNumber.get(3)
+  if (!calculationStep?.notes) {
+    warnings.push("Calculation step notes are missing; no calculation trace/version metadata captured.")
+  } else {
+    try {
+      const payload = JSON.parse(calculationStep.notes)
+      if (!payload?.calculationVersion) {
+        warnings.push("Calculation step notes missing calculationVersion.")
+      }
+      if (!Array.isArray(payload?.employeeCalculationTraces)) {
+        warnings.push("Calculation step notes missing employeeCalculationTraces.")
+      }
+    } catch {
+      warnings.push("Calculation step notes are not valid JSON; calculation trace metadata unreadable.")
+    }
+  }
 
   for (const [requiredStep, priorStep] of [
     [3, 2],

@@ -1,0 +1,18 @@
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  dataType    ConfigDataType
+  description String?
+  category    String?
+  isEditable  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+  createdBy   User?    @relation("ConfigCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("ConfigUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([key])
+  @@index([category])
+}

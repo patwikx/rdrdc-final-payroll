@@ -1,0 +1,175 @@
+// ============================================================================
+// COMPANY DOMAIN - Multi-Tenancy Support
+// ============================================================================
+
+model CompanyGroup {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+  createdBy   User?    @relation("CompanyGroupCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("CompanyGroupUpdatedBy", fields: [updatedById], references: [id])
+
+  companies Company[]
+
+  @@index([code])
+}
+
+model Company {
+  id           String  @id @default(uuid())
+  code         String  @unique
+  name         String
+  legalName    String?
+  tradeName    String?
+  abbreviation String?
+
+  // Registration Details
+  secDtiNumber        String?
+  dateOfIncorporation DateTime?
+
+  // Government IDs
+  tinNumber                String?
+  rdoCode                  String?
+  sssEmployerNumber        String?
+  sssBranchCode            String?
+  philHealthEmployerNumber String?
+  pagIbigEmployerNumber    String?
+
+  // Classification
+  industryCode    CompanyIndustry?
+  companySizeCode CompanySize?
+  statusCode      CompanyStatus?
+
+  // Hierarchy
+  companyGroupId  String?
+  companyGroup    CompanyGroup? @relation(fields: [companyGroupId], references: [id])
+  parentCompanyId String?
+  parentCompany   Company?      @relation("CompanyHierarchy", fields: [parentCompanyId], references: [id])
+  subsidiaries    Company[]     @relation("CompanyHierarchy")
+
+  // Branding
+  logoUrl              String?
+  websiteUrl           String?
+  payslipWatermarkText String?
+
+  // Fiscal Settings
+  fiscalYearStartMonth Int     @default(1)
+  defaultCurrency      String  @default("PHP")
+  minimumWageRegion    String?
+
+  // Soft Delete & Audit
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  createdBy   User?     @relation("CompanyCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?     @relation("CompanyUpdatedBy", fields: [updatedById], references: [id])
+
+  // Relations
+  addresses         CompanyAddress[]
+  contacts          CompanyContact[]
+  emails            CompanyEmail[]
+  employees         Employee[]
+  departments       Department[]
+  positions         Position[]
+  branches          Branch[]
+  divisions         Division[]
+  ranks             Rank[]
+  accountCategories AccountCategory[]
+  glAccounts        GLAccount[]
+  earningTypes      EarningType[]
+  deductionTypes    DeductionType[]
+  leaveTypes        LeaveType[]
+  loanTypes         LoanType[]
+  workSchedules     WorkSchedule[]
+  holidays          Holiday[]
+  payPeriodPatterns PayPeriodPattern[]
+  payrollRuns       PayrollRun[]
+  userCompanyAccess UserCompanyAccess[]
+  selectedByUsers   User[]              @relation("UserSelectedCompany")
+  biometricDevices  BiometricDevice[]
+
+  @@index([code])
+  @@index([companyGroupId])
+  @@index([parentCompanyId])
+  @@index([isActive])
+}
+
+model CompanyAddress {
+  id            String      @id @default(uuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  addressTypeId AddressType
+  street        String?
+  barangay      String?
+  city          String?
+  municipality  String?
+  province      String?
+  region        String?
+  postalCode    String?
+  country       String      @default("Philippines")
+  isPrimary     Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([addressTypeId])
+}
+
+model CompanyContact {
+  id            String      @id @default(uuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactTypeId ContactType
+  countryCode   String?     @default("+63")
+  areaCode      String?
+  number        String
+  extension     String?
+  isPrimary     Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([contactTypeId])
+}
+
+model CompanyEmail {
+  id          String      @id @default(uuid())
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailTypeId EmailType
+  email       String
+  isPrimary   Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+}
+
+model UserCompanyAccess {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role      CompanyRole @default(EMPLOYEE)
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+}

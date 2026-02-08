@@ -1,0 +1,78 @@
+import { z } from "zod"
+
+export const updateEmployeeProfileInputSchema = z.object({
+  companyId: z.string().min(1),
+  employeeId: z.string().uuid(),
+
+  firstName: z.string().trim().min(1, "First Name is required."),
+  lastName: z.string().trim().min(1, "Last Name is required."),
+  middleName: z.string().trim().max(100).optional(),
+  suffix: z.string().trim().max(50).optional(),
+  maidenName: z.string().trim().max(100).optional(),
+  nickname: z.string().trim().max(100).optional(),
+  birthPlace: z.string().trim().max(120).optional(),
+  birthDate: z.string().date().optional(),
+  nationality: z.string().trim().max(80).optional(),
+  citizenship: z.string().trim().max(80).optional(),
+  genderId: z.string().trim().optional(),
+  civilStatusId: z.string().trim().optional(),
+  religionId: z.string().trim().optional(),
+  bloodTypeId: z.string().trim().optional(),
+  employmentStatusId: z.string().uuid().optional(),
+  employmentTypeId: z.string().uuid().optional(),
+  employmentClassId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  divisionId: z.string().uuid().optional().or(z.literal("")),
+  positionId: z.string().uuid().optional(),
+  rankId: z.string().uuid().optional().or(z.literal("")),
+  branchId: z.string().uuid().optional().or(z.literal("")),
+  reportingManagerId: z.string().uuid().optional().or(z.literal("")),
+  workScheduleId: z.string().uuid().optional().or(z.literal("")),
+  payPeriodPatternId: z.string().uuid().optional().or(z.literal("")),
+  taxStatusId: z.string().trim().optional(),
+
+  tinNumber: z.string().trim().max(60).optional(),
+  sssNumber: z.string().trim().max(60).optional(),
+  philHealthNumber: z.string().trim().max(60).optional(),
+  pagIbigNumber: z.string().trim().max(60).optional(),
+  umidNumber: z.string().trim().max(60).optional(),
+
+  mobileNumber: z.string().trim().max(30).optional(),
+  personalEmail: z.string().trim().email("Please enter a valid personal email.").optional().or(z.literal("")),
+
+  biometricId: z.string().trim().max(60).optional(),
+  rfidNumber: z.string().trim().max(60).optional(),
+  heightCm: z.number().min(0).max(300).optional(),
+  weightKg: z.number().min(0).max(500).optional(),
+
+  hireDate: z.string().date().optional(),
+  applicationDate: z.string().date().optional().or(z.literal("")),
+  interviewDate: z.string().date().optional().or(z.literal("")),
+  jobOfferDate: z.string().date().optional().or(z.literal("")),
+  probationStartDate: z.string().date().optional().or(z.literal("")),
+  probationEndDate: z.string().date().optional().or(z.literal("")),
+  regularizationDate: z.string().date().optional().or(z.literal("")),
+  contractStartDate: z.string().date().optional().or(z.literal("")),
+  contractEndDate: z.string().date().optional().or(z.literal("")),
+
+  monthlyRate: z.number().positive().optional(),
+  dailyRate: z.number().min(0).optional(),
+  hourlyRate: z.number().min(0).optional(),
+  monthlyDivisor: z.number().int().min(1).max(366).optional(),
+  hoursPerDay: z.number().min(1).max(24).optional(),
+  salaryGrade: z.string().trim().max(40).optional(),
+  salaryBand: z.string().trim().max(40).optional(),
+  minimumWageRegion: z.string().trim().max(120).optional(),
+
+  numberOfDependents: z.number().int().min(0).max(20),
+  previousEmployerIncome: z.number().min(0).optional(),
+  previousEmployerTaxWithheld: z.number().min(0).optional(),
+  wfhSchedule: z.string().trim().max(200).optional(),
+
+  isSubstitutedFiling: z.boolean(),
+  isOvertimeEligible: z.boolean(),
+  isNightDiffEligible: z.boolean(),
+  isWfhEligible: z.boolean(),
+})
+
+export type UpdateEmployeeProfileInput = z.infer<typeof updateEmployeeProfileInputSchema>

@@ -1,0 +1,26 @@
+// ============================================================================
+// SETUP DOMAIN - First-Time Installation & System Initialization
+// ============================================================================
+
+model SystemSetup {
+  id                 String    @id @default(uuid())
+  isInitialized      Boolean   @default(false)
+  setupCompletedAt   DateTime?
+  setupCompletedById String?
+
+  // Setup step tracking
+  adminUserCreated         Boolean @default(false)
+  companyCreated           Boolean @default(false)
+  governmentIdsSet         Boolean @default(false)
+  payPeriodConfigured      Boolean @default(false)
+  workScheduleConfigured   Boolean @default(false)
+  contributionTablesLoaded Boolean @default(false)
+  taxTablesLoaded          Boolean @default(false)
+  defaultLookupsCreated    Boolean @default(false)
+
+  currentStep Int @default(1)
+  totalSteps  Int @default(8)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

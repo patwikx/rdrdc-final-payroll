@@ -1,0 +1,202 @@
+// ============================================================================
+// LOAN DOMAIN - Loans, Amortization, Payments, Recurring Deductions
+// ============================================================================
+
+model LoanType {
+  id String @id @default(uuid())
+
+  // Company Association (null = global/shared)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code         String
+  name         String
+  description  String?
+  categoryCode LoanTypeCategory?
+
+  maxLoanAmount Decimal? @db.Decimal(15, 2)
+  maxTermMonths Int?
+
+  interestTypeCode    LoanInterestType @default(FIXED)
+  defaultInterestRate Decimal?     @db.Decimal(5, 4)
+
+  requiresCollateral Boolean @default(false)
+  requiresCoMaker    Boolean @default(false)
+
+  // Eligibility
+  minTenureMonths  Int?
+  eligibleStatuses Json? // JSON array of employment status codes
+
+  deductionPriority Int @default(0)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  loans Loan[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([categoryCode])
+}
+
+model Loan {
+  id         String   @id @default(uuid())
+  loanNumber String   @unique
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  loanTypeId String
+  loanType   LoanType @relation(fields: [loanTypeId], references: [id])
+
+  // Application
+  applicationDate     DateTime
+  requestedAmount     Decimal  @db.Decimal(15, 2)
+  requestedTermMonths Int
+  purpose             String?  @db.Text
+
+  applicationStatusCode LoanApplicationStatus @default(PENDING)
+
+  // Approval
+  approvedById    String?
+  approvedAt      DateTime?
+  approvalRemarks String?
+  rejectionReason String?
+
+  // Approved Terms
+  approvedAmount       Decimal? @db.Decimal(15, 2)
+  approvedTermMonths   Int?
+  interestRate         Decimal? @db.Decimal(5, 4)
+  totalInterest        Decimal? @db.Decimal(15, 2)
+  totalAmountPayable   Decimal? @db.Decimal(15, 2)
+  periodicAmortization Decimal? @db.Decimal(15, 2)
+
+  // Disbursement
+  disbursementDate       DateTime?
+  disbursementMethodCode LoanDisbursementMethod?
+  disbursementReference  String?
+
+  // Schedule
+  amortizationStartDate DateTime?
+  maturityDate          DateTime?
+
+  // Co-maker
+  coMakerId String?
+  coMaker   Employee? @relation("LoanCoMaker", fields: [coMakerId], references: [id])
+
+  // Status
+  statusCode LoanStatus @default(PENDING)
+
+  // Balance Tracking
+  principalBalance Decimal @default(0) @db.Decimal(15, 2)
+  interestBalance  Decimal @default(0) @db.Decimal(15, 2)
+  totalBalance     Decimal @default(0) @db.Decimal(15, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  amortizations LoanAmortization[]
+  payments      LoanPayment[]
+  documents     LoanDocument[]
+
+  @@index([employeeId])
+  @@index([loanTypeId])
+  @@index([loanNumber])
+  @@index([statusCode])
+  @@index([applicationStatusCode])
+}
+
+model LoanAmortization {
+  id              String    @id @default(uuid())
+  loanId          String
+  loan            Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  periodNumber    Int
+  dueDate         DateTime  @db.Date
+  principalAmount Decimal   @db.Decimal(15, 2)
+  interestAmount  Decimal   @db.Decimal(15, 2)
+  totalPayment    Decimal   @db.Decimal(15, 2)
+  runningBalance  Decimal   @db.Decimal(15, 2)
+  isPaid          Boolean   @default(false)
+  paidDate        DateTime?
+  paidAmount      Decimal?  @db.Decimal(15, 2)
+  isDeferred      Boolean   @default(false)
+  deferredToDate  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([loanId, periodNumber])
+  @@index([loanId])
+  @@index([dueDate])
+  @@index([isPaid])
+}
+
+model LoanPayment {
+  id            String   @id @default(uuid())
+  loanId        String
+  loan          Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paymentDate   DateTime
+  amountPaid    Decimal  @db.Decimal(15, 2)
+  principalPaid Decimal  @db.Decimal(15, 2)
+  interestPaid  Decimal  @db.Decimal(15, 2)
+  balanceAfter  Decimal  @db.Decimal(15, 2)
+
+  paymentSourceCode LoanPaymentSource @default(PAYROLL)
+
+  payrollRunId String? // Link to payroll if deducted via payroll
+
+  statusCode LoanPaymentStatus @default(PAID)
+
+  remarks   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([loanId])
+  @@index([paymentDate])
+  @@index([payrollRunId])
+}
+
+model LoanDocument {
+  id           String   @id @default(uuid())
+  loanId       String
+  loan         Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  documentType LoanDocumentType
+  fileName     String
+  fileType     String
+  fileSize     Int
+  fileUrl      String
+  uploadedAt   DateTime @default(now())
+
+  @@index([loanId])
+}
+
+model RecurringDeduction {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  deductionTypeId   String
+  deductionType     DeductionType @relation(fields: [deductionTypeId], references: [id])
+  deductionTypeCode RecurringDeductionType
+
+  description    String?
+  amount         Decimal  @db.Decimal(15, 2)
+  isPercentage   Boolean  @default(false)
+  percentageRate Decimal? @db.Decimal(5, 4)
+  frequency      String   @default("PER_PAYROLL") // PER_PAYROLL, MONTHLY
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  statusCode RecurringDeductionStatus @default(ACTIVE)
+
+  totalDeducted Decimal @default(0) @db.Decimal(15, 2)
+
+  remarks       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([employeeId])
+  @@index([deductionTypeCode])
+  @@index([statusCode])
+  @@index([effectiveFrom])
+}

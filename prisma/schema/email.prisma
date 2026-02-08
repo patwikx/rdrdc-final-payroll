@@ -1,0 +1,66 @@
+// ============================================================================
+// EMAIL DISTRIBUTION DOMAIN - Access Tokens for Secure Payslip Access
+// ============================================================================
+
+model AccessToken {
+  id        String  @id @default(uuid())
+  token     String  @unique // Cryptographically secure random token
+  payslipId String
+  payslip   Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime // 90 days from creation
+  revokedAt      DateTime?
+  lastAccessedAt DateTime?
+  accessCount    Int       @default(0)
+
+  @@index([token])
+  @@index([payslipId])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// EMAIL DISTRIBUTION DOMAIN - Email Delivery Tracking and Audit Logs
+// ============================================================================
+
+model EmailDeliveryRecord {
+  id              String    @id @default(uuid())
+  payslipId       String
+  payslip         Payslip   @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  recipientEmail  String
+  recipientName   String
+  subject         String
+  sentBy          String // User ID of administrator
+  sentAt          DateTime
+  deliveryStatus  EmailDeliveryStatus
+  deliveredAt     DateTime?
+  resendMessageId String // Resend API message ID
+  errorMessage    String?   @db.Text
+  retryCount      Int       @default(0)
+  lastRetryAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([payslipId])
+  @@index([deliveryStatus])
+  @@index([resendMessageId])
+  @@index([sentAt])
+}
+
+model EmailAuditLog {
+  id             String   @id @default(uuid())
+  eventType      EmailAuditEventType
+  userId         String? // Administrator who performed action
+  payslipId      String // Payslip ID or payroll run ID for batch operations
+  recipientEmail String
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json? // Additional context (JSON field)
+  timestamp      DateTime
+
+  @@index([eventType])
+  @@index([payslipId])
+  @@index([timestamp])
+  @@index([userId])
+}

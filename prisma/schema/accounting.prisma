@@ -1,0 +1,107 @@
+// ============================================================================
+// ACCOUNTING DOMAIN - Chart of Accounts
+// ============================================================================
+
+model AccountCategory {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Classification
+  accountType GLAccountType // Which account type this category applies to
+
+  // Metadata
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("AccountCategoryCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("AccountCategoryUpdatedBy", fields: [updatedById], references: [id])
+
+  glAccounts GLAccount[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([accountType])
+  @@index([isActive])
+}
+
+model GLAccount {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Account Classification
+  accountType       GLAccountType // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE, COST_CENTER, PROFIT_CENTER, REVENUE_CENTER
+  accountCategoryId String?
+  accountCategory   AccountCategory? @relation(fields: [accountCategoryId], references: [id])
+  accountClass      GLAccountClass? // DIRECT, INDIRECT, FIXED, VARIABLE, OPERATING, NON_OPERATING
+
+  // Hierarchy
+  level    Int         @default(0) // For ordering and reporting depth
+  parentId String?
+  parent   GLAccount?  @relation("GLAccountHierarchy", fields: [parentId], references: [id])
+  children GLAccount[] @relation("GLAccountHierarchy")
+
+  // Financial Configuration
+  normalBalance NormalBalance @default(DEBIT) // DEBIT or CREDIT
+  isActive      Boolean       @default(true)
+  isPosting     Boolean       @default(true) // Can transactions be posted directly?
+  isReconciled  Boolean       @default(false) // Requires reconciliation?
+
+  // Budget & Control
+  budgetAmount      Decimal?      @db.Decimal(15, 2)
+  budgetPeriod      BudgetPeriod? // MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL
+  allowNegative     Boolean       @default(false)
+  requiresApproval  Boolean       @default(false)
+  approvalThreshold Decimal?      @db.Decimal(15, 2)
+
+  // Integration
+  externalCode String? // For ERP/accounting system integration
+  taxCode      String?
+  currency     String  @default("PHP")
+
+  // Metadata
+  notes        String? @db.Text
+  tags         Json? // For flexible categorization
+  customFields Json? // For company-specific fields
+
+  displayOrder  Int       @default(0)
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+  updatedById   String?
+  createdBy     User?     @relation("GLAccountCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?     @relation("GLAccountUpdatedBy", fields: [updatedById], references: [id])
+
+  // Relations
+  departmentsCostCenter   Department[]    @relation("DepartmentCostCenter")
+  departmentsProfitCenter Department[]    @relation("DepartmentProfitCenter")
+  employeesCostCenter     Employee[]      @relation("EmployeeCostCenter")
+  employeesProfitCenter   Employee[]      @relation("EmployeeProfitCenter")
+  earningTypesExpense     EarningType[]   @relation("EarningExpenseAccount")
+  deductionTypesLiability DeductionType[] @relation("DeductionLiabilityAccount")
+  deductionTypesExpense   DeductionType[] @relation("DeductionExpenseAccount")
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([accountType])
+  @@index([accountCategoryId])
+  @@index([accountClass])
+  @@index([level])
+  @@index([parentId])
+  @@index([isActive])
+  @@index([isPosting])
+}

@@ -1,0 +1,108 @@
+// ============================================================================
+// SEPARATION DOMAIN - Employee Offboarding
+// ============================================================================
+// This file contains models for managing employee separation, offboarding,
+// and final pay calculations.
+// ============================================================================
+
+model SeparationRequest {
+  id                      String           @id @default(uuid())
+  employeeId              String
+  employee                Employee         @relation("EmployeeSeparation", fields: [employeeId], references: [id])
+  separationTypeCode      SeparationTypeCode
+  separationReasonCode    SeparationReasonCode
+  requestedSeparationDate DateTime @db.Date
+  lastWorkingDay          DateTime @db.Date
+  noticePeriodInDays      Int
+  status                  SeparationStatus
+  isRehireEligible        Boolean          @default(true)
+  rehireNotes             String?          @db.Text
+
+  createdById        String
+  createdBy          User      @relation("SeparationRequestCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime  @default(now())
+  approvedById       String?
+  approvedBy         User?     @relation("SeparationRequestApprovedBy", fields: [approvedById], references: [id])
+  approvedAt         DateTime?
+  rejectedById       String?
+  rejectedBy         User?     @relation("SeparationRequestRejectedBy", fields: [rejectedById], references: [id])
+  rejectedAt         DateTime?
+  rejectionReason    String?   @db.Text
+  cancelledById      String?
+  cancelledBy        User?     @relation("SeparationRequestCancelledBy", fields: [cancelledById], references: [id])
+  cancelledAt        DateTime?
+  cancellationReason String?   @db.Text
+  completedAt        DateTime?
+
+  finalPayCalculation FinalPayCalculation?
+  auditLogs           SeparationAuditLog[]
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([lastWorkingDay])
+  @@index([separationTypeCode])
+  @@index([createdById])
+  @@index([approvedById])
+  @@index([rejectedById])
+  @@index([cancelledById])
+  @@index([createdAt])
+}
+
+model FinalPayCalculation {
+  id                  String            @id @default(uuid())
+  separationRequestId String            @unique
+  separationRequest   SeparationRequest @relation(fields: [separationRequestId], references: [id], onDelete: Cascade)
+
+  // Earnings
+  lastSalary              Decimal @db.Decimal(15, 2)
+  unpaidOvertime          Decimal @db.Decimal(15, 2)
+  vacationLeaveConversion Decimal @db.Decimal(15, 2)
+  sickLeaveConversion     Decimal @db.Decimal(15, 2)
+  proRata13thMonth        Decimal @db.Decimal(15, 2)
+  separationPay           Decimal @db.Decimal(15, 2)
+  otherEarnings           Decimal @db.Decimal(15, 2)
+  totalEarnings           Decimal @db.Decimal(15, 2)
+
+  // Deductions
+  outstandingLoans    Decimal @db.Decimal(15, 2)
+  outstandingAdvances Decimal @db.Decimal(15, 2)
+  equipmentCharges    Decimal @db.Decimal(15, 2)
+  otherDeductions     Decimal @db.Decimal(15, 2)
+  totalDeductions     Decimal @db.Decimal(15, 2)
+
+  // Net
+  netFinalPay Decimal @db.Decimal(15, 2)
+
+  // Breakdown details (JSON)
+  earningsBreakdown   Json
+  deductionsBreakdown Json
+
+  calculatedBy String
+  calculator   User      @relation("FinalPayCalculatedBy", fields: [calculatedBy], references: [id])
+  calculatedAt DateTime  @default(now())
+  approvedBy   String?
+  approver     User?     @relation("FinalPayApprovedBy", fields: [approvedBy], references: [id])
+  approvedAt   DateTime?
+
+  @@index([separationRequestId])
+  @@index([calculatedBy])
+  @@index([approvedBy])
+}
+
+model SeparationAuditLog {
+  id                  String            @id @default(uuid())
+  separationRequestId String
+  separationRequest   SeparationRequest @relation(fields: [separationRequestId], references: [id], onDelete: Cascade)
+  action              SeparationAuditAction
+  performedBy         String
+  user                User              @relation("SeparationAuditUser", fields: [performedBy], references: [id])
+  performedAt         DateTime          @default(now())
+  previousState       Json?
+  newState            Json?
+  notes               String?           @db.Text
+
+  @@index([separationRequestId])
+  @@index([performedBy])
+  @@index([performedAt])
+  @@index([action])
+}

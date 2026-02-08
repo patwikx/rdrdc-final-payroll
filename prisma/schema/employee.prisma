@@ -1,0 +1,642 @@
+// ============================================================================
+// EMPLOYEE DOMAIN - Comprehensive Employee Information
+// ============================================================================
+
+model Employee {
+  id String @id @default(uuid())
+
+  // Company Association
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id])
+  companyAssignmentDate DateTime @default(now()) @db.Date
+
+  employeeNumber String
+  biometricId    String?
+  rfidNumber     String?
+
+  // User Account Link (for employee self-service portal)
+  userId String? @unique
+  user   User?   @relation("EmployeeUser", fields: [userId], references: [id])
+
+  // Personal Information
+  firstName     String
+  middleName    String?
+  lastName      String
+  suffix        String?
+  maidenName    String?
+  nickname      String?
+  birthDate     DateTime @db.Date
+  birthPlace    String?
+  birthCity     String?
+  birthProvince String?
+  birthCountry  String?  @default("Philippines")
+
+  genderId      Gender?
+  civilStatusId CivilStatus?
+  nationality   String?      @default("Filipino")
+  citizenship   String?      @default("Filipino")
+  religionId    Religion?
+  bloodTypeId   BloodType?
+  heightCm      Decimal?     @db.Decimal(5, 2)
+  weightKg      Decimal?     @db.Decimal(5, 2)
+  photoUrl      String?
+  signatureUrl  String?
+
+  // Employment Status
+  employmentStatusId String?
+  employmentStatus   EmploymentStatus? @relation(fields: [employmentStatusId], references: [id])
+  employmentClassId  String?
+  employmentClass    EmploymentClass?  @relation(fields: [employmentClassId], references: [id])
+  employmentTypeId   String?
+  employmentType     EmploymentType?   @relation(fields: [employmentTypeId], references: [id])
+
+  // Employment Dates
+  applicationDate      DateTime? @db.Date
+  interviewDate        DateTime? @db.Date
+  jobOfferDate         DateTime? @db.Date
+  hireDate             DateTime  @db.Date
+  probationStartDate   DateTime? @db.Date
+  probationEndDate     DateTime? @db.Date
+  regularizationDate   DateTime? @db.Date
+  contractStartDate    DateTime? @db.Date
+  contractEndDate      DateTime? @db.Date
+  separationDate       DateTime? @db.Date
+  lastWorkingDay       DateTime? @db.Date
+  separationReasonCode SeparationReasonCode?
+  isRehireEligible   Boolean?
+  rehireNotes        String?      @db.Text
+
+  // Organizational Assignment
+  positionId     String?
+  position       Position?   @relation(fields: [positionId], references: [id])
+  positionCode   String?
+  positionLevel  String?
+  jobGrade       String?
+  jobFamily      String?
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  departmentCode String?
+  divisionId     String?
+  division       Division?   @relation(fields: [divisionId], references: [id])
+  sectionTeam    String?
+  branchId       String?
+  branch         Branch?     @relation(fields: [branchId], references: [id])
+  costCenterId   String?
+  costCenter     GLAccount?  @relation("EmployeeCostCenter", fields: [costCenterId], references: [id])
+  profitCenterId String?
+  profitCenter   GLAccount?  @relation("EmployeeProfitCenter", fields: [profitCenterId], references: [id])
+  rankId         String?
+  rank           Rank?       @relation(fields: [rankId], references: [id])
+
+  // Manager Relationships
+  reportingManagerId  String?
+  reportingManager    Employee?  @relation("ReportingManager", fields: [reportingManagerId], references: [id])
+  directReports       Employee[] @relation("ReportingManager")
+  dottedLineManagerId String?
+  dottedLineManager   Employee?  @relation("DottedLineManager", fields: [dottedLineManagerId], references: [id])
+  dottedLineReports   Employee[] @relation("DottedLineManager")
+  hrBusinessPartnerId String?
+  hrBusinessPartner   Employee?  @relation("HRBusinessPartner", fields: [hrBusinessPartnerId], references: [id])
+  hrAssignees         Employee[] @relation("HRBusinessPartner")
+
+  // Domain Table Management Relationships
+  managedDepartments Department[] @relation("DepartmentManager")
+  managedBranches    Branch[]     @relation("BranchManager")
+  headedDivisions    Division[]   @relation("DivisionHead")
+
+  // Work Schedule
+  workScheduleId      String?
+  workSchedule        WorkSchedule? @relation(fields: [workScheduleId], references: [id])
+  isNightDiffEligible Boolean       @default(false)
+  isOvertimeEligible  Boolean       @default(true)
+  isWfhEligible       Boolean       @default(false)
+  wfhSchedule         String?
+
+  // Tax Information
+  taxStatusId                 TaxStatus?
+  numberOfDependents          Int          @default(0)
+  taxExemptionStatusCode      TaxExemptionStatus?
+  isSubstitutedFiling         Boolean      @default(false)
+  previousEmployerIncome      Decimal?     @db.Decimal(15, 2)
+  previousEmployerTaxWithheld Decimal?     @db.Decimal(15, 2)
+
+  // Soft Delete & Audit
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  deletedById String?
+  deletedBy   User?     @relation("EmployeeDeletedBy", fields: [deletedById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  createdBy   User?     @relation("EmployeeCreatedBy", fields: [createdById], references: [id])
+  updatedBy   User?     @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id])
+
+  // Relations
+  addresses           EmployeeAddress[]
+  contacts            EmployeeContact[]
+  emails              EmployeeEmail[]
+  socialMediaAccounts EmployeeSocialMedia[]
+  governmentIds       EmployeeGovernmentId[]
+  bankAccounts        EmployeeBank[]
+  dependents          EmployeeDependent[]
+  emergencyContacts   EmployeeEmergencyContact[]
+  beneficiaries       EmployeeBeneficiary[]
+  educations          EmployeeEducation[]
+  licenses            EmployeeLicense[]
+  certifications      EmployeeCertification[]
+  trainings           EmployeeTraining[]
+  skills              EmployeeSkill[]
+  previousEmployments EmployeePreviousEmployment[]
+  statusHistory       EmployeeStatusHistory[]
+  positionHistory     EmployeePositionHistory[]
+  salaryHistory       EmployeeSalaryHistory[]
+  scheduleHistory     EmployeeScheduleHistory[]
+  rankHistory         EmployeeRankHistory[]
+
+  salary                          EmployeeSalary?
+  earnings                        EmployeeEarning[]
+  leaveBalances                   LeaveBalance[]
+  leaveRequests                   LeaveRequest[]
+  leaveRequestsApproved           LeaveRequest[]            @relation("LeaveApprover")
+  leaveRequestsSupervisorApproved LeaveRequest[]            @relation("LeaveSupervisorApprover")
+  leaveRequestsHRApproved         LeaveRequest[]            @relation("LeaveHRApprover")
+  loans                           Loan[]
+  loanCoMaker                     Loan[]                    @relation("LoanCoMaker")
+  recurringDeductions             RecurringDeduction[]
+  dailyTimeRecords                DailyTimeRecord[]
+  overtimeRequests                OvertimeRequest[]
+  overtimeApprovals               OvertimeRequest[]         @relation("OvertimeApprover")
+  overtimeSupervisorApprovals     OvertimeRequest[]         @relation("OvertimeSupervisorApprover")
+  overtimeHRApprovals             OvertimeRequest[]         @relation("OvertimeHRApprover")
+  payslips                        Payslip[]
+  ytdContributions                EmployeeYTDContribution[]
+  medicalRecords                  EmployeeMedicalRecord[]
+  documents                       EmployeeDocument[]
+  separationRequests              SeparationRequest[]       @relation("EmployeeSeparation")
+
+  // Pay Period Assignment
+  payPeriodPatternId String?
+  payPeriodPattern   PayPeriodPattern? @relation(fields: [payPeriodPatternId], references: [id])
+
+  @@unique([companyId, employeeNumber])
+  @@index([employeeNumber])
+  @@index([lastName, firstName])
+  @@index([departmentId])
+  @@index([branchId])
+  @@index([employmentStatusId])
+  @@index([hireDate])
+  @@index([isActive])
+  @@index([reportingManagerId])
+  @@index([companyId, isActive])
+  @@index([departmentId, isActive])
+  @@index([employmentStatusId, isActive])
+  @@index([branchId, isActive])
+}
+
+model EmployeeAddress {
+  id            String      @id @default(uuid())
+  employeeId    String
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  addressTypeId AddressType
+  street        String?
+  barangay      String?
+  city          String?
+  municipality  String?
+  province      String?
+  region        String?
+  postalCode    String?
+  country       String      @default("Philippines")
+  isPrimary     Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([addressTypeId])
+}
+
+model EmployeeContact {
+  id            String      @id @default(uuid())
+  employeeId    String
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contactTypeId ContactType
+  countryCode   String?     @default("+63")
+  areaCode      String?
+  number        String
+  extension     String?
+  isPrimary     Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([contactTypeId])
+}
+
+model EmployeeEmail {
+  id          String      @id @default(uuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  emailTypeId EmailType
+  email       String
+  isPrimary   Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([email])
+}
+
+model EmployeeSocialMedia {
+  id             String      @id @default(uuid())
+  employeeId     String
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  platformCode   SocialMediaPlatform
+  handle         String
+  profileUrl     String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([employeeId])
+}
+
+model EmployeeGovernmentId {
+  id               String      @id @default(uuid())
+  employeeId       String
+  employee         Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  idTypeId           IdType
+  idNumberEncrypted  String
+  idNumberMasked     String?
+  issueDate          DateTime? @db.Date
+  expiryDate         DateTime? @db.Date
+  issuingAuthority String?
+  placeOfIssue     String?
+  documentUrl      String?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([idTypeId])
+  @@index([expiryDate])
+  @@unique([employeeId, idTypeId])
+}
+
+// ============================================================================
+// EMPLOYEE DOMAIN - Banking
+// ============================================================================
+
+model EmployeeBank {
+  id                String       @id @default(uuid())
+  employeeId        String
+  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  bankName          String
+  bankCode          String? // SWIFT/BIC
+  branchName        String?
+  branchCode        String?
+  accountNumberEncrypted String
+  accountNumberMasked    String?
+  accountName       String
+  accountTypeId     BankAccountType
+  currencyCode      CurrencyCode @default(PHP)
+  isPrimary         Boolean      @default(false)
+  allocationPercent Decimal?     @db.Decimal(5, 2)
+  allocationAmount  Decimal?     @db.Decimal(15, 2)
+  isVerified        Boolean      @default(false)
+  verifiedAt        DateTime?
+  verifiedBy        String?
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([employeeId])
+  @@index([isPrimary])
+  @@index([isActive])
+  @@index([isPrimary, isActive])
+}
+
+// ============================================================================
+// EMPLOYEE DOMAIN - Family & Dependents
+// ============================================================================
+
+model EmployeeDependent {
+  id              String      @id @default(uuid())
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  relationshipId  RelationshipType
+  firstName       String
+  middleName      String?
+  lastName        String
+  suffix          String?
+  maidenName      String?
+  birthDate       DateTime? @db.Date
+  birthPlace      String?
+  gender          String?
+  occupation      String?
+  employerName    String?
+  employerAddress String?
+  contactNumber   String?
+  email           String?
+  tin             String?
+  monthlyIncome   Decimal?    @db.Decimal(15, 2)
+  marriageDate    DateTime? @db.Date
+  marriagePlace   String?
+  schoolName      String?
+  schoolLevel     String?
+  isTaxDependent  Boolean     @default(false)
+  isPwd           Boolean     @default(false)
+  pwdId           String?
+  isLiving        Boolean     @default(true)
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([relationshipId])
+}
+
+model EmployeeEmergencyContact {
+  id             String      @id @default(uuid())
+  employeeId     String
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name           String
+  relationshipId RelationshipType
+  street         String?
+  city           String?
+  province       String?
+  postalCode     String?
+  mobileNumber   String?
+  landlineNumber String?
+  email          String?
+  priority       Int         @default(1)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([priority])
+  @@index([relationshipId])
+}
+
+model EmployeeBeneficiary {
+  id             String      @id @default(uuid())
+  employeeId     String
+  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name           String
+  relationshipId RelationshipType
+  birthDate      DateTime? @db.Date
+  percentage     Decimal     @db.Decimal(5, 2)
+  street         String?
+  city           String?
+  province       String?
+  contactNumber  String?
+  benefitType    String? // Life insurance, retirement, etc.
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([relationshipId])
+}
+
+// ============================================================================
+// EMPLOYEE DOMAIN - Education & Experience
+// ============================================================================
+
+model EmployeeEducation {
+  id               String      @id @default(uuid())
+  employeeId       String
+  employee         Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  educationLevelId EducationLevel
+  schoolName       String
+  schoolAddress    String?
+  course           String?
+  major            String?
+  yearStarted      Int?
+  yearGraduated    Int?
+  isGraduated      Boolean     @default(false)
+  isOngoing        Boolean     @default(false)
+  honors           String?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([educationLevelId])
+}
+
+model EmployeeLicense {
+  id            String      @id @default(uuid())
+  employeeId    String
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  licenseTypeCode LicenseType
+  licenseNumber String
+  issuingBody   String?
+  issueDate     DateTime? @db.Date
+  expiryDate    DateTime? @db.Date
+  documentUrl   String?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([expiryDate])
+  @@index([licenseTypeCode])
+}
+
+model EmployeeCertification {
+  id                  String    @id @default(uuid())
+  employeeId          String
+  employee            Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  certificationName   String
+  issuingOrganization String?
+  credentialId        String?
+  issueDate           DateTime? @db.Date
+  expiryDate          DateTime? @db.Date
+  documentUrl         String?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([expiryDate])
+}
+
+model EmployeeTraining {
+  id              String    @id @default(uuid())
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  trainingName    String
+  provider        String?
+  trainingDate    DateTime? @db.Date
+  trainingEndDate DateTime? @db.Date
+  durationHours   Decimal?  @db.Decimal(6, 2)
+  location        String?
+  certificateUrl  String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId])
+}
+
+model EmployeeSkill {
+  id               String   @id @default(uuid())
+  employeeId       String
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skillName        String
+  proficiencyLevel String? // Beginner, Intermediate, Advanced, Expert
+  yearsExperience  Decimal? @db.Decimal(4, 1)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([employeeId])
+}
+
+model EmployeePreviousEmployment {
+  id                   String       @id @default(uuid())
+  employeeId           String
+  employee             Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  companyName          String
+  companyAddress       String?
+  industryCode         IndustryType?
+  position             String?
+  department           String?
+  startDate            DateTime? @db.Date
+  endDate              DateTime? @db.Date
+  reasonForLeavingCode LeavingReason?
+  lastSalary           Decimal?     @db.Decimal(15, 2)
+  lastBenefits         String?
+  supervisorName       String?
+  supervisorContact    String?
+  referenceCheckStatus String?
+  referenceCheckNotes  String?      @db.Text
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([employeeId])
+  @@index([industryCode])
+  @@index([reasonForLeavingCode])
+}
+
+// ============================================================================
+// EMPLOYEE DOMAIN - History Tables
+// ============================================================================
+
+model EmployeeStatusHistory {
+  id               String            @id @default(uuid())
+  employeeId       String
+  employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousStatusId String?
+  previousStatus   EmploymentStatus? @relation("PreviousEmploymentStatus", fields: [previousStatusId], references: [id])
+  newStatusId      String
+  newStatus        EmploymentStatus  @relation("NewEmploymentStatus", fields: [newStatusId], references: [id])
+  effectiveDate    DateTime          @db.Date
+  reason           String?
+  remarks          String?           @db.Text
+  changedById      String?
+  createdAt        DateTime          @default(now())
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+  @@index([previousStatusId])
+  @@index([newStatusId])
+}
+
+model EmployeePositionHistory {
+  id                   String      @id @default(uuid())
+  employeeId           String
+  employee             Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousPositionId   String?
+  previousPosition     Position?   @relation("PreviousPosition", fields: [previousPositionId], references: [id])
+  newPositionId        String
+  newPosition          Position    @relation("NewPosition", fields: [newPositionId], references: [id])
+  previousDepartmentId String?
+  previousDepartment   Department? @relation("PreviousDepartment", fields: [previousDepartmentId], references: [id])
+  newDepartmentId      String?
+  newDepartment        Department? @relation("NewDepartment", fields: [newDepartmentId], references: [id])
+  previousBranchId     String?
+  previousBranch       Branch?     @relation("PreviousBranch", fields: [previousBranchId], references: [id])
+  newBranchId          String?
+  newBranch            Branch?     @relation("NewBranch", fields: [newBranchId], references: [id])
+  movementType         EmployeeMovementType
+  effectiveDate        DateTime             @db.Date
+  reason               String?
+  remarks              String?     @db.Text
+  approvedById         String?
+  approvedAt           DateTime?
+  createdAt            DateTime    @default(now())
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+  @@index([previousPositionId])
+  @@index([newPositionId])
+  @@index([previousDepartmentId])
+  @@index([newDepartmentId])
+  @@index([previousBranchId])
+  @@index([newBranchId])
+}
+
+model EmployeeSalaryHistory {
+  id                String       @id @default(uuid())
+  employeeId        String
+  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousSalary    Decimal?     @db.Decimal(15, 2)
+  newSalary         Decimal      @db.Decimal(15, 2)
+  adjustmentTypeCode SalaryAdjustmentType?
+  adjustmentPercent Decimal?     @db.Decimal(5, 2)
+  adjustmentAmount  Decimal?     @db.Decimal(15, 2)
+  effectiveDate     DateTime             @db.Date
+  reason            String?
+  remarks           String?      @db.Text
+  approvalStatus    String?
+  approvedById      String?
+  approvedAt        DateTime?
+  createdAt         DateTime     @default(now())
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+}
+
+model EmployeeScheduleHistory {
+  id                 String   @id @default(uuid())
+  employeeId         String
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousScheduleId String?
+  newScheduleId      String
+  effectiveDate      DateTime @db.Date
+  reason             String?
+  changedById        String?
+  createdAt          DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+}
+
+model EmployeeRankHistory {
+  id             String    @id @default(uuid())
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousRankId String?
+  previousRank   Rank?     @relation("PreviousRank", fields: [previousRankId], references: [id])
+  newRankId      String
+  newRank        Rank      @relation("NewRank", fields: [newRankId], references: [id])
+  movementType   EmployeeMovementType
+  effectiveDate  DateTime             @db.Date
+  reason         String?
+  remarks        String?   @db.Text
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+  @@index([previousRankId])
+  @@index([newRankId])
+  @@index([movementType])
+}

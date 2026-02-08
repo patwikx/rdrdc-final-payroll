@@ -1,0 +1,79 @@
+import { PayrollRunType } from "@prisma/client"
+
+import { db } from "@/lib/db"
+import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+
+const toDateLabel = (value: Date): string => {
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(value)
+}
+
+export type CreatePayrollRunViewModel = {
+  companyId: string
+  companyName: string
+  payPeriods: Array<{ id: string; label: string }>
+  defaultPayPeriodId: string
+  runTypes: Array<{ code: PayrollRunType; label: string }>
+  departments: Array<{ id: string; name: string }>
+  branches: Array<{ id: string; name: string }>
+}
+
+const runTypeOptions: Array<{ code: PayrollRunType; label: string }> = [
+  { code: PayrollRunType.REGULAR, label: "Regular" },
+  { code: PayrollRunType.THIRTEENTH_MONTH, label: "13th Month" },
+  { code: PayrollRunType.MID_YEAR_BONUS, label: "Mid-Year Bonus" },
+  { code: PayrollRunType.SPECIAL, label: "Special" },
+  { code: PayrollRunType.FINAL_PAY, label: "Final Pay" },
+  { code: PayrollRunType.TRIAL_RUN, label: "Trial Run" },
+]
+
+export async function getCreatePayrollRunViewModel(companyId: string): Promise<CreatePayrollRunViewModel> {
+  const context = await getActiveCompanyContext({ companyId })
+
+  const [periods, departments, branches] = await Promise.all([
+    db.payPeriod.findMany({
+      where: {
+        statusCode: "OPEN",
+        pattern: { companyId: context.companyId },
+      },
+      select: {
+        id: true,
+        year: true,
+        periodNumber: true,
+        periodHalf: true,
+        cutoffStartDate: true,
+        cutoffEndDate: true,
+      },
+      orderBy: [{ cutoffStartDate: "asc" }],
+    }),
+    db.department.findMany({
+      where: { companyId: context.companyId, isActive: true },
+      select: { id: true, name: true },
+      orderBy: [{ name: "asc" }],
+    }),
+    db.branch.findMany({
+      where: { companyId: context.companyId, isActive: true },
+      select: { id: true, name: true },
+      orderBy: [{ name: "asc" }],
+    }),
+  ])
+
+  const defaultPayPeriodId = periods[0]?.id ?? ""
+
+  return {
+    companyId: context.companyId,
+    companyName: context.companyName,
+    payPeriods: periods.map((period) => ({
+      id: period.id,
+      label: `${period.year}-${String(period.periodNumber).padStart(2, "0")} (${period.periodHalf}) | ${toDateLabel(period.cutoffStartDate)} - ${toDateLabel(period.cutoffEndDate)}`,
+    })),
+    defaultPayPeriodId,
+    runTypes: runTypeOptions,
+    departments,
+    branches,
+  }
+}

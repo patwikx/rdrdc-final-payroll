@@ -1,0 +1,89 @@
+// ============================================================================
+// MEDICAL DOMAIN - Employee Medical Records and Documents
+// ============================================================================
+// This file contains models for managing employee medical records from annual
+// physical exams and general employee document storage.
+// ============================================================================
+
+// ============================================================================
+// EMPLOYEE DOMAIN - Medical History / Annual Physical Exams
+// ============================================================================
+
+model EmployeeMedicalRecord {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  examYear   Int // e.g., 2024, 2025
+  examDate   DateTime // Actual date of physical exam
+  examType   String   @default("APE") // APE = Annual Physical Exam
+  clinicName String? // Where exam was conducted
+  physician  String? // Examining physician
+  findings   String?  @db.Text // General findings/notes
+  remarks    String?  @db.Text
+  result     String? // FIT, UNFIT, PENDING
+
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  attachments EmployeeMedicalAttachment[]
+
+  @@unique([employeeId, examYear])
+  @@index([employeeId, examYear])
+  @@index([examYear])
+}
+
+model EmployeeMedicalAttachment {
+  id              String                @id @default(uuid())
+  medicalRecordId String
+  medicalRecord   EmployeeMedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  fileName    String
+  fileUrl     String // URL to stored file
+  fileType    String // PDF, JPG, PNG
+  fileSize    Int // bytes
+  description String? // e.g., "Lab Results", "X-Ray", "ECG"
+
+  uploadedAt   DateTime @default(now())
+  uploadedById String?
+
+  @@index([medicalRecordId])
+}
+
+// ============================================================================
+// EMPLOYEE DOCUMENTS
+// ============================================================================
+
+model EmployeeDocument {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  documentTypeId DocumentType
+
+  title       String // Document title/name
+  description String? @db.Text
+  fileName    String // Stored filename in MinIO
+  fileUrl     String // URL to stored file
+  fileType    String // PDF, JPG, PNG, DOCX, etc.
+  fileSize    Int // bytes
+
+  issueDate  DateTime? // When document was issued
+  expiryDate DateTime? // When document expires (for licenses, permits, etc.)
+  isExpired  Boolean   @default(false)
+
+  tags String? // Comma-separated tags for categorization
+
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  uploadedById String?
+
+  @@index([employeeId])
+  @@index([documentTypeId])
+  @@index([expiryDate])
+  @@index([isActive])
+}

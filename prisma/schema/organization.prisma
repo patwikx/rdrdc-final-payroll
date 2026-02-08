@@ -1,0 +1,299 @@
+// ============================================================================
+// ORGANIZATION DOMAIN - Organizational Structure and Employment Classifications
+// ============================================================================
+
+model Department {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Hierarchy
+  parentId String?
+  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children Department[] @relation("DepartmentHierarchy")
+
+  // Management
+  managerId String?
+  manager   Employee? @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  // Cost tracking
+  costCenterId   String?
+  costCenter     GLAccount? @relation("DepartmentCostCenter", fields: [costCenterId], references: [id])
+  profitCenterId String?
+  profitCenter   GLAccount? @relation("DepartmentProfitCenter", fields: [profitCenterId], references: [id])
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
+
+  employees                   Employee[]                @relation
+  previousDepartmentHistories EmployeePositionHistory[] @relation("PreviousDepartment")
+  newDepartmentHistories      EmployeePositionHistory[] @relation("NewDepartment")
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([parentId])
+  @@index([managerId])
+  @@index([isActive])
+}
+
+model Position {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Classification
+  jobFamily      String?
+  jobGrade       String?
+  salaryGradeMin Decimal? @db.Decimal(15, 2)
+  salaryGradeMax Decimal? @db.Decimal(15, 2)
+  level          Int      @default(0)
+
+  // Requirements
+  minExperienceYears Int?
+  educationRequired  String?
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("PositionCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("PositionUpdatedBy", fields: [updatedById], references: [id])
+
+  employees                 Employee[]                @relation
+  previousPositionHistories EmployeePositionHistory[] @relation("PreviousPosition")
+  newPositionHistories      EmployeePositionHistory[] @relation("NewPosition")
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([isActive])
+}
+
+model Branch {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Address
+  street       String?
+  barangay     String?
+  city         String?
+  municipality String?
+  province     String?
+  region       String?
+  postalCode   String?
+  country      String  @default("Philippines")
+
+  // Contact
+  phone String?
+  email String?
+
+  // Regional settings
+  minimumWageRegion String?
+
+  // Management
+  managerId String?
+  manager   Employee? @relation("BranchManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("BranchCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("BranchUpdatedBy", fields: [updatedById], references: [id])
+
+  employees               Employee[]                @relation
+  biometricDevices        BiometricDevice[]
+  previousBranchHistories EmployeePositionHistory[] @relation("PreviousBranch")
+  newBranchHistories      EmployeePositionHistory[] @relation("NewBranch")
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([managerId])
+  @@index([isActive])
+}
+
+model Division {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Hierarchy
+  parentId String?
+  parent   Division?  @relation("DivisionHierarchy", fields: [parentId], references: [id])
+  children Division[] @relation("DivisionHierarchy")
+
+  headId String?
+  head   Employee? @relation("DivisionHead", fields: [headId], references: [id], onDelete: SetNull)
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("DivisionCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("DivisionUpdatedBy", fields: [updatedById], references: [id])
+
+  employees Employee[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([parentId])
+  @@index([headId])
+  @@index([isActive])
+}
+
+model EmploymentStatus {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  // Business rules
+  isActive          Boolean @default(true)
+  allowsPayroll     Boolean @default(true)
+  allowsLeave       Boolean @default(true)
+  allowsLoans       Boolean @default(true)
+  triggersOffboarding Boolean @default(false)
+
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("EmploymentStatusCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("EmploymentStatusUpdatedBy", fields: [updatedById], references: [id])
+
+  employees               Employee[]              @relation
+  previousStatusHistories EmployeeStatusHistory[] @relation("PreviousEmploymentStatus")
+  newStatusHistories      EmployeeStatusHistory[] @relation("NewEmploymentStatus")
+  leavePolicies           LeavePolicy[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model EmploymentType {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  // Business rules
+  hasBenefits            Boolean @default(true)
+  hasLeaveCredits        Boolean @default(true)
+  has13thMonth           Boolean @default(true)
+  hasMandatoryDeductions Boolean @default(true)
+  maxContractMonths      Int?
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("EmploymentTypeCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("EmploymentTypeUpdatedBy", fields: [updatedById], references: [id])
+
+  employees Employee[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model EmploymentClass {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  // Business rules
+  standardHoursPerDay  Decimal @default(8) @db.Decimal(4, 2)
+  standardDaysPerWeek  Int     @default(5)
+  isOvertimeEligible   Boolean @default(true)
+  isHolidayPayEligible Boolean @default(true)
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("EmploymentClassCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("EmploymentClassUpdatedBy", fields: [updatedById], references: [id])
+
+  employees Employee[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model Rank {
+  id          String  @id @default(uuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  description String?
+
+  // Hierarchy
+  level    Int     @default(0) // Numeric level for ordering (1, 2, 3, etc.)
+  category String? // e.g., "Associate", "Supervisory", "Managerial", "Executive"
+  parentId String?
+  parent   Rank?   @relation("RankHierarchy", fields: [parentId], references: [id])
+  children Rank[]  @relation("RankHierarchy")
+
+  // Salary Configuration
+  salaryGradeMin Decimal? @db.Decimal(15, 2)
+  salaryGradeMax Decimal? @db.Decimal(15, 2)
+
+  // Promotion Paths (JSON array of rank IDs that can be promoted to)
+  promotionPaths Json? // e.g., ["rank-id-1", "rank-id-2"]
+
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  updatedById  String?
+  createdBy    User?    @relation("RankCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("RankUpdatedBy", fields: [updatedById], references: [id])
+
+  employees             Employee[]            @relation
+  previousRankHistories EmployeeRankHistory[] @relation("PreviousRank")
+  newRankHistories      EmployeeRankHistory[] @relation("NewRank")
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([level])
+  @@index([category])
+  @@index([parentId])
+  @@index([isActive])
+}

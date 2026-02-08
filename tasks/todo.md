@@ -1,0 +1,209 @@
+# Project To-Do
+
+Last updated: 2026-02-09
+
+## Completed
+
+- [x] Implemented HR final-stage Approval Queue actions for leave and overtime.
+  - Approve/reject server actions with remarks/reason.
+  - Final-stage role checks (`COMPANY_ADMIN`, `HR_ADMIN`, `PAYROLL_ADMIN`, optional `SUPER_ADMIN`).
+  - Status transitions from `SUPERVISOR_APPROVED` to `APPROVED`/`REJECTED`.
+  - HR-stage field updates and audit logging.
+- [x] Wired Approval Queue UI to real actions.
+  - Added details drawer (supervisor remarks, filed date, schedule/duration, reason).
+  - Added approve/reject dialogs with required notes and queue refresh.
+- [x] Simplified admin sidebar Leave & Overtime submenu to focus on `Approval Queue`.
+- [x] Implemented Employee Portal route group and access control.
+  - Added `/${"{companyId}"}/employee-portal/*` layout and pages.
+  - Enforced EMPLOYEE-only company-scoped routing to portal.
+- [x] Implemented employee self-service leave and overtime actions.
+  - Create/cancel leave requests.
+  - Create/cancel overtime requests.
+  - Company-scoped authz + validation + audit logging.
+- [x] Implemented interactive Employee Payslips UI.
+  - Payslip details dialog.
+  - Pagination and summary cards.
+- [x] Implemented server-side payslip PDF downloads.
+  - Playwright HTML/CSS renderer.
+  - Tenant-safe employee-scoped download route.
+
+## Next
+
+- [x] Implement leave balance yearly initialization (priority).
+  - Added company-scoped, year-scoped initialization action (`Asia/Manila` year semantics) in settings leave/overtime module.
+  - Resolves entitlement from `LeavePolicy` by employee employment status with proration support.
+  - Seeds `LeaveBalance` rows idempotently for active employees and active leave types.
+  - Writes `LeaveBalanceTransaction` rows for carry-over and year entitlement initialization.
+- [x] Add automated yearly trigger for leave balance initialization. (Skipped by product decision)
+  - Manual yearly initialization from Settings remains the official operating flow.
+  - Keep admin manual action as fallback and rerun-safe path.
+- [x] Implement leave balance lifecycle updates on leave request transitions.
+  - Completed with tenant-scoped transaction-safe mutations and ledger updates.
+- [x] Extend balance lifecycle parity to any remaining leave approval endpoints and overtime-specific rules.
+  - Added overtime-to-CTO conversion on HR final approval for employees who are not overtime-eligible or are supervisor-and-up (detected via direct reports).
+  - Conversion is 1:1 and enforces minimum 1 hour OT request duration.
+- [x] Move Settings > Leave / OT Policies from static UI to DB-backed CRUD.
+  - Persisted leave type and policy changes with typed validation and authz checks.
+  - Added overtime policy persistence through `OvertimeRate` settings actions (global model with company-scoped settings access checks).
+- [x] Add integration tests for leave and overtime request actions. (Skipped by product decision)
+  - Deferred for now to prioritize feature completion.
+- [x] Add audit metadata (`IP`, `User-Agent`) for payslip download route.
+- [x] Add branded payslip PDF enhancements.
+  - Added company logo support, signatory blocks, and optional watermark (`PAYSLIP_PDF_WATERMARK`).
+- [x] Expand employee self-service profile editing.
+  - Expanded update flow to include contact, address, emergency contact, and document entries.
+  - Added typed validation and audit log entries for self-service profile mutations.
+- [ ] Build active Payroll module workflow using project code structure (aligned to reference business logic).
+  - [x] Added initial active payroll routes: `/[companyId]/payroll`, `/[companyId]/payroll/runs`, `/[companyId]/payroll/runs/new`, `/[companyId]/payroll/runs/[runId]`.
+  - [x] Added core payroll lifecycle server actions scaffold: `create`, `validate`, `calculate`, `close`, `reopen`.
+  - [x] Added validation utility integration with pre-payroll checks (concurrent run guard, step sequencing, employee readiness, DTR/leave/overtime diagnostics summary).
+  - [x] Upgraded `calculatePayrollRunAction` toward Payroll Phase 1 parity.
+    - Added richer attendance/pay computation (rest day, holiday, paid leave, overtime multipliers, night diff, tardiness/undertime rules).
+    - Added statutory deductions (`SSS`, `PhilHealth`, `Pag-IBIG`, withholding tax) with semi-monthly split behavior.
+    - Aligned withholding tax computation to active statutory WTAX flex-rule rows (`TaxTable`) for applicable pay frequency.
+    - Added recurring deduction applicability and percentage-base handling (`GROSS`/`BASIC`/`NET`).
+    - Added loan amortization deduction posting with payroll-linked loan payments and loan balance/status updates.
+    - Preserved prior manual payslip adjustments across recalculation reruns.
+    - Added structured payslip line items (`PayslipEarning`, `PayslipDeduction`) and stronger process step transitions.
+    - Added configurable statutory deduction timing policy in payroll settings and wired calculation to policy-driven contribution timing.
+  - [x] Added active `/[companyId]/payroll/adjustments` route and module actions.
+    - Added payslip-level manual adjustment UI (earning/deduction) scoped to selected payroll run.
+    - Added company-scoped add/remove adjustment actions with review-stage guardrails.
+    - Added payslip + payroll run totals recomputation and audit logging after adjustment mutations.
+  - [x] Added active `/[companyId]/payroll/payslips` routes and view models.
+    - Added payslip listing route with payroll-run filtering.
+    - Added payslip detail route (`/[payslipId]`) with earnings/deductions breakdown.
+    - Added direct flow links between payslips and adjustments for review-stage operations.
+  - [x] Added active `/[companyId]/payroll/statutory` route and run-level reporting.
+    - Added statutory summary totals (employee + employer shares and WTAX) per selected run.
+    - Added employee-level statutory contribution breakdown table with direct payslip links.
+  - [x] Implemented payroll run lifecycle stage progression hardening (`review -> generate payslips -> close`).
+    - Added `completeReviewPayrollRunAction` with stricter step gating (requires step 3 complete).
+    - Added `generatePayslipsPayrollRunAction` with stricter step gating (requires step 4 complete + payslip records).
+    - Tightened close-run gating so step 5 must be completed before close is allowed.
+  - [x] Reworked run detail UX flow to match reference step experience using project design defaults.
+    - Added process stepper + step-focused views (validate, calculate, review/adjust, generate payslips, close).
+    - Added richer review register table with discrepancy filtering, expandable breakdown rows, and adjustment flow link.
+  - [x] Applied payroll run UX polish pass based on review feedback.
+    - Removed duplicate run header at run-detail page level.
+    - Removed run snapshot section from run detail flow.
+    - Refined validation log container styling (non-sharp edges) and normal loading animation.
+    - Reduced process stepper visual height for denser layout.
+    - Rounded stepper icon containers and increased step label typography size for readability.
+    - Updated review-step adjust action to open inline payslip adjustment dialog (reference-like flow) instead of route redirect.
+    - Updated adjustment dialog type control to switch-based toggle and aligned type+amount into a 3-column layout row.
+    - Switched adjustment type control back to shadcn `Select` and enforced full-width select trigger.
+    - Added adjustment-type visual icons in select trigger and options for clearer earning vs deduction context.
+    - Fixed adjustment-type select icon duplication by keeping icon only in selected value area.
+    - Updated adjustment dialog form grid to 2-column layout for type + amount alignment.
+    - Updated review-step UI to remove sharp edges, improve confirmation-checkbox visibility, and highlight expanded rows using default primary accent tones.
+    - Updated review-step `READY` badge to a clearer true-green visual state.
+    - Updated review-step currency display to `PHP` code format instead of peso sign.
+    - Updated payslip `Adjust` dialog trigger button styling to a blue primary action state.
+  - [x] Added statutory deduction diagnostics in validation/calculation notes for payroll troubleshooting.
+    - Validation notes now include statutory schedule applicability and active table counts per deduction type.
+    - Calculation notes now include statutory application/skipped/no-bracket diagnostics per employee aggregate.
+    - Run detail UI now surfaces calculation statutory diagnostics summary for quick troubleshooting.
+    - Fixed statutory table matching logic to use effective date range overlap (including historical inactive versions) instead of `isActive`-only filtering.
+  - [x] Fixed validation-to-calculation progression gating.
+    - Validation action now stays on step 2 after successful validation to allow review time.
+    - Added explicit `proceedToCalculatePayrollRunAction` and "Proceed to Next Step" button in Validate step.
+  - [x] Applied same explicit progression gating to calculation-to-review transition.
+    - Calculation action now remains on step 3 after successful run so users can review computed output.
+    - Added `proceedToReviewPayrollRunAction` and "Proceed to Next Step" button in Calculate step.
+    - Added employee-level calculated payroll summary table after calculation completes.
+    - Removed calculation statutory diagnostics strip from run detail to keep calculate review focused on employee outputs.
+    - Rounded calculate-step containers to avoid sharp-edge visuals.
+  - [x] Updated Validate step review output for attendance-centric validation review.
+    - Removed statutory diagnostics block from latest validation summary panel.
+    - Added validated employee attendance summary table (present, absent, tardiness, undertime, OT, CTO conversion hours).
+    - Added backward-compatible fallback rendering for legacy validation notes missing CTO/OT fields.
+    - Removed "Latest Validation Summary" title header text while keeping error/warning chips visible.
+    - Removed non-actionable error/warning count chips from Validate step panel.
+  - [x] Reworked payroll runs list page UX closer to reference layout (within project design system).
+    - Added runs list client with search + status filter controls and workflow progress column.
+    - Updated runs table structure to reference-style columns/actions (`Cycle Reference`, `Cutoff`, `Workflow Progress`, `Aggregate Payout`, `Status`, action menu).
+    - Added runs page stat cards and normalized controls to default field/button sizing and default color usage.
+    - Removed remaining custom sizing overrides on runs search/filter controls to strictly use default input/button sizes.
+    - Added proper icons to run stat cards and switched aggregate currency display to `PHP` code format.
+    - Replaced runs-page "New Payroll Run" page navigation flow with in-page dialog-based create flow.
+    - Added default pay-period auto-selection in create dialog/form based on current open pay period (PH-local date), with next open period fallback.
+    - Revised create-run pay period defaulting to earliest OPEN period ordered by cutoff (lock-state progression), not current date.
+    - Replaced pay-period selector in create-run form with disabled display field to enforce system-selected period.
+    - Added pay-period policy tooltip in create-run form explaining unlocked-period auto-selection behavior.
+  - [x] Updated statutory tables effective date input to shadcn `Calendar` popover date picker.
+  - [x] Removed card-like container wrappers from statutory tables quick-setup and bracket sections.
+  - [x] Removed redundant `effectiveYear` input from statutory tables; year is now derived from `effectiveFrom` date on save/preset logic.
+  - [x] Moved `effectiveFrom` calendar control beside flex-rule actions in each statutory section and removed standalone Quick Setup labels block.
+  - [x] Updated generate-payslips progression to require explicit proceed action before moving to Close step.
+    - Added `proceedToClosePayrollRunAction` and updated Step 5 UI to show `Proceed to Next Step` only after successful payslip generation.
+    - Generate action no longer auto-advances from step 5 to step 6.
+  - [x] Rounded final-step payroll run cards/containers to remove sharp-edge visuals in Generate Payslips and Close Run steps.
+  - [x] Moved `Export Payroll Register` action from Close step to Review step.
+    - Close step now contains only finalization actions.
+    - Review step now owns payroll register export entry point (current placeholder button).
+  - [x] Added close-period confirmation and locked-state UX on Close step.
+    - `Close Pay Period` now opens an alert dialog confirmation before action execution.
+    - After successful close, Close step indicates the period is already locked and disables close action.
+    - Center-aligned critical action and locked-state message copy for close-step visual consistency.
+    - Centered `Period Locked` button placement and changed close-step summary amounts to `PHP` display format.
+  - [x] Updated payroll run status presentation for locked periods.
+    - Closed runs now display `LOCKED` status label (with lock icon) in run list and run detail header.
+    - Replaced vertical status card in run detail header with compact horizontal icon badge.
+    - Preserved underlying DB enum state as `PAID` while deriving `LOCKED` from pay-period lock state.
+  - [x] Fixed Calculate step summary visibility after running payroll calculation.
+    - Calculated employee summary list now stays visible after successful calculation completion.
+    - Removed UI condition that hid summary when local progress state remained non-zero after refresh.
+  - [x] Added Review-step payroll register report generation.
+    - Replaced review-step export placeholder with active `Generate Payroll Register Report` action.
+    - Added report preview/print page: `/[companyId]/payroll/runs/[runId]/report`.
+    - Added CSV export route: `/[companyId]/payroll/runs/[runId]/report/export`.
+    - CSV output follows reference register structure: grouped by department, department sub-totals, and grand total rows with reference-aligned BAS/SSS/PHI/HDMF/TAX/SSSL/ALW/OTH/ABS/LTE/UT/NET columns.
+    - Added print action on report page to support reference-aligned register printing workflow.
+    - Added audit logging for payroll register export events.
+    - Updated report page UX: removed card-like header container, added `Back to Review` button, and styled actions with solid blue `Print` and solid green `Export CSV` buttons.
+    - Updated print behavior to open and print a document-style payroll register layout (instead of printing full webpage chrome).
+    - Added reference-style `LEGEND` section to both report preview and print output.
+    - Moved `Generate Payroll Register Report` button to the top of the Review-step Run Totals card container.
+    - Updated `Generate Payroll Register Report` button style to solid blue.
+    - Moved `Generate Payroll Register Report` button outside and above the Run Totals card container.
+    - Replaced the Review-step `Discrepancies` toolbar button with `Generate Payroll Register Report` and aligned search/report toolbar control heights.
+    - Updated employee search field to non-full-width desktop sizing (`sm:w-80`).
+    - Right-aligned `Generate Payroll Register Report` to the end of the top Review-step toolbar row on desktop.
+  - [x] Reworked payslip PDF template for reference parity.
+    - Updated download/email payslip output template to mirror the payslip-template preview reference layout (clean white format, simplified header, employee/pay-period blocks, split earnings and deductions, and net-pay strip).
+    - Fixed earnings rendering to prevent duplicate `Basic Pay` line item.
+    - Updated deductions presentation to show pay-period statutory deductions plus attendance deductions when present (`Late/Tardiness`, `Undertime`).
+    - Corrected displayed `Basic Pay` amount in template output to show semi-monthly half of employee monthly base salary.
+    - Reduced deductions line-item typography and standardized footer label to `Total Deductions`.
+    - Aligned earnings/deductions column row heights so `Gross Pay` and `Total Deductions` separators/totals sit on the same horizontal line.
+    - Standardized attendance deduction display in payslip output to `Tardiness` label.
+  - [x] Added admin payslip delivery actions in payroll flows.
+    - Added admin download endpoint for payroll payslip PDF: `/[companyId]/payroll/payslips/[payslipId]/download`.
+    - Added Generate-step actions for direct in-step payslip delivery: `Download All Payslips`, per-employee `Download`, and `Send Payslips via Email` (Resend batch send) without page redirect.
+    - Added email delivery persistence/audit writes using `EmailDeliveryRecord` and `EmailAuditLog`.
+    - Updated Generate-step payslip delivery action buttons to solid blue style (`Download All Payslips`, `Send Payslips via Email`, and per-employee `Download`).
+    - Updated Send Payslips flow to reference-style batch delivery dialog (confirmation, progress, result summary, failed list, and retry failed sends).
+    - Improved payslip email template copy to use pay-period wording (`period half` + formatted cutoff date range) instead of run-number phrasing.
+    - Fixed strict TS object-literal typing issue in payslip email actions by routing PDF input through payload variables before `generatePayslipPdfBuffer` calls.
+  - [x] Fixed non-payroll build blocker in employee user access module.
+    - Guarded nullable `employee.user` access in approver-update action by extracting non-null user locals after validation.
+    - Removed strict-null TypeScript errors in transaction/audit updates for linked user approver toggles.
+  - [x] Fixed `/logout` build blocker for `useSearchParams()` during prerender.
+    - Wrapped logout client component render in `Suspense` boundary in `app/(root)/logout/page.tsx`.
+  - [x] Fixed `/login` build blocker for `useSearchParams()` during prerender.
+    - Wrapped login client component render in `Suspense` boundary in `app/(root)/login/page.tsx`.
+  - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
+  - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
+  - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).
+- [ ] Align DTR outputs to payroll computation inputs.
+  - Normalize DTR time handling and export consistency for payroll consumption.
+  - Keep manual DTR auto-approval behavior as-is (intentional HR-only operating model).
+
+## Decisions
+
+- Approval model direction: keep current two-stage leave/overtime approvals and use `User.isRequestApprover` as the approver flag source.
+- Approval workflow engine models are out of scope for now.
+- Migration workflow note: baseline migration chain was repaired by adding a schema baseline migration and resolving historical migrations as applied for the current environment before continuing new schema updates.
+- Payroll direction: use `payroll-actions-reference/**` as business-logic policy source and `payroll-page-reference/**` + `payroll-components-reference/**` as reference guides, while implementing inside this project's existing module/code structure.
+- DTR decision: manual DTR auto-approval remains intentional because operational users are HR users.

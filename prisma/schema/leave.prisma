@@ -1,0 +1,222 @@
+// ============================================================================
+// LEAVE DOMAIN - Leave Types, Policies, Balances, Requests
+// ============================================================================
+
+model LeaveType {
+  id String @id @default(uuid())
+
+  // Company Association (null = global/shared)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code         String
+  name         String
+  description  String?
+  displayOrder Int     @default(0)
+  colorCode    String? // For calendar display
+
+  // Pay Configuration
+  isPaid        Boolean @default(true)
+  payPercentage Decimal @default(100) @db.Decimal(5, 2)
+
+  // Conversion
+  isConvertibleToCash Boolean  @default(false)
+  cashConversionRate  Decimal? @db.Decimal(5, 2)
+
+  // Carry Over
+  isCarriedOver         Boolean  @default(false)
+  maxCarryOverDays      Decimal? @db.Decimal(5, 2)
+  carryOverExpiryMonths Int? // Months after year-end
+
+  // Approval
+  requiresApproval      Boolean @default(true)
+  requiresDocuments     Boolean @default(false)
+  requiredDocumentTypes String? // JSON array of document types
+
+  // Limits
+  minConsecutiveDays Decimal? @db.Decimal(5, 2)
+  maxConsecutiveDays Decimal? @db.Decimal(5, 2)
+  advanceNoticeDays  Int?
+
+  // Flexibility
+  allowHalfDay Boolean @default(true)
+  allowHourly  Boolean @default(false)
+
+  // Eligibility
+  genderApplicability String @default("ALL") // ALL, MALE, FEMALE
+  statusApplicability String @default("ALL") // ALL, REGULAR_ONLY
+  minTenureMonths     Int?
+
+  affectsAttendance Boolean @default(true)
+
+  // CTO (Compensatory Time Off) Configuration
+  isCTO Boolean @default(false) // If true, this leave is earned via overtime for non-OT-eligible employees
+
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  policies LeavePolicy[]
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([isActive])
+}
+
+model LeavePolicy {
+  id                 String           @id @default(uuid())
+  leaveTypeId        String
+  leaveType          LeaveType        @relation(fields: [leaveTypeId], references: [id])
+  employmentStatusId String
+  employmentStatus   EmploymentStatus @relation(fields: [employmentStatusId], references: [id])
+
+  annualEntitlement Decimal      @db.Decimal(5, 2)
+  accrualMethodCode LeaveAccrualMethod @default(UPFRONT)
+  accrualRate       Decimal?     @db.Decimal(5, 4)
+
+  prorationMethodCode LeaveProrationMethod @default(PRORATED_MONTH)
+
+  // Tenure-based increments (JSON: [{years: 3, additionalDays: 1}, ...])
+  tenureIncrements Json?
+
+  maxAccumulation Decimal? @db.Decimal(5, 2)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([leaveTypeId, employmentStatusId, effectiveFrom])
+  @@index([leaveTypeId])
+  @@index([employmentStatusId])
+}
+
+model LeaveBalance {
+  id          String    @id @default(uuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year        Int
+
+  openingBalance     Decimal @default(0) @db.Decimal(6, 2)
+  creditsEarned      Decimal @default(0) @db.Decimal(6, 2)
+  creditsUsed        Decimal @default(0) @db.Decimal(6, 2)
+  creditsForfeited   Decimal @default(0) @db.Decimal(6, 2)
+  creditsConverted   Decimal @default(0) @db.Decimal(6, 2)
+  creditsCarriedOver Decimal @default(0) @db.Decimal(6, 2)
+  currentBalance     Decimal @default(0) @db.Decimal(6, 2)
+  pendingRequests    Decimal @default(0) @db.Decimal(6, 2)
+  availableBalance   Decimal @default(0) @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions LeaveBalanceTransaction[]
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([year])
+}
+
+model LeaveBalanceTransaction {
+  id              String       @id @default(uuid())
+  leaveBalanceId  String
+  leaveBalance    LeaveBalance @relation(fields: [leaveBalanceId], references: [id], onDelete: Cascade)
+  transactionType LeaveBalanceTransactionType
+  amount          Decimal      @db.Decimal(6, 2)
+  runningBalance  Decimal      @db.Decimal(6, 2)
+  referenceType   String? // LEAVE_REQUEST, YEAR_END, MANUAL
+  referenceId     String?
+  remarks         String?
+  processedById   String?
+  createdAt       DateTime     @default(now())
+
+  @@index([leaveBalanceId])
+  @@index([transactionType])
+  @@index([createdAt])
+}
+
+model LeaveRequest {
+  id            String    @id @default(uuid())
+  requestNumber String    @unique
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId   String
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  numberOfDays  Decimal  @db.Decimal(5, 2)
+  isHalfDay     Boolean  @default(false)
+  halfDayPeriod String? // AM, PM
+  numberOfHours Decimal? @db.Decimal(5, 2)
+
+  reason        String? @db.Text
+  handoverNotes String? @db.Text
+
+  statusCode RequestStatus @default(DRAFT) // Uses unified RequestStatus enum (all 7 values)
+
+  submittedAt DateTime?
+
+  // Multi-level approval - Stage 1: Supervisor
+  supervisorApproverId      String?
+  supervisorApprover        Employee? @relation("LeaveSupervisorApprover", fields: [supervisorApproverId], references: [id])
+  supervisorApprovedAt      DateTime?
+  supervisorApprovalRemarks String?
+
+  // Multi-level approval - Stage 2: HR/Admin
+  hrApproverId      String?
+  hrApprover        Employee? @relation("LeaveHRApprover", fields: [hrApproverId], references: [id])
+  hrApprovedAt      DateTime?
+  hrApprovalRemarks String?
+  hrRejectionReason String?
+  hrRejectedAt      DateTime?
+
+  // Legacy single approver
+  approverId      String?
+  approver        Employee? @relation("LeaveApprover", fields: [approverId], references: [id])
+  approvedAt      DateTime?
+  approvalRemarks String?
+
+  rejectionReason String?
+  rejectedAt      DateTime?
+
+  cancellationReason String?
+  cancelledAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attachments LeaveRequestAttachment[]
+
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([statusCode])
+  @@index([startDate, endDate])
+  @@index([requestNumber])
+  @@index([supervisorApproverId])
+  @@index([hrApproverId])
+  @@index([employeeId, statusCode])
+  @@index([leaveTypeId, statusCode])
+}
+
+model LeaveRequestAttachment {
+  id             String       @id @default(uuid())
+  leaveRequestId String
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  fileName       String
+  fileType       String
+  fileSize       Int
+  fileUrl        String
+  uploadedAt     DateTime     @default(now())
+
+  @@index([leaveRequestId])
+}

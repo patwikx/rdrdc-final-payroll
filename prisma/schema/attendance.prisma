@@ -1,0 +1,300 @@
+// ============================================================================
+// ATTENDANCE DOMAIN - Schedules, DTR, Overtime, Holidays
+// ============================================================================
+
+model WorkSchedule {
+  id String @id @default(uuid())
+
+  // Company Association (null = global/shared)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code        String
+  name        String
+  description String?
+
+  scheduleTypeCode ScheduleType @default(FIXED)
+
+  // Regular Hours
+  workStartTime     DateTime  @db.Time()
+  workEndTime       DateTime  @db.Time()
+  breakStartTime    DateTime? @db.Time()
+  breakEndTime      DateTime? @db.Time()
+  breakDurationMins Int       @default(60)
+
+  // Grace Period
+  gracePeriodMins Int @default(0)
+
+  // Required Hours
+  requiredHoursPerDay Decimal @default(8) @db.Decimal(4, 2)
+
+  // Rest Days (JSON array: ["SATURDAY", "SUNDAY"])
+  restDays Json?
+
+  // Day Overrides (JSON object: { "SATURDAY": { "workStartTime": "08:00", "workEndTime": "12:00", "isRequired": true } })
+  dayOverrides Json?
+
+  // Flexible Schedule
+  flexibleStartTime DateTime? @db.Time()
+  flexibleEndTime   DateTime? @db.Time()
+  coreHoursStart    DateTime? @db.Time()
+  coreHoursEnd      DateTime? @db.Time()
+
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  employees Employee[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([isActive])
+}
+
+model Holiday {
+  id String @id @default(uuid())
+
+  // Company Association (null = nationwide)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  holidayDate     DateTime    @db.Date
+  name            String
+  description     String?
+  holidayTypeCode HolidayType @default(REGULAR)
+  payMultiplier   Decimal     @db.Decimal(4, 2) // e.g., 2.0 for 200%
+  applicability   String      @default("NATIONWIDE") // NATIONWIDE, REGIONAL, COMPANY
+  region          String?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([holidayDate, applicability, region, companyId])
+  @@index([holidayDate])
+  @@index([holidayTypeCode])
+  @@index([companyId])
+}
+
+model OvertimeRate {
+  id               String      @id @default(uuid())
+  overtimeTypeCode OvertimeTypeCode
+  description      String?
+  rateMultiplier   Decimal     @db.Decimal(4, 2) // e.g., 1.25, 1.30, 1.50, 2.0, 2.6
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([overtimeTypeCode])
+  @@index([effectiveFrom])
+}
+
+model BiometricDevice {
+  id String @id @default(uuid())
+
+  // Company Association
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  code        String
+  name        String
+  description String?
+
+  // Device Information
+  deviceModel     String // F18, uFace202, iClock680, etc.
+  serialNumber    String?
+  firmwareVersion String?
+
+  // Network Configuration
+  ipAddress String
+  port      Int    @default(4370)
+
+  // Connection Settings
+  timeout Int  @default(5000) // milliseconds
+  inport  Int? // Optional inbound port for real-time push
+
+  // Credentials (encrypted)
+  username String?
+  password String?
+
+  // Location
+  locationName String?
+  branchId     String?
+  branch       Branch? @relation(fields: [branchId], references: [id])
+
+  // Sync Configuration
+  autoSyncEnabled     Boolean   @default(true)
+  syncIntervalMinutes Int       @default(30)
+  lastSyncAt          DateTime?
+  lastSyncStatus      String? // SUCCESS, FAILED, PARTIAL
+  lastSyncError       String?   @db.Text
+  lastSyncRecordCount Int       @default(0)
+
+  // Device Status
+  isOnline     Boolean   @default(false)
+  lastOnlineAt DateTime?
+
+  // Soft Delete & Audit
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+
+  // Relations
+  syncLogs      BiometricSyncLog[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([ipAddress])
+  @@index([isActive])
+  @@index([isOnline])
+}
+
+model BiometricSyncLog {
+  id String @id @default(uuid())
+
+  deviceId String
+  device   BiometricDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  syncStartedAt   DateTime
+  syncCompletedAt DateTime?
+
+  status BiometricSyncStatus
+
+  recordsFetched   Int @default(0)
+  recordsProcessed Int @default(0)
+  recordsCreated   Int @default(0)
+  recordsUpdated   Int @default(0)
+  recordsSkipped   Int @default(0)
+  recordsFailed    Int @default(0)
+
+  errorMessage String? @db.Text
+  errorDetails Json?
+
+  // Sync metadata
+  syncType      String  @default("MANUAL") // MANUAL, SCHEDULED, REAL_TIME
+  triggeredById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([syncStartedAt])
+  @@index([status])
+}
+
+model DailyTimeRecord {
+  id             String   @id @default(uuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  attendanceDate DateTime @db.Date
+
+  // Scheduled Times
+  scheduledTimeIn  DateTime? @db.Time()
+  scheduledTimeOut DateTime? @db.Time()
+
+  // Actual Times
+  actualTimeIn      DateTime?
+  actualTimeOut     DateTime?
+  timeInSourceCode  DtrSource?
+  timeOutSourceCode DtrSource?
+
+  // Break Times
+  breakOut DateTime?
+  breakIn  DateTime?
+
+  // Status
+  attendanceStatus AttendanceStatus @default(PRESENT)
+
+  // Calculated Values
+  hoursWorked    Decimal? @db.Decimal(5, 2)
+  tardinessMins  Int      @default(0)
+  undertimeMins  Int      @default(0)
+  overtimeHours  Decimal? @db.Decimal(5, 2)
+  nightDiffHours Decimal? @db.Decimal(5, 2)
+
+  remarks String? @db.Text
+
+  // Approval
+  approvalStatusCode DtrApprovalStatus @default(PENDING)
+  approvedById       String?
+  approvedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, attendanceDate])
+  @@index([employeeId])
+  @@index([attendanceDate])
+  @@index([attendanceStatus])
+}
+
+model OvertimeRequest {
+  id            String   @id @default(uuid())
+  requestNumber String   @unique
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  overtimeDate DateTime @db.Date
+  startTime    DateTime @db.Time()
+  endTime      DateTime @db.Time()
+  hours        Decimal  @db.Decimal(5, 2)
+  reason       String?  @db.Text
+
+  statusCode RequestStatus @default(PENDING) // Uses unified RequestStatus enum (5 values: PENDING, SUPERVISOR_APPROVED, APPROVED, REJECTED, CANCELLED)
+
+  // Multi-level approval - Stage 1: Supervisor
+  supervisorApproverId      String?
+  supervisorApprover        Employee? @relation("OvertimeSupervisorApprover", fields: [supervisorApproverId], references: [id])
+  supervisorApprovedAt      DateTime?
+  supervisorApprovalRemarks String?
+
+  // Multi-level approval - Stage 2: HR/Admin
+  hrApproverId      String?
+  hrApprover        Employee? @relation("OvertimeHRApprover", fields: [hrApproverId], references: [id])
+  hrApprovedAt      DateTime?
+  hrApprovalRemarks String?
+  hrRejectionReason String?
+  hrRejectedAt      DateTime?
+
+  // Legacy single approver
+  approverId      String?
+  approver        Employee? @relation("OvertimeApprover", fields: [approverId], references: [id])
+  approvedAt      DateTime?
+  approvalRemarks String?
+
+  rejectionReason String?
+  rejectedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([overtimeDate])
+  @@index([statusCode])
+  @@index([supervisorApproverId])
+  @@index([hrApproverId])
+  @@index([employeeId, statusCode])
+  @@index([overtimeDate, statusCode])
+}
+
+// Tardiness/Undertime Deduction Rules
+model AttendanceDeductionRule {
+  id               String    @id @default(uuid())
+  ruleType         AttendanceDeductionRuleType
+  calculationBasis AttendanceDeductionBasis
+  thresholdMins    Int       @default(0) // Minutes before deduction applies
+  deductionRate    Decimal   @db.Decimal(10, 4) // Rate per unit
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([ruleType])
+  @@index([effectiveFrom])
+}

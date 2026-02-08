@@ -1,0 +1,105 @@
+// ============================================================================
+// USER AND AUDIT DOMAIN - User authentication and system audit trail
+// ============================================================================
+
+model User {
+  id              String    @id @default(uuid())
+  username        String    @unique
+  email           String    @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  role            PlatformRole @default(STANDARD)
+  isAdmin         Boolean   @default(false)
+  isRequestApprover Boolean   @default(false) // Can approve employee requests (leave, overtime, loans)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Company Access
+  companyAccess UserCompanyAccess[]
+  selectedCompanyId String?
+  selectedCompany   Company?            @relation("UserSelectedCompany", fields: [selectedCompanyId], references: [id])
+  preferredTimezone String              @default("Asia/Manila")
+  lastCompanySwitchedAt DateTime?
+
+  // Employee Link (for employee self-service portal)
+  employee Employee? @relation("EmployeeUser")
+
+  // Company Group Audit Relations
+  companyGroupsCreated CompanyGroup[] @relation("CompanyGroupCreatedBy")
+  companyGroupsUpdated CompanyGroup[] @relation("CompanyGroupUpdatedBy")
+  companiesCreated     Company[]      @relation("CompanyCreatedBy")
+  companiesUpdated     Company[]      @relation("CompanyUpdatedBy")
+
+  // Domain Table Audit Relations
+  departmentsCreated       Department[]       @relation("DepartmentCreatedBy")
+  departmentsUpdated       Department[]       @relation("DepartmentUpdatedBy")
+  positionsCreated         Position[]         @relation("PositionCreatedBy")
+  positionsUpdated         Position[]         @relation("PositionUpdatedBy")
+  branchesCreated          Branch[]           @relation("BranchCreatedBy")
+  branchesUpdated          Branch[]           @relation("BranchUpdatedBy")
+  divisionsCreated         Division[]         @relation("DivisionCreatedBy")
+  divisionsUpdated         Division[]         @relation("DivisionUpdatedBy")
+  ranksCreated             Rank[]             @relation("RankCreatedBy")
+  ranksUpdated             Rank[]             @relation("RankUpdatedBy")
+  accountCategoriesCreated AccountCategory[]  @relation("AccountCategoryCreatedBy")
+  accountCategoriesUpdated AccountCategory[]  @relation("AccountCategoryUpdatedBy")
+  glAccountsCreated        GLAccount[]        @relation("GLAccountCreatedBy")
+  glAccountsUpdated        GLAccount[]        @relation("GLAccountUpdatedBy")
+  employmentStatusCreated  EmploymentStatus[] @relation("EmploymentStatusCreatedBy")
+  employmentStatusUpdated  EmploymentStatus[] @relation("EmploymentStatusUpdatedBy")
+  employmentTypesCreated   EmploymentType[]   @relation("EmploymentTypeCreatedBy")
+  employmentTypesUpdated   EmploymentType[]   @relation("EmploymentTypeUpdatedBy")
+  employmentClassCreated   EmploymentClass[]  @relation("EmploymentClassCreatedBy")
+  employmentClassUpdated   EmploymentClass[]  @relation("EmploymentClassUpdatedBy")
+
+  // Audit Relations
+  configsCreated        SystemConfig[]   @relation("ConfigCreatedBy")
+  configsUpdated        SystemConfig[]   @relation("ConfigUpdatedBy")
+  employeesCreated      Employee[]       @relation("EmployeeCreatedBy")
+  employeesUpdated      Employee[]       @relation("EmployeeUpdatedBy")
+  employeesDeleted      Employee[]       @relation("EmployeeDeletedBy")
+  payrollRunsCreated    PayrollRun[]     @relation("PayrollRunCreatedBy")
+  payrollRunsProcessed  PayrollRun[]     @relation("PayrollRunProcessedBy")
+  payrollRunsApproved   PayrollRun[]     @relation("PayrollRunApprovedBy")
+  payrollRunsPaid       PayrollRun[]     @relation("PayrollRunPaidBy")
+  payrollRunsPostedToGL PayrollRun[]     @relation("PayrollRunPostedToGLBy")
+  payPeriodsLocked      PayPeriod[]      @relation("PayPeriodLockedBy")
+  auditLogs             AuditLog[]
+
+  // Separation Workflow Relations
+  separationRequestsCreated       SeparationRequest[]  @relation("SeparationRequestCreatedBy")
+  separationRequestsApproved      SeparationRequest[]  @relation("SeparationRequestApprovedBy")
+  separationRequestsRejected      SeparationRequest[]  @relation("SeparationRequestRejectedBy")
+  separationRequestsCancelled     SeparationRequest[]  @relation("SeparationRequestCancelledBy")
+  finalPayCalculationsCreated  FinalPayCalculation[] @relation("FinalPayCalculatedBy")
+  finalPayCalculationsApproved FinalPayCalculation[] @relation("FinalPayApprovedBy")
+  separationAuditLogs          SeparationAuditLog[]  @relation("SeparationAuditUser")
+
+  @@index([username])
+  @@index([email])
+  @@index([selectedCompanyId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tableName String
+  recordId  String
+  action    AuditAction
+  fieldName String?
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+  reason    String?
+  ipAddress String?
+  userAgent String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}

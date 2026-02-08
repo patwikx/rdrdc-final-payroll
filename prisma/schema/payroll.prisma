@@ -1,0 +1,273 @@
+// ============================================================================
+// PAYROLL DOMAIN - Pay Periods, Payroll Runs, Payslips
+// ============================================================================
+
+model PayPeriodPattern {
+  id String @id @default(uuid())
+
+  // Company Association
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code        String
+  name        String
+  description String?
+
+  payFrequencyCode   PayFrequencyType @default(SEMI_MONTHLY)
+  periodsPerYear     Int          @default(24)
+
+  // Statutory deduction timing policy per pay period cycle
+  statutoryDeductionSchedule Json?
+
+  // Payment offset from cutoff end
+  paymentDayOffset Int @default(0)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payPeriods PayPeriod[]
+  employees  Employee[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([payFrequencyCode])
+}
+
+model PayPeriod {
+  id        String           @id @default(uuid())
+  patternId String
+  pattern   PayPeriodPattern @relation(fields: [patternId], references: [id])
+
+  year         Int
+  periodNumber Int // 1-24 for semi-monthly
+  periodHalf   PayPeriodHalf
+
+  cutoffStartDate DateTime @db.Date
+  cutoffEndDate   DateTime @db.Date
+  paymentDate     DateTime @db.Date
+
+  workingDays Int?
+
+  statusCode PayPeriodStatus @default(OPEN)
+
+  lockedAt   DateTime?
+  lockedById String?
+  lockedBy   User?     @relation("PayPeriodLockedBy", fields: [lockedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payrollRuns PayrollRun[]
+
+  @@unique([patternId, year, periodNumber])
+  @@index([year, periodNumber])
+  @@index([cutoffStartDate, cutoffEndDate])
+  @@index([statusCode])
+  @@index([cutoffStartDate, cutoffEndDate, statusCode])
+}
+
+model PayrollRun {
+  id String @id @default(uuid())
+
+  // Company Association
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  runNumber   String    @unique
+  payPeriodId String
+  payPeriod   PayPeriod @relation(fields: [payPeriodId], references: [id])
+
+  runTypeCode PayrollRunType @default(REGULAR)
+
+  statusCode PayrollRunStatus @default(DRAFT)
+
+  // Process Workflow Tracking
+  currentStepNumber Int     @default(1)
+  currentStepName   String  @default("CREATE_RUN")
+  isStepLocked      Boolean @default(false)
+
+  // Processing Info
+  createdById   String?
+  createdBy     User?     @relation("PayrollRunCreatedBy", fields: [createdById], references: [id])
+  processedAt   DateTime?
+  processedById String?
+  processedBy   User?     @relation("PayrollRunProcessedBy", fields: [processedById], references: [id])
+  approvedAt    DateTime?
+  approvedById  String?
+  approvedBy    User?     @relation("PayrollRunApprovedBy", fields: [approvedById], references: [id])
+  paidAt        DateTime?
+  paidById      String?
+  paidBy        User?     @relation("PayrollRunPaidBy", fields: [paidById], references: [id])
+
+  // Summary
+  totalEmployees             Int     @default(0)
+  totalGrossPay              Decimal @default(0) @db.Decimal(18, 2)
+  totalDeductions            Decimal @default(0) @db.Decimal(18, 2)
+  totalNetPay                Decimal @default(0) @db.Decimal(18, 2)
+  totalEmployerCost          Decimal @default(0) @db.Decimal(18, 2)
+  totalEmployerContributions Decimal @default(0) @db.Decimal(18, 2)
+
+  remarks String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // GL Integration
+  isPostedToGL   Boolean   @default(false)
+  postedToGLAt   DateTime?
+  postedToGLById String?
+  postedToGLBy   User?     @relation("PayrollRunPostedToGLBy", fields: [postedToGLById], references: [id])
+  glBatchNumber  String? // Reference to accounting system batch/journal entry number
+  glPostingNotes String?   @db.Text
+
+  payslips     Payslip[]
+  processSteps PayrollProcessStep[]
+
+  @@index([payPeriodId])
+  @@index([runNumber])
+  @@index([statusCode])
+  @@index([runTypeCode])
+  @@index([currentStepNumber])
+  @@index([isPostedToGL])
+}
+
+// Payroll Process Step Tracking
+model PayrollProcessStep {
+  id           String     @id @default(uuid())
+  payrollRunId String
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+
+  stepNumber      Int
+  stepName        PayrollProcessStepName
+  stepDescription String?
+
+  status        PayrollProcessStepStatus @default(PENDING)
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  completedById String?
+
+  // Validation Results
+  validationErrors   Json? // Array of error messages if step failed
+  validationWarnings Json? // Array of warning messages
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([payrollRunId, stepNumber])
+  @@index([payrollRunId])
+  @@index([stepNumber])
+  @@index([status])
+}
+
+model Payslip {
+  id            String     @id @default(uuid())
+  payslipNumber String     @unique
+  payrollRunId  String
+  payrollRun    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee   @relation(fields: [employeeId], references: [id])
+
+  // Basic Pay Info
+  baseSalary Decimal @db.Decimal(15, 2)
+  dailyRate  Decimal @db.Decimal(15, 4)
+  hourlyRate Decimal @db.Decimal(15, 4)
+
+  // Working Days/Hours
+  workingDays    Decimal  @db.Decimal(5, 2)
+  daysWorked     Decimal  @db.Decimal(5, 2)
+  daysAbsent     Decimal  @default(0) @db.Decimal(5, 2)
+  hoursWorked    Decimal? @db.Decimal(6, 2)
+  overtimeHours  Decimal  @default(0) @db.Decimal(6, 2)
+  tardinessMins  Int      @default(0)
+  undertimeMins  Int      @default(0)
+  nightDiffHours Decimal  @default(0) @db.Decimal(6, 2)
+
+  // Totals
+  basicPay        Decimal @db.Decimal(15, 2)
+  grossPay        Decimal @db.Decimal(15, 2)
+  totalEarnings   Decimal @db.Decimal(15, 2)
+  totalDeductions Decimal @db.Decimal(15, 2)
+  netPay          Decimal @db.Decimal(15, 2)
+
+  // Mandatory Deductions
+  sssEmployee        Decimal @default(0) @db.Decimal(15, 2)
+  sssEmployer        Decimal @default(0) @db.Decimal(15, 2)
+  philHealthEmployee Decimal @default(0) @db.Decimal(15, 2)
+  philHealthEmployer Decimal @default(0) @db.Decimal(15, 2)
+  pagIbigEmployee    Decimal @default(0) @db.Decimal(15, 2)
+  pagIbigEmployer    Decimal @default(0) @db.Decimal(15, 2)
+  withholdingTax     Decimal @default(0) @db.Decimal(15, 2)
+
+  // YTD Totals
+  ytdGrossPay      Decimal @default(0) @db.Decimal(18, 2)
+  ytdTaxableIncome Decimal @default(0) @db.Decimal(18, 2)
+  ytdTaxWithheld   Decimal @default(0) @db.Decimal(18, 2)
+  ytdSSS           Decimal @default(0) @db.Decimal(18, 2)
+  ytdPhilHealth    Decimal @default(0) @db.Decimal(18, 2)
+  ytdPagIbig       Decimal @default(0) @db.Decimal(18, 2)
+  ytdNetPay        Decimal @default(0) @db.Decimal(18, 2)
+
+  // Release Info
+  generatedAt    DateTime  @default(now())
+  releasedAt     DateTime?
+  acknowledgedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  earnings             PayslipEarning[]
+  deductions           PayslipDeduction[]
+  accessTokens         AccessToken[]
+  emailDeliveryRecords EmailDeliveryRecord[]
+
+  @@unique([payrollRunId, employeeId])
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@index([payslipNumber])
+  @@index([payrollRunId, employeeId])
+}
+
+model PayslipEarning {
+  id            String      @id @default(uuid())
+  payslipId     String
+  payslip       Payslip     @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  earningTypeId String
+  earningType   EarningType @relation(fields: [earningTypeId], references: [id])
+
+  description String?
+  hours       Decimal? @db.Decimal(6, 2)
+  days        Decimal? @db.Decimal(5, 2)
+  rate        Decimal? @db.Decimal(15, 4)
+  amount      Decimal  @db.Decimal(15, 2)
+  isTaxable   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([payslipId])
+  @@index([earningTypeId])
+}
+
+model PayslipDeduction {
+  id              String        @id @default(uuid())
+  payslipId       String
+  payslip         Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  deductionTypeId String
+  deductionType   DeductionType @relation(fields: [deductionTypeId], references: [id])
+
+  description   String?
+  amount        Decimal  @db.Decimal(15, 2)
+  employerShare Decimal? @db.Decimal(15, 2)
+  referenceType String? // LOAN, RECURRING, GOVERNMENT, TAX
+  referenceId   String? // Link to loan or recurring deduction
+
+  createdAt DateTime @default(now())
+
+  @@index([payslipId])
+  @@index([deductionTypeId])
+}

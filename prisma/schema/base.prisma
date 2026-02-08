@@ -1,0 +1,676 @@
+// ============================================================================
+// BASE CONFIGURATION - Generator, Datasource, and Enums
+// ============================================================================
+// This file contains shared configuration and type definitions used across
+// all domain schema files. It is named "base.prisma" to ensure it is
+// processed first alphabetically by Prisma.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../lib/generated/prisma" // Using default node_modules for easier imports in Next.js
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS - Shared Type Definitions
+// ============================================================================
+
+enum GLAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+  COST_CENTER
+  PROFIT_CENTER
+  REVENUE_CENTER
+}
+
+enum GLAccountClass {
+  DIRECT
+  INDIRECT
+  FIXED
+  VARIABLE
+  OPERATING
+  NON_OPERATING
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+  REST_DAY
+  SUSPENDED
+  AWOL
+}
+
+// Unified Request Status Enum (used by LeaveRequest and OvertimeRequest)
+enum RequestStatus {
+  DRAFT // Only used by leave requests (optional pre-submission state)
+  PENDING // Initial state after submission (both leave and overtime)
+  SUPERVISOR_APPROVED // After supervisor approval (both leave and overtime)
+  APPROVED // Final approved state (both leave and overtime)
+  REJECTED // Rejected by HR (both leave and overtime)
+  CANCELLED // Cancelled by employee (both leave and overtime)
+  FOR_CANCELLATION // Only used by leave requests (pending cancellation approval)
+}
+
+enum SeparationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum CivilStatus {
+  SINGLE
+  MARRIED
+  WIDOWED
+  SEPARATED
+  ANNULLED
+}
+
+enum Religion {
+  ROMAN_CATHOLIC
+  ISLAM
+  INC
+  CHRISTIAN
+  BUDDHISM
+  OTHER
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  O_POS
+  O_NEG
+  AB_POS
+  AB_NEG
+}
+
+enum ContactType {
+  MOBILE
+  LANDLINE
+  FAX
+}
+
+enum EmailType {
+  PERSONAL
+  WORK
+  OTHER
+}
+
+enum AddressType {
+  HOME
+  PERMANENT
+  PROVINCIAL
+  MAIN
+  BRANCH
+  WAREHOUSE
+}
+
+enum RelationshipType {
+  SPOUSE
+  CHILD
+  PARENT
+  SIBLING
+  OTHER
+}
+
+enum EducationLevel {
+  ELEMENTARY
+  HIGH_SCHOOL
+  VOCATIONAL
+  COLLEGE
+  POST_GRADUATE
+}
+
+enum DocumentType {
+  BIRTH_CERT
+  MARRIAGE_CERT
+  DIPLOMA
+  TRANSCRIPT
+  NBI_CLEARANCE
+  POLICE_CLEARANCE
+  BARANGAY_CLEARANCE
+  MEDICAL_CERT
+  EMPLOYMENT_CERT
+  TIN_ID
+  SSS_ID
+  PHILHEALTH_ID
+  PAGIBIG_ID
+  DRIVERS_LICENSE
+  PASSPORT
+  VOTERS_ID
+  POSTAL_ID
+  UMID
+  PRC_LICENSE
+  CONTRACT
+  MEMO
+  PERFORMANCE_EVAL
+  TRAINING_CERT
+  OTHER
+}
+
+enum IdType {
+  SSS
+  PHILHEALTH
+  PAGIBIG
+  TIN
+  UMID
+  PASSPORT
+  DRIVERS_LICENSE
+  PRC
+  VOTERS_ID
+  POSTAL_ID
+  SENIOR_ID
+  PWD_ID
+  NBI_CLEARANCE
+  POLICE_CLEARANCE
+  BARANGAY_CLEARANCE
+}
+
+enum SalaryRateType {
+  MONTHLY
+  DAILY
+  HOURLY
+}
+
+enum TaxStatus {
+  S
+  S1
+  S2
+  S3
+  S4
+  ME
+  ME1
+  ME2
+  ME3
+  ME4
+  Z
+}
+
+enum TaxTableType {
+  MONTHLY
+  SEMI_MONTHLY
+  WEEKLY
+  DAILY
+  ANNUAL
+}
+
+enum DtrSource {
+  BIOMETRIC
+  WEB
+  MOBILE
+  MANUAL
+}
+
+enum DtrApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ScheduleType {
+  FIXED
+  FLEXIBLE
+  SHIFTING
+  COMPRESSED
+  PART_TIME
+  ON_CALL
+}
+
+enum HolidayType {
+  REGULAR
+  SPECIAL_NON_WORKING
+  SPECIAL_WORKING
+  LOCAL
+  COMPANY
+  ONE_TIME
+}
+
+enum BankAccountType {
+  SAVINGS
+  CHECKING
+  PAYROLL
+}
+
+enum PayrollRunType {
+  REGULAR
+  THIRTEENTH_MONTH
+  MID_YEAR_BONUS
+  TRIAL_RUN
+  FINAL_PAY
+  SPECIAL
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  VALIDATING
+  PROCESSING
+  COMPUTED
+  FOR_REVIEW
+  APPROVED
+  FOR_PAYMENT
+  PAID
+  CANCELLED
+}
+
+enum LoanStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  ACTIVE
+  PAID
+  FULLY_PAID
+  RESTRUCTURED
+  WRITTEN_OFF
+  CANCELLED
+  COMPLETED
+}
+
+enum SeparationTypeCode {
+  RESIGNATION
+  TERMINATION_WITHOUT_CAUSE
+  TERMINATION_WITH_CAUSE
+  RETIREMENT
+  END_OF_CONTRACT
+}
+
+enum SeparationReasonCode {
+  RESIGNATION_PERSONAL
+  RESIGNATION_HEALTH
+  RESIGNATION_CAREER
+  TERMINATION_PERFORMANCE
+  TERMINATION_MISCONDUCT
+  REDUNDANCY
+  RETIREMENT
+  END_OF_CONTRACT
+  AWOL
+  OTHER
+}
+
+enum OvertimeTypeCode {
+  REGULAR_OT
+  REST_DAY_OT
+  SPECIAL_HOLIDAY_OT
+  REGULAR_HOLIDAY_OT
+  REST_DAY_HOLIDAY_OT
+  NIGHT_DIFF
+}
+
+enum LoanApplicationStatus {
+  DRAFT
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+  DISBURSED
+}
+
+enum LoanDisbursementMethod {
+  CASH
+  CHECK
+  BANK_TRANSFER
+  PAYROLL_CREDIT
+}
+
+enum LoanPaymentSource {
+  PAYROLL
+  CASH
+  BANK_TRANSFER
+}
+
+enum LoanPaymentStatus {
+  SCHEDULED
+  DEDUCTED
+  PAID
+  MISSED
+  DEFERRED
+}
+
+enum RecurringDeductionStatus {
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  CANCELLED
+}
+
+enum LoanTypeCategory {
+  SSS
+  PAGIBIG
+  COMPANY
+  CASH_ADVANCE
+}
+
+enum LoanInterestType {
+  FIXED
+  DIMINISHING
+  ZERO
+}
+
+enum PayFrequencyType {
+  MONTHLY
+  SEMI_MONTHLY
+  BI_WEEKLY
+  WEEKLY
+}
+
+enum PayPeriodStatus {
+  OPEN
+  PROCESSING
+  CLOSED
+  LOCKED
+}
+
+enum CompanyIndustry {
+  TECHNOLOGY
+  MANUFACTURING
+  FINANCIAL
+  HEALTHCARE
+  RETAIL
+  EDUCATION
+  GOVERNMENT
+  HOSPITALITY
+  LOGISTICS
+  AGRICULTURE
+  CONSTRUCTION
+  ENERGY
+  REAL_ESTATE
+  PROFESSIONAL_SERVICES
+  OTHER
+}
+
+enum CompanySize {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum PhilHealthMemberType {
+  DIRECT_CONTRIBUTOR
+  INDIRECT_CONTRIBUTOR
+  LIFETIME_MEMBER
+  SENIOR_CITIZEN
+  OTHER
+}
+
+enum TaxExemptionStatus {
+  NONE
+  FULL
+  PARTIAL
+}
+
+enum SocialMediaPlatform {
+  FACEBOOK
+  TWITTER
+  LINKEDIN
+  INSTAGRAM
+  TIKTOK
+  OTHER
+}
+
+enum LicenseType {
+  PROFESSIONAL
+  DRIVERS
+  TECHNICAL
+  BUSINESS
+  OTHER
+}
+
+enum IndustryType {
+  TECHNOLOGY
+  MANUFACTURING
+  FINANCIAL
+  HEALTHCARE
+  RETAIL
+  EDUCATION
+  GOVERNMENT
+  HOSPITALITY
+  LOGISTICS
+  AGRICULTURE
+  CONSTRUCTION
+  ENERGY
+  REAL_ESTATE
+  PROFESSIONAL_SERVICES
+  OTHER
+}
+
+enum LeavingReason {
+  RESIGNATION
+  TERMINATION
+  RETIREMENT
+  END_OF_CONTRACT
+  LAYOFF
+  AWOL
+  OTHER
+}
+
+enum SalaryAdjustmentType {
+  INCREASE
+  DECREASE
+  PROMOTION
+  DEMOTION
+  MARKET_ADJUSTMENT
+  OTHER
+}
+
+enum EmployeeMovementType {
+  PROMOTION
+  TRANSFER
+  DEMOTION
+  LATERAL
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  STANDARD
+}
+
+enum CompanyRole {
+  COMPANY_ADMIN
+  HR_ADMIN
+  PAYROLL_ADMIN
+  APPROVER
+  EMPLOYEE
+}
+
+enum PayPeriodHalf {
+  FIRST
+  SECOND
+}
+
+enum PayrollProcessStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum LeaveBalanceTransactionType {
+  ACCRUAL
+  USAGE
+  FORFEITURE
+  CONVERSION
+  CARRY_OVER
+  ADJUSTMENT
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+enum EmailAuditEventType {
+  EMAIL_SENT
+  EMAIL_FAILED
+  EMAIL_RESEND
+  PAYSLIP_ACCESSED
+  BATCH_EMAIL_SENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+}
+
+enum SeparationAuditAction {
+  CREATED
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum PayrollProcessStepName {
+  CREATE_RUN
+  IMPORT_ATTENDANCE
+  VALIDATE_DATA
+  CALCULATE_PAYROLL
+  REVIEW_ADJUST
+  APPROVE
+  GENERATE_PAYSLIPS
+  PROCESS_PAYMENT
+  CLOSE_RUN
+}
+
+enum BiometricSyncStatus {
+  STARTED
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum AttendanceDeductionRuleType {
+  TARDINESS
+  UNDERTIME
+  ABSENCE
+}
+
+enum AttendanceDeductionBasis {
+  PER_MINUTE
+  PER_15_MINS
+  PER_30_MINS
+  PER_HOUR
+  DAILY_RATE
+}
+
+enum LoanDocumentType {
+  APPLICATION_FORM
+  PROMISSORY_NOTE
+  COLLATERAL
+  OTHER
+}
+
+enum RecurringDeductionType {
+  UNION_DUES
+  COOP_SHARES
+  INSURANCE
+  HMO
+  SAVINGS
+  GARNISHMENT
+}
+
+enum ContributionType {
+  SSS
+  PHILHEALTH
+  PAGIBIG
+  TAX
+}
+
+enum ConfigDataType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+  DATE
+}
+
+enum CurrencyCode {
+  PHP
+  USD
+  EUR
+  JPY
+  GBP
+  AUD
+  CAD
+  SGD
+}
+
+enum EarningCalculationMethod {
+  FIXED_AMOUNT
+  PERCENTAGE
+  FORMULA
+  MANUAL
+}
+
+enum EarningFrequency {
+  PER_PAYROLL
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_TIME
+}
+
+enum DeductionCalculationMethod {
+  FIXED_AMOUNT
+  PERCENTAGE
+  FORMULA
+  MANUAL
+}
+
+enum LeaveAccrualMethod {
+  UPFRONT
+  MONTHLY
+  QUARTERLY
+  PER_PAYROLL
+}
+
+enum LeaveProrationMethod {
+  FULL
+  PRORATED_MONTH
+  PRORATED_DAY
+}

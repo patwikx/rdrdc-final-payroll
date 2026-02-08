@@ -1,0 +1,268 @@
+// ============================================================================
+// COMPENSATION DOMAIN - Earnings, Deductions, and Government Contributions
+// ============================================================================
+
+model EarningType {
+  id String @id @default(uuid())
+
+  // Company Association (null = global/shared)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code         String
+  name         String
+  description  String?
+  displayOrder Int     @default(0)
+
+  // Tax Configuration
+  isTaxable             Boolean  @default(true)
+  isIncludedInGross     Boolean  @default(true)
+  isIncludedIn13thMonth Boolean  @default(false)
+  isDeMinimis           Boolean  @default(false)
+  deMinimisLimit        Decimal? @db.Decimal(15, 2)
+
+  // Calculation
+  calculationMethodCode EarningCalculationMethod?
+  calculationFormula    String?      @db.Text
+
+  // Frequency
+  frequencyCode EarningFrequency?
+
+  requiresApproval Boolean   @default(false)
+  effectiveFrom    DateTime?
+  effectiveTo      DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String?
+  updatedById      String?
+
+  // GL Account Integration
+  expenseAccountId String?
+  expenseAccount   GLAccount? @relation("EarningExpenseAccount", fields: [expenseAccountId], references: [id])
+
+  employeeEarnings EmployeeEarning[]
+  payslipEarnings  PayslipEarning[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([expenseAccountId])
+}
+
+model DeductionType {
+  id String @id @default(uuid())
+
+  // Company Association (null = global/shared)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  code         String
+  name         String
+  description  String?
+  displayOrder Int     @default(0)
+
+  // Configuration
+  isMandatory            Boolean @default(false)
+  isPreTax               Boolean @default(true)
+  hasEmployerShare       Boolean @default(false)
+  payPeriodApplicability String  @default("EVERY_PAYROLL") // EVERY_PAYROLL, FIRST_HALF, SECOND_HALF
+
+  // Calculation
+  calculationMethodCode DeductionCalculationMethod?
+  calculationFormula    String?      @db.Text
+  percentageBase      String       @default("GROSS") // GROSS, BASIC, NET - base amount for percentage calculations
+
+  priority          Int      @default(0)
+  maxDeductionLimit Decimal? @db.Decimal(15, 2)
+
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+  updatedById   String?
+
+  // GL Account Integration
+  liabilityAccountId String?
+  liabilityAccount   GLAccount? @relation("DeductionLiabilityAccount", fields: [liabilityAccountId], references: [id])
+  expenseAccountId   String? // For employer share expenses (e.g., SSS employer contribution)
+  expenseAccount     GLAccount? @relation("DeductionExpenseAccount", fields: [expenseAccountId], references: [id])
+
+  payslipDeductions   PayslipDeduction[]
+  recurringDeductions RecurringDeduction[]
+
+  @@unique([companyId, code])
+  @@index([code])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([priority])
+  @@index([liabilityAccountId])
+  @@index([expenseAccountId])
+}
+
+model EmployeeSalary {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  baseSalary         Decimal      @db.Decimal(15, 2)
+  currency           String       @default("PHP")
+  salaryRateTypeCode SalaryRateType @default(MONTHLY)
+  salaryGrade        String?
+  salaryBand         String?
+
+  // Rate Calculations
+  monthlyDivisor Int      @default(365)
+  hoursPerDay    Decimal  @default(8) @db.Decimal(4, 2)
+  dailyRate      Decimal? @db.Decimal(15, 4)
+  hourlyRate     Decimal? @db.Decimal(15, 4)
+
+  // Minimum Wage
+  minimumWageRegion      String?
+  isMinimumWageCompliant Boolean @default(true)
+
+  effectiveDate DateTime
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([effectiveDate])
+}
+
+model EmployeeEarning {
+  id            String      @id @default(uuid())
+  employeeId    String
+  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  earningTypeId String
+  earningType   EarningType @relation(fields: [earningTypeId], references: [id])
+
+  amount    Decimal @db.Decimal(15, 2)
+  frequency EarningFrequency
+
+  // Proration
+  prorationRule String? // FULL, PRORATED_DAYS, PRORATED_HOURS
+
+  // Override
+  isTaxableOverride Boolean?
+
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  approvalStatus String?
+  approvedById   String?
+  approvedAt     DateTime?
+  remarks        String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([earningTypeId])
+  @@index([effectiveFrom])
+  @@index([isActive])
+}
+
+model SSSContributionTable {
+  id                  String    @id @default(uuid())
+  version             String
+  salaryBracketMin    Decimal   @db.Decimal(15, 2)
+  salaryBracketMax    Decimal   @db.Decimal(15, 2)
+  monthlySalaryCredit Decimal   @db.Decimal(15, 2)
+  employeeShare       Decimal   @db.Decimal(15, 2)
+  employerShare       Decimal   @db.Decimal(15, 2)
+  ecContribution      Decimal   @db.Decimal(15, 2)
+  totalContribution   Decimal   @db.Decimal(15, 2)
+  wispEmployee        Decimal?  @db.Decimal(15, 2)
+  wispEmployer        Decimal?  @db.Decimal(15, 2)
+  effectiveFrom       DateTime
+  effectiveTo         DateTime?
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([version])
+  @@index([effectiveFrom])
+  @@index([salaryBracketMin, salaryBracketMax])
+}
+
+model PhilHealthContributionTable {
+  id                   String    @id @default(uuid())
+  version              String
+  premiumRate          Decimal   @db.Decimal(5, 4) // e.g., 0.05 for 5%
+  monthlyFloor         Decimal   @db.Decimal(15, 2)
+  monthlyCeiling       Decimal   @db.Decimal(15, 2)
+  employeeSharePercent Decimal   @db.Decimal(5, 4) // e.g., 0.5 for 50%
+  employerSharePercent Decimal   @db.Decimal(5, 4)
+  membershipCategory   String? // For different rates per category
+  effectiveFrom        DateTime
+  effectiveTo          DateTime?
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([version])
+  @@index([effectiveFrom])
+}
+
+model PagIBIGContributionTable {
+  id                     String    @id @default(uuid())
+  version                String
+  salaryBracketMin       Decimal   @db.Decimal(15, 2)
+  salaryBracketMax       Decimal   @db.Decimal(15, 2)
+  employeeRatePercent    Decimal   @db.Decimal(5, 4)
+  employerRatePercent    Decimal   @db.Decimal(5, 4)
+  maxMonthlyCompensation Decimal   @db.Decimal(15, 2)
+  effectiveFrom          DateTime
+  effectiveTo            DateTime?
+  isActive               Boolean   @default(true)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([version])
+  @@index([effectiveFrom])
+  @@index([salaryBracketMin, salaryBracketMax])
+}
+
+model TaxTable {
+  id               String      @id @default(uuid())
+  version          String
+  taxTableTypeCode TaxTableType
+  bracketOver      Decimal     @db.Decimal(15, 2)
+  bracketNotOver   Decimal     @db.Decimal(15, 2)
+  baseTax          Decimal     @db.Decimal(15, 2)
+  taxRatePercent   Decimal     @db.Decimal(5, 4) // e.g., 0.20 for 20%
+  excessOver       Decimal     @db.Decimal(15, 2)
+  effectiveYear    Int
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([version])
+  @@index([taxTableTypeCode])
+  @@index([effectiveYear])
+  @@index([effectiveFrom])
+  @@index([bracketOver, bracketNotOver])
+}
+
+model EmployeeYTDContribution {
+  id                String   @id @default(uuid())
+  employeeId        String
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  year              Int
+  contributionType  ContributionType
+  totalEmployee     Decimal  @default(0) @db.Decimal(15, 2)
+  totalEmployer     Decimal  @default(0) @db.Decimal(15, 2)
+  totalContribution Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([employeeId, year, contributionType])
+  @@index([employeeId])
+  @@index([year])
+}

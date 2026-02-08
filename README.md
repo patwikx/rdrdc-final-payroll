@@ -470,6 +470,15 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 
 ## Recent Changes
 
+- 2026-02-09: Hardened payroll calculation edge handling for policy-risk scenarios:
+  - DTR half-day detection now supports additional normalized markers (`[HALF_DAY]`, `HALF DAY`, `HALFDAY`).
+  - `ON_LEAVE` DTR days without matching approved leave records are now treated as unpaid (instead of defaulting to payable).
+  - Recurring deductions marked as pre-tax are now deducted from taxable income before withholding-tax computation.
+- 2026-02-09: Completed quality-gate validation pass after payroll updates: repository-wide `eslint` and full `next build` now pass cleanly.
+- 2026-02-09: Executed PH payroll audit sweep on available recent runs (current local dataset: `RUN-2026-00001`) with zero failures and zero warnings under refined policy checks.
+- 2026-02-09: Refined PH payroll audit policy checks so paid-vs-locked enforcement applies to `REGULAR` runs only (trial/non-regular runs are evaluated without mandatory period lock failure).
+- 2026-02-09: Added Philippines-focused payroll E2E audit harness script (`npm run audit:payroll:ph`) to validate DTR/payroll run consistency, PH statutory timing behavior, gross/deductions/net integrity, step progression gating, and lock-state policy checks on latest or specified run.
+- 2026-02-09: Added per-payslip email preview-before-send flow in Generate Payslips step (HTML + plain-text preview modal with direct single-send action) to align with reference email preview method beyond batch send.
 - 2026-02-09: Fixed `/login` prerender build blocker by wrapping login client flow in `Suspense` to satisfy `useSearchParams()` CSR-bailout requirements.
 - 2026-02-09: Fixed `/logout` prerender build blocker by wrapping logout client flow in `Suspense` to satisfy `useSearchParams()` CSR-bailout requirements during static prerender.
 - 2026-02-09: Fixed strict nullability in employee user-access approver update action by capturing linked-user identity before transaction usage (`employee.user` guarded then normalized to non-null locals), unblocking production build type-check path.

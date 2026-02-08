@@ -21,6 +21,19 @@ type SendPayslipBatchResult =
     }
   | { ok: false; error: string }
 
+type PreviewPayslipEmailResult =
+  | {
+      ok: true
+      data: {
+        recipientEmail: string
+        employeeName: string
+        subject: string
+        html: string
+        plainText: string
+      }
+    }
+  | { ok: false; error: string }
+
 const toCompanyRole = (value: string): CompanyRole => value as CompanyRole
 
 const monthShort = new Intl.DateTimeFormat("en-PH", {
@@ -70,6 +83,14 @@ const buildPayslipEmailTemplate = (input: {
   return { subject, html }
 }
 
+const htmlToPlainText = (value: string): string => {
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 const ensurePayrollAccess = async (companyId: string): Promise<{ ok: true; context: Awaited<ReturnType<typeof getActiveCompanyContext>> } | { ok: false; error: string }> => {
   const context = await getActiveCompanyContext({ companyId })
   if (!hasModuleAccess(toCompanyRole(context.companyRole), "payroll")) {
@@ -80,6 +101,87 @@ const ensurePayrollAccess = async (companyId: string): Promise<{ ok: true; conte
 }
 
 const toFailedMessageId = (payslipId: string): string => `FAILED-${payslipId}-${Date.now()}`
+
+export async function previewPayrollPayslipEmailAction(input: {
+  companyId: string
+  payslipId: string
+}): Promise<PreviewPayslipEmailResult> {
+  const access = await ensurePayrollAccess(input.companyId)
+  if (!access.ok) return access
+  const { context } = access
+
+  const payslip = await db.payslip.findFirst({
+    where: {
+      id: input.payslipId,
+      payrollRun: { companyId: context.companyId },
+    },
+    select: {
+      id: true,
+      employee: {
+        select: {
+          firstName: true,
+          lastName: true,
+          emails: {
+            where: { isActive: true },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: { email: true },
+          },
+          user: {
+            select: { email: true },
+          },
+        },
+      },
+      payrollRun: {
+        select: {
+          company: {
+            select: {
+              name: true,
+            },
+          },
+          payPeriod: {
+            select: {
+              periodHalf: true,
+              cutoffStartDate: true,
+              cutoffEndDate: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!payslip) {
+    return { ok: false, error: "Payslip not found." }
+  }
+
+  const recipientEmail = payslip.employee.emails[0]?.email ?? payslip.employee.user?.email ?? null
+  if (!recipientEmail) {
+    return { ok: false, error: "No active employee email." }
+  }
+
+  const employeeName = `${payslip.employee.lastName}, ${payslip.employee.firstName}`
+  const periodRange = toPeriodRangeLabel(
+    payslip.payrollRun.payPeriod.cutoffStartDate,
+    payslip.payrollRun.payPeriod.cutoffEndDate
+  )
+  const template = buildPayslipEmailTemplate({
+    employeeName,
+    companyName: payslip.payrollRun.company.name,
+    periodHalf: payslip.payrollRun.payPeriod.periodHalf,
+    periodRange,
+  })
+
+  return {
+    ok: true,
+    data: {
+      recipientEmail,
+      employeeName,
+      subject: template.subject,
+      html: template.html,
+      plainText: htmlToPlainText(template.html),
+    },
+  }
+}
 
 export async function sendPayrollRunPayslipEmailsAction(input: { companyId: string; runId: string }): Promise<SendPayslipBatchResult> {
   const parsed = payrollRunActionInputSchema.safeParse(input)

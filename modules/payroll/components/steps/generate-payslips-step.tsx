@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { BatchSendPayslipsDialog } from "@/modules/payroll/components/batch-send-payslips-dialog"
+import { PayslipEmailPreviewModal } from "@/modules/payroll/components/payslip-email-preview-modal"
 import {
   generatePayslipsPayrollRunAction,
   proceedToClosePayrollRunAction,
@@ -130,14 +131,17 @@ export function GeneratePayslipsStep({ companyId, runId, payslipCount, isGenerat
                         <p className="text-[11px] text-muted-foreground">{payslip.employeeNumber}</p>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="bg-blue-600 text-white hover:bg-blue-700"
-                          onClick={() => downloadPayslip(payslip.id)}
-                        >
-                          <IconDownload className="mr-1.5 h-3.5 w-3.5" /> Download
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <PayslipEmailPreviewModal companyId={companyId} payslipId={payslip.id} disabled={!isGenerated} />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            onClick={() => downloadPayslip(payslip.id)}
+                          >
+                            <IconDownload className="mr-1.5 h-3.5 w-3.5" /> Download
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

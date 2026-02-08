@@ -117,7 +117,7 @@ export function EmployeeMovementsPage({
   // Reusable UI Pieces
   // ─────────────────────────────────────────────────────────────────
 
-  const EmployeeSelector = ({ showLabel = true }: { showLabel?: boolean }) => (
+  const renderEmployeeSelector = ({ showLabel = true }: { showLabel?: boolean } = {}) => (
     <div className="space-y-1.5">
       {showLabel && <Label>Employee <span className="text-destructive">*</span></Label>}
       <Select value={employeeId} onValueChange={setEmployeeId}>
@@ -129,7 +129,7 @@ export function EmployeeMovementsPage({
     </div>
   )
 
-  const DatePicker = ({ showLabel = true }: { showLabel?: boolean }) => (
+  const renderDatePicker = ({ showLabel = true }: { showLabel?: boolean } = {}) => (
     <div className="space-y-1.5">
       {showLabel && <Label>Effective Date <span className="text-destructive">*</span></Label>}
       <Popover>
@@ -146,7 +146,7 @@ export function EmployeeMovementsPage({
     </div>
   )
 
-  const MovementKindSelector = () => (
+  const renderMovementKindSelector = () => (
     <div className="space-y-1.5">
       <Label>What to Change <span className="text-destructive">*</span></Label>
       <Select value={movementKind} onValueChange={(v) => setMovementKind(v as MovementKind)}>
@@ -162,7 +162,7 @@ export function EmployeeMovementsPage({
     </div>
   )
 
-  const MovementDetails = () => (
+  const renderMovementDetails = () => (
     <div className="space-y-4">
       {movementKind === "status" && (
         <SelectField label="New Status *" value={newStatusId} onChange={setNewStatusId} options={data.options.statuses} placeholder="Select status" />
@@ -196,7 +196,7 @@ export function EmployeeMovementsPage({
     </div>
   )
 
-  const OptionalFields = () => (
+  const renderOptionalFields = () => (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <Label>Reason</Label>
@@ -243,14 +243,14 @@ export function EmployeeMovementsPage({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-3">
-                <EmployeeSelector />
-                <DatePicker />
-                <MovementKindSelector />
+                {renderEmployeeSelector()}
+                {renderDatePicker()}
+                {renderMovementKindSelector()}
               </div>
               <Separator />
-              <MovementDetails />
+              {renderMovementDetails()}
               <Separator />
-              <OptionalFields />
+              {renderOptionalFields()}
               <Button onClick={onSubmit} disabled={isPending}>{isPending ? "Saving..." : "Save Movement"}</Button>
             </CardContent>
           </Card>
@@ -297,7 +297,7 @@ export function EmployeeMovementsPage({
                 <CardTitle className="text-sm">Step 1: Select Employee</CardTitle>
               </CardHeader>
               <CardContent>
-                <EmployeeSelector showLabel={false} />
+                {renderEmployeeSelector({ showLabel: false })}
               </CardContent>
             </Card>
 
@@ -351,13 +351,13 @@ export function EmployeeMovementsPage({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
-                <DatePicker />
-                <MovementKindSelector />
+                {renderDatePicker()}
+                {renderMovementKindSelector()}
               </div>
               <Separator />
-              <MovementDetails />
+              {renderMovementDetails()}
               <Separator />
-              <OptionalFields />
+              {renderOptionalFields()}
               <Button onClick={onSubmit} disabled={isPending || !employeeId}>{isPending ? "Saving..." : "Save Movement"}</Button>
             </CardContent>
           </Card>
@@ -377,10 +377,10 @@ export function EmployeeMovementsPage({
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-end gap-4">
-                <div className="w-48"><EmployeeSelector /></div>
-                <div className="w-40"><DatePicker /></div>
-                <div className="w-48"><MovementKindSelector /></div>
-                <div className="flex-1 min-w-[200px]"><MovementDetails /></div>
+                <div className="w-48">{renderEmployeeSelector()}</div>
+                <div className="w-40">{renderDatePicker()}</div>
+                <div className="w-48">{renderMovementKindSelector()}</div>
+                <div className="flex-1 min-w-[200px]">{renderMovementDetails()}</div>
                 <Button onClick={onSubmit} disabled={isPending} className="h-9">{isPending ? "..." : "Save"}</Button>
               </div>
             </CardContent>
@@ -453,22 +453,22 @@ export function EmployeeMovementsPage({
             {wizardStep === 1 && (
               <div className="space-y-4">
                 <h3 className="font-medium">Who and When?</h3>
-                <EmployeeSelector />
-                <DatePicker />
+                {renderEmployeeSelector()}
+                {renderDatePicker()}
               </div>
             )}
             {wizardStep === 2 && (
               <div className="space-y-4">
                 <h3 className="font-medium">What to Change?</h3>
-                <MovementKindSelector />
+                {renderMovementKindSelector()}
               </div>
             )}
             {wizardStep === 3 && (
               <div className="space-y-4">
                 <h3 className="font-medium">New Values</h3>
-                <MovementDetails />
+                {renderMovementDetails()}
                 <Separator />
-                <OptionalFields />
+                {renderOptionalFields()}
               </div>
             )}
             {wizardStep === 4 && (
@@ -542,14 +542,14 @@ export function EmployeeMovementsPage({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
-                <EmployeeSelector />
-                <DatePicker />
+                {renderEmployeeSelector()}
+                {renderDatePicker()}
               </div>
-              <MovementKindSelector />
+              {renderMovementKindSelector()}
               <Separator />
-              <MovementDetails />
+              {renderMovementDetails()}
               <Separator />
-              <OptionalFields />
+              {renderOptionalFields()}
               <Button onClick={onSubmit} disabled={isPending} className="w-full">{isPending ? "Saving..." : "Save Movement"}</Button>
             </CardContent>
           </Card>

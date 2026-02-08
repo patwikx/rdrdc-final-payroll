@@ -69,6 +69,7 @@ type DeductionLine = {
   description: string
   amount: number
   employerShare?: number
+  isPreTax?: boolean
   referenceType?: string
   referenceId?: string
 }
@@ -314,7 +315,11 @@ const calculateAttendanceSnapshot = (params: {
     })
 
     const leaveDayValue = activeLeave?.isHalfDay ? 0.5 : 1
-    const isHalfDayDtr = dtr?.remarks?.toUpperCase().includes("[HALF_DAY]") === true
+    const dtrRemarks = dtr?.remarks?.toUpperCase() ?? ""
+    const isHalfDayDtr =
+      dtrRemarks.includes("[HALF_DAY]") ||
+      dtrRemarks.includes("HALF DAY") ||
+      dtrRemarks.includes("HALFDAY")
     const dtrPayableValue = isHalfDayDtr ? 0.5 : 1
 
     if (isHoliday) {
@@ -331,7 +336,13 @@ const calculateAttendanceSnapshot = (params: {
         unpaidAbsences += 0.5
       }
     } else if (dtr?.attendanceStatus === AttendanceStatus.ON_LEAVE) {
-      totalPayableDays += leaveDayValue
+      if (activeLeave?.isPaid) {
+        totalPayableDays += leaveDayValue
+      } else if (activeLeave && !activeLeave.isPaid) {
+        unpaidAbsences += leaveDayValue
+      } else {
+        unpaidAbsences += dtrPayableValue
+      }
     } else {
       unpaidAbsences += 1
     }
@@ -904,6 +915,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               payPeriodApplicability: true,
               percentageBase: true,
               maxDeductionLimit: true,
+              isPreTax: true,
             },
           },
         },
@@ -1423,48 +1435,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           statutoryDiagnostics.employeeStats.pagIbigSkippedByTiming += 1
         }
 
-        const taxableIncome = roundCurrency(Math.max(0, grossPay - (sssEmployee + philHealthEmployee + pagIbigEmployee)))
+        const provisionalTaxableIncome = roundCurrency(
+          Math.max(0, grossPay - (sssEmployee + philHealthEmployee + pagIbigEmployee))
+        )
         const dependentCount = Math.min(Math.max(employee.numberOfDependents, 0), 4)
         const annualExemption = 50000 * (1 + dependentCount)
         const periodExemption = taxTableType === TaxTableType.SEMI_MONTHLY ? annualExemption / 24 : annualExemption / 12
-        const adjustedTaxableIncome = Math.max(0, taxableIncome - periodExemption)
-
-        let withholdingTax = 0
-        const applyWithholdingTax = shouldApplyByTiming(
-          statutorySchedule.withholdingTax,
-          run.payPeriod.pattern.payFrequencyCode,
-          run.payPeriod.periodHalf
-        )
-        if (applyWithholdingTax) {
-          if (employee.isSubstitutedFiling) {
-            withholdingTax = roundCurrency(adjustedTaxableIncome * 0.08)
-            if (withholdingTax > 0) {
-              statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
-            }
-          } else {
-            const taxBracket = activeTaxRows.find(
-              (table) =>
-                adjustedTaxableIncome >= toNumber(table.bracketOver) &&
-                adjustedTaxableIncome <= toNumber(table.bracketNotOver)
-            )
-
-            if (taxBracket) {
-              withholdingTax = roundCurrency(
-                toNumber(taxBracket.baseTax) + (adjustedTaxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
-              )
-              if (withholdingTax > 0) {
-                statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
-              }
-            } else if (adjustedTaxableIncome > 0) {
-              statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
-            }
-          }
-        } else {
-          statutoryDiagnostics.employeeStats.withholdingTaxSkippedByTiming += 1
-        }
 
         const recurringDeductionLines: DeductionLine[] = []
-        const netBaseForRecurring = Math.max(0, grossPay - (tardinessDeduction + undertimeDeduction + sssEmployee + philHealthEmployee + pagIbigEmployee + withholdingTax))
+        const netBaseForRecurring = Math.max(
+          0,
+          grossPay - (tardinessDeduction + undertimeDeduction + sssEmployee + philHealthEmployee + pagIbigEmployee)
+        )
 
         for (const recurring of employee.recurringDeductions) {
           const periodApplicability = recurring.deductionType.payPeriodApplicability
@@ -1488,9 +1470,54 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
             deductionTypeId: recurring.deductionTypeId,
             description: recurring.description || recurring.deductionType.name,
             amount: normalizedAmount,
+            isPreTax: recurring.deductionType.isPreTax,
             referenceType: "RECURRING",
             referenceId: recurring.id,
           })
+        }
+
+        const preTaxRecurringTotal = roundCurrency(
+          recurringDeductionLines
+            .filter((line) => line.isPreTax)
+            .reduce((sum, line) => sum + line.amount, 0)
+        )
+
+        const taxableIncome = roundCurrency(Math.max(0, provisionalTaxableIncome - preTaxRecurringTotal))
+        const adjustedTaxableIncome = Math.max(0, taxableIncome - periodExemption)
+
+        let withholdingTax = 0
+        const applyWithholdingTax = shouldApplyByTiming(
+          statutorySchedule.withholdingTax,
+          run.payPeriod.pattern.payFrequencyCode,
+          run.payPeriod.periodHalf
+        )
+        if (applyWithholdingTax) {
+          if (employee.isSubstitutedFiling) {
+            withholdingTax = roundCurrency(adjustedTaxableIncome * 0.08)
+            if (withholdingTax > 0) {
+              statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
+            }
+          } else {
+            const taxBracket = activeTaxRows.find(
+              (table) =>
+                adjustedTaxableIncome >= toNumber(table.bracketOver) &&
+                adjustedTaxableIncome <= toNumber(table.bracketNotOver)
+            )
+
+            if (taxBracket) {
+              withholdingTax = roundCurrency(
+                toNumber(taxBracket.baseTax) +
+                  (adjustedTaxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
+              )
+              if (withholdingTax > 0) {
+                statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
+              }
+            } else if (adjustedTaxableIncome > 0) {
+              statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
+            }
+          }
+        } else {
+          statutoryDiagnostics.employeeStats.withholdingTaxSkippedByTiming += 1
         }
 
         const manualAdjustmentDeductions: DeductionLine[] = (manualAdjustments?.deductions ?? []).map((item) => ({

@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
+import { IconDownload, IconFileInvoice } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
@@ -38,96 +38,110 @@ export default async function PayrollPayslipDetailPage({ params }: PayrollPaysli
   }
 
   const { payslip } = viewModel
+  const supplementalEarnings = payslip.earnings.filter((entry) => !/basic\s*pay/i.test(entry.description))
 
   return (
     <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
       <header className="rounded-xl border border-border/70 bg-card/70 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Payslip {payslip.payslipNumber}</h1>
+            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
+              <IconFileInvoice className="size-5" />
+              Payslip {payslip.payslipNumber}
+            </h1>
             <p className="text-xs text-muted-foreground">
               {payslip.employeeName} ({payslip.employeeNumber}) • Run {payslip.runNumber} • {payslip.periodLabel}
             </p>
           </div>
           <div className="flex gap-2">
             <Button asChild variant="outline">
-              <Link href={`/${viewModel.companyId}/payroll/payslips?runId=${payslip.runId}`}>Back to Payslips</Link>
+              <Link href={`/${viewModel.companyId}/payroll/payslips`}>Back to Payslips History</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href={`/${viewModel.companyId}/payroll/payslips/${payslip.id}/download`}>Download PDF</Link>
-            </Button>
-            <Button asChild>
-              <Link href={`/${viewModel.companyId}/payroll/adjustments?runId=${payslip.runId}`}>Open Adjustments</Link>
+            <Button asChild className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600">
+              <Link href={`/${viewModel.companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1.5">
+                <IconDownload className="size-4" />
+                Download PDF
+              </Link>
             </Button>
           </div>
         </div>
       </header>
 
-      <Card className="rounded-xl border border-border/70 bg-card/80">
-        <CardHeader>
-          <CardTitle className="text-base">Totals</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div><p className="text-xs text-muted-foreground">Basic Pay</p><p className="font-medium">{payslip.basicPay}</p></div>
-          <div><p className="text-xs text-muted-foreground">Gross Pay</p><p className="font-medium">{payslip.grossPay}</p></div>
-          <div><p className="text-xs text-muted-foreground">Total Deductions</p><p className="font-medium">{payslip.totalDeductions}</p></div>
-          <div><p className="text-xs text-muted-foreground">Net Pay</p><p className="font-semibold text-primary">{payslip.netPay}</p></div>
-          <div><p className="text-xs text-muted-foreground">Days Worked</p><p className="font-medium">{payslip.daysWorked}</p></div>
-          <div><p className="text-xs text-muted-foreground">Days Absent</p><p className="font-medium">{payslip.daysAbsent}</p></div>
-          <div><p className="text-xs text-muted-foreground">OT Hours</p><p className="font-medium">{payslip.overtimeHours}</p></div>
-          <div><p className="text-xs text-muted-foreground">Night Diff Hours</p><p className="font-medium">{payslip.nightDiffHours}</p></div>
-          <div><p className="text-xs text-muted-foreground">Tardiness Mins</p><p className="font-medium">{payslip.tardinessMins}</p></div>
-          <div><p className="text-xs text-muted-foreground">Undertime Mins</p><p className="font-medium">{payslip.undertimeMins}</p></div>
-          <div><p className="text-xs text-muted-foreground">SSS</p><p className="font-medium">{payslip.sssEmployee}</p></div>
-          <div><p className="text-xs text-muted-foreground">PhilHealth</p><p className="font-medium">{payslip.philHealthEmployee}</p></div>
-          <div><p className="text-xs text-muted-foreground">Pag-IBIG</p><p className="font-medium">{payslip.pagIbigEmployee}</p></div>
-          <div><p className="text-xs text-muted-foreground">Withholding Tax</p><p className="font-medium">{payslip.withholdingTax}</p></div>
-        </CardContent>
-      </Card>
+      <section className="space-y-4">
+          <div className="grid gap-4 border-b border-border/60 pb-4 md:grid-cols-2">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Employee</p>
+              <p className="text-sm font-semibold text-foreground">{payslip.employeeName}</p>
+              <p className="text-xs text-muted-foreground">Employee No: {payslip.employeeNumber}</p>
+            </div>
+            <div className="text-left md:text-right">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Pay Period</p>
+              <p className="text-sm font-semibold text-foreground">{payslip.periodLabel}</p>
+              <p className="text-xs text-muted-foreground">Run: {payslip.runNumber}</p>
+            </div>
+          </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="rounded-xl border border-border/70 bg-card/80">
-          <CardHeader>
-            <CardTitle className="text-base">Earnings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {payslip.earnings.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No earnings lines.</p>
-            ) : (
-              payslip.earnings.map((entry) => (
-                <div key={entry.id} className="flex items-start justify-between rounded-md border border-border/50 px-3 py-2 text-sm">
-                  <div>
-                    <p className="font-medium">{entry.description}</p>
-                    <p className="text-xs text-muted-foreground">{entry.isTaxable ? "Taxable" : "Non-taxable"}</p>
-                  </div>
-                  <p>{entry.amount}</p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-md border border-border/60 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Earnings</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-foreground">Basic Pay</span>
+                  <span className="font-medium">{payslip.semiMonthlyBase}</span>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-foreground">Gross Pay</span>
+                  <span className="font-medium">{payslip.basicPay}</span>
+                </div>
+                {supplementalEarnings.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{entry.description}</span>
+                    <span>{entry.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        <Card className="rounded-xl border border-border/70 bg-card/80">
-          <CardHeader>
-            <CardTitle className="text-base">Deductions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {payslip.deductions.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No deduction lines.</p>
-            ) : (
-              payslip.deductions.map((entry) => (
-                <div key={entry.id} className="flex items-start justify-between rounded-md border border-border/50 px-3 py-2 text-sm">
-                  <div>
-                    <p className="font-medium">{entry.description}</p>
-                    <p className="text-xs text-muted-foreground">{entry.referenceType}</p>
+            <div className="rounded-md border border-border/60 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deductions</p>
+              <div className="space-y-1.5">
+                {payslip.deductions.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{entry.description}</span>
+                    <span>{entry.amount}</span>
                   </div>
-                  <p>{entry.amount}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 rounded-md border border-border/60 p-3 text-sm sm:grid-cols-2">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2 sm:border-b-0 sm:border-r sm:pr-3 sm:pb-0">
+              <span className="font-medium">Total Gross Pay</span>
+              <span className="font-semibold">{payslip.grossPay}</span>
+            </div>
+            <div className="flex items-center justify-between sm:pl-3">
+              <span className="font-medium">Total Deductions</span>
+              <span className="font-semibold">{payslip.totalDeductions}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 rounded-md border border-border/60 bg-muted/30 p-3 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div><p className="text-[11px] text-muted-foreground">Days Worked</p><p className="font-medium">{payslip.daysWorked}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Days Absent</p><p className="font-medium">{payslip.daysAbsent}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Overtime Hours</p><p className="font-medium">{payslip.overtimeHours}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Night Diff Hours</p><p className="font-medium">{payslip.nightDiffHours}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Tardiness Minutes</p><p className="font-medium">{payslip.tardinessMins}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">Undertime Minutes</p><p className="font-medium">{payslip.undertimeMins}</p></div>
+          </div>
+
+          <div className="rounded-md border border-primary/30 bg-primary/10 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-primary">Net Disbursement</p>
+              <p className="text-xl font-bold text-primary">{payslip.netPay}</p>
+            </div>
+          </div>
+      </section>
     </main>
   )
 }

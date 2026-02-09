@@ -1,6 +1,6 @@
 "use server"
 
-import { BloodType, CivilStatus, Gender, Prisma, Religion, TaxStatus } from "@prisma/client"
+import { BloodType, CivilStatus, EmployeeMovementType, Gender, Prisma, Religion, SalaryAdjustmentType, TaxStatus } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 
 import { db } from "@/lib/db"
@@ -71,6 +71,17 @@ const parsePhDate = (value: string | undefined): Date | null => {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
 }
 
+const getTodayPhDate = (): Date => {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Manila",
+  }).format(new Date())
+
+  return parsePhDate(today) ?? new Date()
+}
+
 export async function updateEmployeeProfileAction(
   input: UpdateEmployeeProfileInput
 ): Promise<UpdateEmployeeProfileActionResult> {
@@ -103,11 +114,92 @@ export async function updateEmployeeProfileAction(
           middleName: true,
           nickname: true,
           maidenName: true,
+          employmentStatusId: true,
+          positionId: true,
+          departmentId: true,
+          branchId: true,
+          rankId: true,
         },
       })
 
       if (!employee) {
         throw new Error("EMPLOYEE_NOT_FOUND")
+      }
+
+      const effectiveDate = getTodayPhDate()
+      const nextEmploymentStatusId = toNullableId(payload.employmentStatusId)
+      const nextPositionId = toNullableId(payload.positionId)
+      const nextDepartmentId = toNullableId(payload.departmentId)
+      const nextBranchId = toNullableId(payload.branchId)
+      const nextRankId = toNullableId(payload.rankId)
+
+      if (nextEmploymentStatusId && nextEmploymentStatusId !== employee.employmentStatusId) {
+        await tx.employeeStatusHistory.create({
+          data: {
+            employeeId: employee.id,
+            previousStatusId: employee.employmentStatusId,
+            newStatusId: nextEmploymentStatusId,
+            effectiveDate,
+            reason: "Profile edit: employment status updated",
+            changedById: context.userId,
+          },
+        })
+      }
+
+      if (nextPositionId && nextPositionId !== employee.positionId) {
+        await tx.employeePositionHistory.create({
+          data: {
+            employeeId: employee.id,
+            previousPositionId: employee.positionId,
+            newPositionId: nextPositionId,
+            previousDepartmentId: employee.departmentId,
+            newDepartmentId: nextDepartmentId ?? employee.departmentId,
+            previousBranchId: employee.branchId,
+            newBranchId: nextBranchId ?? employee.branchId,
+            movementType: EmployeeMovementType.LATERAL,
+            effectiveDate,
+            reason: "Profile edit: position updated",
+            approvedById: context.userId,
+            approvedAt: new Date(),
+          },
+        })
+      }
+
+      if (nextRankId && nextRankId !== employee.rankId) {
+        const [previousRank, newRank] = await Promise.all([
+          employee.rankId
+            ? tx.rank.findFirst({
+                where: { id: employee.rankId, companyId: context.companyId },
+                select: { level: true },
+              })
+            : Promise.resolve(null),
+          tx.rank.findFirst({
+            where: { id: nextRankId, companyId: context.companyId },
+            select: { level: true },
+          }),
+        ])
+
+        let movementType: EmployeeMovementType = EmployeeMovementType.LATERAL
+        if (previousRank && newRank) {
+          if (newRank.level > previousRank.level) {
+            movementType = EmployeeMovementType.PROMOTION
+          } else if (newRank.level < previousRank.level) {
+            movementType = EmployeeMovementType.DEMOTION
+          }
+        }
+
+        await tx.employeeRankHistory.create({
+          data: {
+            employeeId: employee.id,
+            previousRankId: employee.rankId,
+            newRankId: nextRankId,
+            movementType,
+            effectiveDate,
+            reason: "Profile edit: rank updated",
+            approvedById: context.userId,
+            approvedAt: new Date(),
+          },
+        })
       }
 
       await tx.employee.update({
@@ -138,14 +230,14 @@ export async function updateEmployeeProfileAction(
           regularizationDate: parsePhDate(payload.regularizationDate),
           contractStartDate: parsePhDate(payload.contractStartDate),
           contractEndDate: parsePhDate(payload.contractEndDate),
-          employmentStatusId: toNullableId(payload.employmentStatusId),
+          employmentStatusId: nextEmploymentStatusId,
           employmentTypeId: toNullableId(payload.employmentTypeId),
           employmentClassId: toNullableId(payload.employmentClassId),
-          departmentId: toNullableId(payload.departmentId),
+          departmentId: nextDepartmentId,
           divisionId: toNullableId(payload.divisionId),
-          positionId: toNullableId(payload.positionId),
-          rankId: toNullableId(payload.rankId),
-          branchId: toNullableId(payload.branchId),
+          positionId: nextPositionId,
+          rankId: nextRankId,
+          branchId: nextBranchId,
           reportingManagerId: toNullableId(payload.reportingManagerId),
           workScheduleId: toNullableId(payload.workScheduleId),
           payPeriodPatternId: toNullableId(payload.payPeriodPatternId),
@@ -166,8 +258,44 @@ export async function updateEmployeeProfileAction(
 
       const salary = await tx.employeeSalary.findUnique({
         where: { employeeId: employee.id },
-        select: { id: true },
+        select: { id: true, baseSalary: true },
       })
+
+      if (salary && payload.monthlyRate !== undefined) {
+        const previousSalary = salary.baseSalary ? Number(salary.baseSalary) : null
+        const nextSalary = payload.monthlyRate
+
+        if (previousSalary === null || Math.abs(previousSalary - nextSalary) > 0.0001) {
+          const adjustmentAmount = previousSalary === null ? null : nextSalary - previousSalary
+          const adjustmentPercent =
+            previousSalary && previousSalary > 0 && adjustmentAmount !== null
+              ? (adjustmentAmount / previousSalary) * 100
+              : null
+
+          const adjustmentTypeCode =
+            adjustmentAmount === null
+              ? SalaryAdjustmentType.OTHER
+              : adjustmentAmount >= 0
+                ? SalaryAdjustmentType.INCREASE
+                : SalaryAdjustmentType.DECREASE
+
+          await tx.employeeSalaryHistory.create({
+            data: {
+              employeeId: employee.id,
+              previousSalary,
+              newSalary: nextSalary,
+              adjustmentTypeCode,
+              adjustmentAmount,
+              adjustmentPercent,
+              effectiveDate,
+              reason: "Profile edit: base salary updated",
+              approvalStatus: "APPROVED",
+              approvedById: context.userId,
+              approvedAt: new Date(),
+            },
+          })
+        }
+      }
 
       if (salary) {
         await tx.employeeSalary.update({

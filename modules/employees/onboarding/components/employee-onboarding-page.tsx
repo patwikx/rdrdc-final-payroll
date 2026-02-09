@@ -11,6 +11,7 @@ import {
   IconFile,
   IconId,
   IconPhoto,
+  IconPlus,
   IconUserPlus,
   IconUpload,
   IconX,
@@ -44,6 +45,15 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { createEmployeeOnboardingAction } from "@/modules/employees/onboarding/actions/create-employee-onboarding-action"
 import {
   civilStatusOptions,
@@ -79,6 +89,93 @@ type EmployeeOnboardingPageProps = {
 }
 
 type StepKey = "stepOne" | "stepTwo"
+type DynamicOptionKey =
+  | "employmentStatuses"
+  | "employmentTypes"
+  | "employmentClasses"
+  | "departments"
+  | "divisions"
+  | "positions"
+  | "ranks"
+  | "branches"
+
+type DynamicCreateEntity =
+  | "employmentStatus"
+  | "employmentType"
+  | "employmentClass"
+  | "department"
+  | "division"
+  | "position"
+  | "rank"
+  | "branch"
+
+type EmploymentFieldKey =
+  | "employmentStatusId"
+  | "employmentTypeId"
+  | "employmentClassId"
+  | "departmentId"
+  | "divisionId"
+  | "positionId"
+  | "rankId"
+  | "branchId"
+
+type DynamicCreateTarget = {
+  key: DynamicOptionKey
+  entity: DynamicCreateEntity
+  label: string
+  employmentField: EmploymentFieldKey
+}
+
+const dynamicSelectTargets: Record<DynamicOptionKey, DynamicCreateTarget> = {
+  employmentStatuses: {
+    key: "employmentStatuses",
+    entity: "employmentStatus",
+    label: "Employment Status",
+    employmentField: "employmentStatusId",
+  },
+  employmentTypes: {
+    key: "employmentTypes",
+    entity: "employmentType",
+    label: "Employment Type",
+    employmentField: "employmentTypeId",
+  },
+  employmentClasses: {
+    key: "employmentClasses",
+    entity: "employmentClass",
+    label: "Employment Class",
+    employmentField: "employmentClassId",
+  },
+  departments: {
+    key: "departments",
+    entity: "department",
+    label: "Department",
+    employmentField: "departmentId",
+  },
+  divisions: {
+    key: "divisions",
+    entity: "division",
+    label: "Division",
+    employmentField: "divisionId",
+  },
+  positions: {
+    key: "positions",
+    entity: "position",
+    label: "Position",
+    employmentField: "positionId",
+  },
+  ranks: {
+    key: "ranks",
+    entity: "rank",
+    label: "Rank",
+    employmentField: "rankId",
+  },
+  branches: {
+    key: "branches",
+    entity: "branch",
+    label: "Branch",
+    employmentField: "branchId",
+  },
+}
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
@@ -105,6 +202,30 @@ const toPhDateInputValue = (date: Date | undefined): string => {
   }).format(date)
 }
 
+const computeDailyRate = (monthlyRate: number, monthlyDivisor: number): number => {
+  if (!Number.isFinite(monthlyRate) || monthlyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(monthlyDivisor) || monthlyDivisor <= 0) {
+    return 0
+  }
+
+  return (monthlyRate * 12) / monthlyDivisor
+}
+
+const computeHourlyRate = (dailyRate: number, hoursPerDay: number): number => {
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(hoursPerDay) || hoursPerDay <= 0) {
+    return 0
+  }
+
+  return dailyRate / hoursPerDay
+}
+
 const readFileAsDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -117,9 +238,13 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
 export function EmployeeOnboardingPage({ companyName, initialData, options }: EmployeeOnboardingPageProps) {
   const router = useRouter()
   const [form, setForm] = useState<EmployeeOnboardingInput>(initialData)
+  const [dynamicOptions, setDynamicOptions] = useState(options)
   const [step, setStep] = useState<StepKey>("stepOne")
   const [isPending, startTransition] = useTransition()
+  const [isCreatingOption, startCreateOption] = useTransition()
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [createTarget, setCreateTarget] = useState<DynamicCreateTarget | null>(null)
+  const [createName, setCreateName] = useState("")
   const profileInputRef = useRef<HTMLInputElement | null>(null)
   const documentsInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -171,6 +296,17 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
     const base = [first, last].filter((part) => part.length > 0).join(" ")
     return [base, suffix].filter((part) => part.length > 0).join(" ") || "this employee"
   }, [form.identity.firstName, form.identity.lastName, form.identity.suffix])
+
+  const dailyRatePreview = useMemo(() => {
+    const value = computeDailyRate(form.payroll.monthlyRate, form.payroll.monthlyDivisor)
+    return value > 0 ? value.toFixed(2) : ""
+  }, [form.payroll.monthlyRate, form.payroll.monthlyDivisor])
+
+  const hourlyRatePreview = useMemo(() => {
+    const dailyRate = computeDailyRate(form.payroll.monthlyRate, form.payroll.monthlyDivisor)
+    const value = computeHourlyRate(dailyRate, form.payroll.hoursPerDay)
+    return value > 0 ? value.toFixed(2) : ""
+  }, [form.payroll.monthlyRate, form.payroll.monthlyDivisor, form.payroll.hoursPerDay])
 
   const handleProfilePhotoFile = async (file: File | undefined) => {
     if (!file) return
@@ -238,6 +374,45 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
     })
   }
 
+  const openCreateDialog = (key: DynamicOptionKey) => {
+    setCreateTarget(dynamicSelectTargets[key])
+    setCreateName("")
+  }
+
+  const handleCreateOption = () => {
+    if (!createTarget) {
+      return
+    }
+
+    const trimmedName = createName.trim()
+    if (trimmedName.length < 2) {
+      toast.error(`${createTarget.label} name must be at least 2 characters.`)
+      return
+    }
+
+    startCreateOption(async () => {
+      const result = await createOnboardingSelectEntityAction({
+        companyId: form.companyId,
+        entity: createTarget.entity,
+        name: trimmedName,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setDynamicOptions((prev) => ({
+        ...prev,
+        [createTarget.key]: [...prev[createTarget.key], result.option].sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      updateSection("employment", createTarget.employmentField, result.option.id)
+      setCreateTarget(null)
+      setCreateName("")
+      toast.success(`${createTarget.label} added.`)
+    })
+  }
+
   return (
     <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
       <header className="rounded-xl border border-border/70 bg-card/70 p-4">
@@ -271,6 +446,22 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={Boolean(createTarget)} onOpenChange={(open) => !open && setCreateTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add {createTarget?.label}</DialogTitle>
+            <DialogDescription>Create a new {createTarget?.label?.toLowerCase()} without leaving onboarding.</DialogDescription>
+          </DialogHeader>
+          <Field label={`${createTarget?.label ?? "Record"} Name`} required>
+            <Input value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder={`Enter ${createTarget?.label?.toLowerCase()} name`} />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreateTarget(null)} disabled={isCreatingOption}>Cancel</Button>
+            <Button type="button" onClick={handleCreateOption} disabled={isCreatingOption}>{isCreatingOption ? "Adding..." : "Add"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <StepSwitcher step={step} onChange={setStep} />
 
@@ -459,14 +650,14 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                   <h3 className="text-sm font-medium text-foreground">Employment</h3>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <DateField label="Hire Date" required value={form.employment.hireDate} onChange={(value) => updateSection("employment", "hireDate", value)} />
-                    <OptionSelect label="Employment Status" required value={form.employment.employmentStatusId} options={options.employmentStatuses} onChange={(value) => updateSection("employment", "employmentStatusId", value)} />
-                    <OptionSelect label="Employment Type" required value={form.employment.employmentTypeId} options={options.employmentTypes} onChange={(value) => updateSection("employment", "employmentTypeId", value)} />
-                    <OptionSelect label="Employment Class" required value={form.employment.employmentClassId} options={options.employmentClasses} onChange={(value) => updateSection("employment", "employmentClassId", value)} />
-                    <OptionSelect label="Department" required value={form.employment.departmentId} options={options.departments} onChange={(value) => updateSection("employment", "departmentId", value)} />
-                    <OptionSelect label="Division" value={form.employment.divisionId ?? ""} options={options.divisions} onChange={(value) => updateSection("employment", "divisionId", value || undefined)} allowEmpty />
-                    <OptionSelect label="Position" required value={form.employment.positionId} options={options.positions} onChange={(value) => updateSection("employment", "positionId", value)} />
-                    <OptionSelect label="Rank" value={form.employment.rankId ?? ""} options={options.ranks} onChange={(value) => updateSection("employment", "rankId", value || undefined)} allowEmpty />
-                    <OptionSelect label="Branch" value={form.employment.branchId ?? ""} options={options.branches} onChange={(value) => updateSection("employment", "branchId", value || undefined)} allowEmpty />
+                    <OptionSelect label="Employment Status" required value={form.employment.employmentStatusId} options={dynamicOptions.employmentStatuses} onChange={(value) => updateSection("employment", "employmentStatusId", value)} allowCreate createLabel="Add status" onCreateRequested={() => openCreateDialog("employmentStatuses")} />
+                    <OptionSelect label="Employment Type" required value={form.employment.employmentTypeId} options={dynamicOptions.employmentTypes} onChange={(value) => updateSection("employment", "employmentTypeId", value)} allowCreate createLabel="Add type" onCreateRequested={() => openCreateDialog("employmentTypes")} />
+                    <OptionSelect label="Employment Class" required value={form.employment.employmentClassId} options={dynamicOptions.employmentClasses} onChange={(value) => updateSection("employment", "employmentClassId", value)} allowCreate createLabel="Add class" onCreateRequested={() => openCreateDialog("employmentClasses")} />
+                    <OptionSelect label="Department" required value={form.employment.departmentId} options={dynamicOptions.departments} onChange={(value) => updateSection("employment", "departmentId", value)} allowCreate createLabel="Add department" onCreateRequested={() => openCreateDialog("departments")} />
+                    <OptionSelect label="Division" value={form.employment.divisionId ?? ""} options={dynamicOptions.divisions} onChange={(value) => updateSection("employment", "divisionId", value || undefined)} allowEmpty allowCreate createLabel="Add division" onCreateRequested={() => openCreateDialog("divisions")} />
+                    <OptionSelect label="Position" required value={form.employment.positionId} options={dynamicOptions.positions} onChange={(value) => updateSection("employment", "positionId", value)} allowCreate createLabel="Add position" onCreateRequested={() => openCreateDialog("positions")} />
+                    <OptionSelect label="Rank" value={form.employment.rankId ?? ""} options={dynamicOptions.ranks} onChange={(value) => updateSection("employment", "rankId", value || undefined)} allowEmpty allowCreate createLabel="Add rank" onCreateRequested={() => openCreateDialog("ranks")} />
+                    <OptionSelect label="Branch" value={form.employment.branchId ?? ""} options={dynamicOptions.branches} onChange={(value) => updateSection("employment", "branchId", value || undefined)} allowEmpty allowCreate createLabel="Add branch" onCreateRequested={() => openCreateDialog("branches")} />
                     <OptionSelect label="Reporting Manager" value={form.employment.reportingManagerId ?? ""} options={options.managers} onChange={(value) => updateSection("employment", "reportingManagerId", value || undefined)} allowEmpty />
                     <DateField label="Probation End" value={form.employment.probationEndDate ?? ""} onChange={(value) => updateSection("employment", "probationEndDate", value || undefined)} />
                     <DateField label="Regularization Date" value={form.employment.regularizationDate ?? ""} onChange={(value) => updateSection("employment", "regularizationDate", value || undefined)} />
@@ -477,10 +668,12 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                   <h3 className="text-sm font-medium text-foreground">Payroll</h3>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Monthly Rate" required><Input type="number" value={form.payroll.monthlyRate} onChange={(event) => updateSection("payroll", "monthlyRate", Number(event.target.value) || 0)} /></Field>
+                    <Field label="Daily Rate"><Input type="number" value={dailyRatePreview} disabled /></Field>
+                    <Field label="Hourly Rate"><Input type="number" value={hourlyRatePreview} disabled /></Field>
                     <OptionSelect label="Work Schedule" required value={form.payroll.workScheduleId} options={options.workSchedules} onChange={(value) => updateSection("payroll", "workScheduleId", value)} />
                     <OptionSelect label="Pay Period Pattern" required value={form.payroll.payPeriodPatternId} options={options.payPeriodPatterns} onChange={(value) => updateSection("payroll", "payPeriodPatternId", value)} />
-                    <Field label="Monthly Divisor" required><Input type="number" value={form.payroll.monthlyDivisor} onChange={(event) => updateSection("payroll", "monthlyDivisor", Number(event.target.value) || 365)} /></Field>
-                    <Field label="Hours Per Day" required><Input type="number" step="0.25" value={form.payroll.hoursPerDay} onChange={(event) => updateSection("payroll", "hoursPerDay", Number(event.target.value) || 8)} /></Field>
+                    <Field label="Monthly Divisor" required><Input type="number" value={form.payroll.monthlyDivisor} disabled /></Field>
+                    <Field label="Hours Per Day" required><Input type="number" step="0.25" value={form.payroll.hoursPerDay} disabled /></Field>
                     <Field label="Minimum Wage Region"><Input value={form.payroll.minimumWageRegion ?? ""} onChange={(event) => updateSection("payroll", "minimumWageRegion", event.target.value || undefined)} /></Field>
                     <SwitchField label="Night Differential Eligible" checked={form.payroll.isNightDiffEligible} onCheckedChange={(checked) => updateSection("payroll", "isNightDiffEligible", checked)} />
                     <SwitchField label="Overtime Eligible" checked={form.payroll.isOvertimeEligible} onCheckedChange={(checked) => updateSection("payroll", "isOvertimeEligible", checked)} />
@@ -551,6 +744,9 @@ function OptionSelect({
   options,
   onChange,
   allowEmpty,
+  allowCreate,
+  createLabel,
+  onCreateRequested,
 }: {
   label: string
   required?: boolean
@@ -558,14 +754,36 @@ function OptionSelect({
   options: Option[]
   onChange: (value: string) => void
   allowEmpty?: boolean
+  allowCreate?: boolean
+  createLabel?: string
+  onCreateRequested?: () => void
 }) {
   const noneValue = "__none__"
+  const createValue = "__create__"
 
   return (
     <Field label={label} required={required}>
-      <Select value={allowEmpty && !value ? noneValue : (value || undefined)} onValueChange={(nextValue) => onChange(allowEmpty && nextValue === noneValue ? "" : nextValue)}>
+      <Select
+        value={allowEmpty && !value ? noneValue : (value || undefined)}
+        onValueChange={(nextValue) => {
+          if (allowCreate && nextValue === createValue) {
+            onCreateRequested?.()
+            return
+          }
+
+          onChange(allowEmpty && nextValue === noneValue ? "" : nextValue)
+        }}
+      >
         <SelectTrigger className="w-full"><SelectValue placeholder={options.length === 0 ? "No options" : "Select option"} /></SelectTrigger>
         <SelectContent>
+          {allowCreate ? (
+            <SelectItem value={createValue} className="font-medium text-blue-600 focus:text-blue-700">
+              <span className="inline-flex items-center gap-2">
+                <IconPlus className="size-3.5" />
+                {createLabel ?? `Add ${label}`}
+              </span>
+            </SelectItem>
+          ) : null}
           {allowEmpty ? <SelectItem value={noneValue}>None</SelectItem> : null}
           {options.map((option) => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}
         </SelectContent>

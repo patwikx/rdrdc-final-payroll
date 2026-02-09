@@ -1,9 +1,13 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { Fragment, useMemo, useState } from "react"
+import { IconChevronDown, IconChevronUp, IconDownload, IconFileAnalytics, IconReceiptTax } from "@tabler/icons-react"
+import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -11,16 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
+import {
+  GovernmentRemittanceReports,
+  type PagIbigContributionRow,
+  type PhilHealthRemittanceRow,
+} from "@/modules/payroll/components/government-remittance-reports"
 
 type PayrollStatutoryPageClientProps = {
   companyId: string
   companyName: string
-  selectedRunId: string | null
-  runs: Array<{
-    id: string
-    label: string
-    statusCode: string
-  }>
+  printedBy: string
   totals: {
     sssEmployee: string
     sssEmployer: string
@@ -32,8 +37,18 @@ type PayrollStatutoryPageClientProps = {
   }
   rows: Array<{
     payslipId: string
+    employeeId: string
     employeeName: string
     employeeNumber: string
+    employeePhotoUrl: string | null
+    birthDate: string | null
+    philHealthPin: string | null
+    pagIbigNumber: string | null
+    tinNumber: string | null
+    runNumber: string
+    periodLabel: string
+    cutoffEndDateIso: string
+    grossPay: string
     sssEmployee: string
     sssEmployer: string
     philHealthEmployee: string
@@ -42,111 +57,628 @@ type PayrollStatutoryPageClientProps = {
     pagIbigEmployer: string
     withholdingTax: string
   }>
+  birRows: Array<{
+    employeeId: string
+    employeeName: string
+    employeeNumber: string
+    tinNumber: string | null
+    year: number
+    sssEmployee: string
+    philHealthEmployee: string
+    pagIbigEmployee: string
+    grossCompensation: string
+    nonTaxableBenefits: string
+    taxableCompensation: string
+    withholdingTax: string
+    annualTaxDue: string
+    taxVariance: string
+  }>
+}
+
+type ReportKey = "sss" | "philhealth" | "pagibig" | "dole13th" | "bir-alphalist"
+
+const REPORT_OPTIONS: Array<{ key: ReportKey; label: string; frequency: string }> = [
+  { key: "sss", label: "SSS Monthly Remittance", frequency: "Monthly" },
+  { key: "philhealth", label: "PhilHealth EPRS Remittance", frequency: "Monthly" },
+  { key: "pagibig", label: "Pag-IBIG MCRF (Contributions)", frequency: "Monthly" },
+  { key: "dole13th", label: "DOLE 13th Month Pay Report", frequency: "Annual" },
+  { key: "bir-alphalist", label: "BIR Alphalist", frequency: "Annual" },
+]
+
+const parseAmount = (value: string): number => Number(value.replace(/[^0-9.-]/g, "")) || 0
+const numberFormatter = new Intl.NumberFormat("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+const monthYearFormatter = new Intl.DateTimeFormat("en-PH", {
+  month: "long",
+  year: "numeric",
+  timeZone: "Asia/Manila",
+})
+const birthDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "numeric",
+  day: "numeric",
+  year: "2-digit",
+  timeZone: "Asia/Manila",
+})
+
+const extractNameParts = (fullName: string): { surname: string; firstName: string; middleName: string } => {
+  const [surnamePart, firstPartRaw] = fullName.split(",")
+  const firstTokens = (firstPartRaw ?? "").trim().split(/\s+/).filter(Boolean)
+
+  return {
+    surname: (surnamePart ?? "").trim(),
+    firstName: firstTokens[0] ?? "",
+    middleName: firstTokens.slice(1).join(" "),
+  }
+}
+
+const csvEscape = (value: string): string => {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`
+  }
+
+  return value
+}
+
+const downloadCsv = (fileName: string, headers: string[], records: string[][]): void => {
+  const lines = [headers.map(csvEscape).join(","), ...records.map((row) => row.map(csvEscape).join(","))]
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+const downloadCsvRows = (fileName: string, rows: string[][]): void => {
+  const lines = rows.map((row) => row.map(csvEscape).join(","))
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 export function PayrollStatutoryPageClient({
-  companyId,
   companyName,
-  selectedRunId,
-  runs,
-  totals,
+  printedBy,
   rows,
+  birRows,
 }: PayrollStatutoryPageClientProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const [activeReport, setActiveReport] = useState<ReportKey>("philhealth")
+  const [searchText, setSearchText] = useState("")
+  const [expandedBirTraceKey, setExpandedBirTraceKey] = useState<string | null>(null)
 
-  const handleRunChange = (runId: string) => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set("runId", runId)
-    router.push(`${pathname}?${params.toString()}`)
+  const monthOptions = useMemo(() => {
+    const monthMap = new Map<string, Date>()
+    for (const row of rows) {
+      const date = new Date(row.cutoffEndDateIso)
+      if (Number.isNaN(date.getTime())) {
+        continue
+      }
+      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
+      if (!monthMap.has(key)) {
+        monthMap.set(key, date)
+      }
+    }
+
+    return Array.from(monthMap.entries())
+      .sort((a, b) => b[1].getTime() - a[1].getTime())
+      .map(([key, date]) => ({
+        key,
+        date,
+        label: date.toLocaleDateString("en-PH", {
+          month: "long",
+          year: "numeric",
+          timeZone: "Asia/Manila",
+        }),
+      }))
+  }, [rows])
+
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(monthOptions[0]?.key ?? "")
+
+  const filteredOptions = useMemo(() => {
+    const normalized = searchText.trim().toLowerCase()
+    if (!normalized) {
+      return REPORT_OPTIONS
+    }
+
+    return REPORT_OPTIONS.filter((report) => report.label.toLowerCase().includes(normalized))
+  }, [searchText])
+
+  const resolvedReport = filteredOptions.find((option) => option.key === activeReport) ?? filteredOptions[0] ?? REPORT_OPTIONS[0]
+
+  const selectedMonthDate = monthOptions.find((option) => option.key === selectedMonthKey)?.date ?? new Date()
+
+  const scopedRows = useMemo(() => {
+    if (!selectedMonthKey) {
+      return rows
+    }
+
+    return rows.filter((row) => row.cutoffEndDateIso.startsWith(selectedMonthKey))
+  }, [rows, selectedMonthKey])
+
+  const philHealthRows = useMemo<PhilHealthRemittanceRow[]>(() => {
+    return scopedRows.map((row) => ({
+      idNumber: row.employeeNumber,
+      employeeName: row.employeeName,
+      pin: (row.philHealthPin ?? "").replace(/\D/g, ""),
+      employeeShare: parseAmount(row.philHealthEmployee),
+      employerShare: parseAmount(row.philHealthEmployer),
+    }))
+  }, [scopedRows])
+
+  const pagIbigRows = useMemo<PagIbigContributionRow[]>(() => {
+    return scopedRows.map((row) => {
+      const nameParts = extractNameParts(row.employeeName)
+      return {
+        employeeId: row.employeeNumber,
+        surname: nameParts.surname,
+        firstName: nameParts.firstName,
+        middleName: nameParts.middleName,
+        birthDate: row.birthDate ? new Date(row.birthDate) : new Date("2000-01-01"),
+        pagIbigNumber: row.pagIbigNumber ?? "",
+        employeeShare: parseAmount(row.pagIbigEmployee),
+        employerShare: parseAmount(row.pagIbigEmployer),
+      }
+    })
+  }, [scopedRows])
+
+  const selectedYearPrefix = selectedMonthKey ? selectedMonthKey.slice(0, 4) : ""
+
+  const filteredBirRows = useMemo(() => {
+    if (!selectedYearPrefix) {
+      return birRows
+    }
+
+    const year = Number(selectedYearPrefix)
+    return birRows.filter((row) => row.year === year)
+  }, [birRows, selectedYearPrefix])
+
+  const exportCsvTemplate = (report: ReportKey) => {
+    if (report === "philhealth") {
+      const totals = philHealthRows.reduce(
+        (acc, row) => {
+          acc.ee += row.employeeShare
+          acc.er += row.employerShare
+          return acc
+        },
+        { ee: 0, er: 0 }
+      )
+
+      const monthLabel = monthYearFormatter.format(reportMonth)
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["PHILHEALTH REMMITTANCE"],
+        [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
+        [],
+        ["ID #", "EMPLOYEE'S NAME", "PIN", "EMPLOYEE SHARE", "EMPLOYER SHARE", "TOTALS"],
+        ...philHealthRows.map((row) => {
+          const rowTotal = row.employeeShare + row.employerShare
+          return [
+            row.idNumber,
+            row.employeeName,
+            row.pin,
+            numberFormatter.format(row.employeeShare),
+            numberFormatter.format(row.employerShare),
+            numberFormatter.format(rowTotal),
+          ]
+        }),
+        [
+          "TOTAL",
+          "",
+          "",
+          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.er),
+          numberFormatter.format(totals.ee + totals.er),
+        ],
+      ]
+
+      downloadCsvRows("philhealth-remittance-report.csv", reportRows)
+      toast.success("Generated styled PhilHealth CSV report.")
+      return
+    }
+
+    if (report === "pagibig") {
+      const totals = pagIbigRows.reduce(
+        (acc, row) => {
+          acc.ee += row.employeeShare
+          acc.er += row.employerShare
+          return acc
+        },
+        { ee: 0, er: 0 }
+      )
+
+      const monthLabel = monthYearFormatter.format(reportMonth)
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["MONTHLY PAG-IBIG CONTRIBUTION REPORT"],
+        [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
+        [],
+        [
+          "EMPLOYEE ID",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
+          "BIRTHDATE",
+          "PAG-IBIG #",
+          "PAG-IBIG EE",
+          "PAG-IBIG ER",
+          "TOTAL",
+        ],
+        ...pagIbigRows.map((row) => {
+          const rowTotal = row.employeeShare + row.employerShare
+          return [
+            row.employeeId,
+            row.surname.toUpperCase(),
+            row.firstName.toUpperCase(),
+            row.middleName.toUpperCase(),
+            birthDateFormatter.format(row.birthDate),
+            row.pagIbigNumber,
+            numberFormatter.format(row.employeeShare),
+            numberFormatter.format(row.employerShare),
+            numberFormatter.format(rowTotal),
+          ]
+        }),
+        [
+          "PAGE TOTAL",
+          "",
+          "",
+          "",
+          "",
+          `HEAD COUNT (${pagIbigRows.length})`,
+          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.er),
+          numberFormatter.format(totals.ee + totals.er),
+        ],
+        [
+          "GRAND TOTAL",
+          "",
+          "",
+          "",
+          "",
+          "",
+          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.er),
+          numberFormatter.format(totals.ee + totals.er),
+        ],
+      ]
+
+      downloadCsvRows("pagibig-mcrf-contribution-report.csv", reportRows)
+      toast.success("Generated styled Pag-IBIG CSV report.")
+      return
+    }
+
+    if (report === "sss") {
+      downloadCsv(
+        "sss-monthly-remittance.csv",
+        ["Employee Number", "Employee Name", "SSS Employee", "SSS Employer"],
+        scopedRows.map((row) => [row.employeeNumber, row.employeeName, row.sssEmployee, row.sssEmployer])
+      )
+      toast.success("Generated SSS monthly remittance CSV.")
+      return
+    }
+
+    if (report === "dole13th") {
+      downloadCsv(
+        "dole-13th-month-report-template.csv",
+        ["Employee Number", "Employee Name", "13th Month Pay", "Remarks"],
+        scopedRows.map((row) => [row.employeeNumber, row.employeeName, "", ""])
+      )
+      toast.success("Generated DOLE 13th month report template.")
+      return
+    }
+
+    if (report === "bir-alphalist") {
+      const yearLabel = selectedYearPrefix || String(new Date().getFullYear())
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["BIR ANNUAL ALPHALIST"],
+        [`FOR TAXABLE YEAR ${yearLabel}`],
+        [],
+        [
+          "EMPLOYEE ID",
+          "EMPLOYEE NAME",
+          "TIN",
+          "SSS EE",
+          "PH EE",
+          "PG EE",
+          "GROSS COMPENSATION",
+          "TAXABLE COMPENSATION",
+          "WITHHOLDING TAX",
+        ],
+        ...filteredBirRows.map((row) => [
+          row.employeeNumber,
+          row.employeeName.toUpperCase(),
+          row.tinNumber ?? "",
+          row.sssEmployee,
+          row.philHealthEmployee,
+          row.pagIbigEmployee,
+          row.grossCompensation,
+          row.taxableCompensation,
+          row.withholdingTax,
+        ]),
+      ]
+
+      downloadCsvRows("bir-annual-alphalist.csv", reportRows)
+      toast.success("Generated styled BIR annual alphalist CSV.")
+      return
+    }
+
+    downloadCsv(
+      "bir-alphalist-template.csv",
+      ["TIN", "Employee Name", "Gross Compensation", "Withholding Tax", "Remarks"],
+      scopedRows.map((row) => ["", row.employeeName, "", row.withholdingTax, ""])
+    )
+    toast.success("Generated BIR alphalist template.")
   }
 
+  const reportMonth = selectedMonthDate
+
   return (
+    <>
     <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">{companyName} Statutory Reports</h1>
-            <p className="text-xs text-muted-foreground">Run-level statutory deductions summary and employee breakdown.</p>
-          </div>
-          <div className="w-full sm:w-[500px]">
-            <Select value={selectedRunId ?? undefined} onValueChange={handleRunChange}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select payroll run" />
-              </SelectTrigger>
-              <SelectContent>
-                {runs.map((run) => (
-                  <SelectItem key={run.id} value={run.id}>
-                    {run.label} • {run.statusCode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+      <header className="rounded-xl border border-border/70 bg-card/70 p-4 print:hidden">
+        <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
+          <IconFileAnalytics className="size-5" />
+          {companyName} Statutory Reports
+        </h1>
+        <p className="text-xs text-muted-foreground">
+          Iteration 3 locked: agency sidebar + report detail. Select PhilHealth or Pag-IBIG to view the printable report.
+        </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">SSS Employee</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.sssEmployee}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">SSS Employer</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.sssEmployer}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">PhilHealth Employee</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.philHealthEmployee}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">PhilHealth Employer</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.philHealthEmployer}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">Pag-IBIG Employee</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.pagIbigEmployee}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80"><CardHeader><CardTitle className="text-xs">Pag-IBIG Employer</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.pagIbigEmployer}</p></CardContent></Card>
-        <Card className="rounded-xl border border-border/70 bg-card/80 sm:col-span-2"><CardHeader><CardTitle className="text-xs">Withholding Tax</CardTitle></CardHeader><CardContent><p className="font-semibold">{totals.withholdingTax}</p></CardContent></Card>
-      </div>
-
-      <Card className="rounded-xl border border-border/70 bg-card/80">
-        <CardHeader>
-          <CardTitle className="text-base">Employee Statutory Breakdown</CardTitle>
+      <Card className="rounded-xl border border-border/70 bg-card/80 print:shadow-none print:border-0">
+        <CardHeader className="pb-2">
+          <CardTitle className="inline-flex items-center gap-2 text-base print:hidden">
+            <IconReceiptTax className="size-4 text-primary" />
+            Agency Report Workspace
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-md border border-border/60">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-left">Employee</th>
-                  <th className="px-3 py-2 text-left">SSS Emp</th>
-                  <th className="px-3 py-2 text-left">SSS Er</th>
-                  <th className="px-3 py-2 text-left">PH Emp</th>
-                  <th className="px-3 py-2 text-left">PH Er</th>
-                  <th className="px-3 py-2 text-left">PI Emp</th>
-                  <th className="px-3 py-2 text-left">PI Er</th>
-                  <th className="px-3 py-2 text-left">WTAX</th>
-                  <th className="px-3 py-2 text-left">Payslip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-6 text-center text-muted-foreground" colSpan={9}>No payslip records for selected run.</td>
-                  </tr>
-                ) : (
-                  rows.map((row) => (
-                    <tr key={row.payslipId} className="border-t border-border/50">
-                      <td className="px-3 py-2">
-                        <p className="font-medium">{row.employeeName}</p>
-                        <p className="text-[11px] text-muted-foreground">{row.employeeNumber}</p>
-                      </td>
-                      <td className="px-3 py-2">{row.sssEmployee}</td>
-                      <td className="px-3 py-2">{row.sssEmployer}</td>
-                      <td className="px-3 py-2">{row.philHealthEmployee}</td>
-                      <td className="px-3 py-2">{row.philHealthEmployer}</td>
-                      <td className="px-3 py-2">{row.pagIbigEmployee}</td>
-                      <td className="px-3 py-2">{row.pagIbigEmployer}</td>
-                      <td className="px-3 py-2">{row.withholdingTax}</td>
-                      <td className="px-3 py-2">
-                        <Link href={`/${companyId}/payroll/payslips/${row.payslipId}`} className="text-primary underline-offset-4 hover:underline">Open</Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <CardContent className="grid gap-4 lg:grid-cols-[320px_1fr] print:block">
+          <aside className="space-y-3 rounded-md border border-border/60 p-3 print:hidden">
+            <div className="space-y-2">
+              <Input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search report"
+              />
+              <Select value={selectedMonthKey} onValueChange={setSelectedMonthKey}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.key} value={option.key}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <ScrollArea className="h-[620px] pr-1">
+              <div className="space-y-2">
+                {filteredOptions.map((report) => (
+                  <button
+                    key={report.key}
+                    type="button"
+                    onClick={() => setActiveReport(report.key)}
+                    className={cn(
+                      "w-full rounded-md border px-3 py-2 text-left text-xs",
+                      resolvedReport.key === report.key
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border/60 bg-background hover:bg-muted/40"
+                    )}
+                  >
+                    <p className="font-medium">{report.label}</p>
+                    <p className="text-[11px] text-muted-foreground">{report.frequency}</p>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+          </aside>
+
+          <section className="space-y-3 rounded-md border border-border/60 p-3 print:border-0 print:p-0">
+            <div className="flex items-center justify-between gap-2 print:hidden">
+              <div>
+                <p className="text-sm font-semibold">{resolvedReport.label}</p>
+                <p className="text-xs text-muted-foreground">{resolvedReport.frequency}</p>
+              </div>
+              {resolvedReport.key === "sss" || resolvedReport.key === "dole13th" ? (
+                <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
+                  <IconDownload className="size-4" />
+                  Export CSV
+                </Button>
+              ) : null}
+              {resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" ? (
+                <div className="flex items-center gap-2">
+                  <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
+                    <IconDownload className="size-4" />
+                    Export CSV
+                  </Button>
+                  <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
+                    <IconDownload className="size-4" />
+                    Print Report
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+
+            {resolvedReport.key === "philhealth" ? (
+              <div id="statutory-print-root">
+              <GovernmentRemittanceReports
+                companyName={companyName}
+                philHealthMonth={reportMonth}
+                pagIbigMonth={reportMonth}
+                printedAt={new Date()}
+                printedBy={printedBy}
+                philHealthRows={philHealthRows}
+                pagIbigRows={[]}
+                showPhilHealth
+                showPagIbig={false}
+              />
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "pagibig" ? (
+              <div id="statutory-print-root">
+              <GovernmentRemittanceReports
+                companyName={companyName}
+                philHealthMonth={reportMonth}
+                pagIbigMonth={reportMonth}
+                printedAt={new Date()}
+                printedBy={printedBy}
+                philHealthRows={[]}
+                pagIbigRows={pagIbigRows}
+                showPhilHealth={false}
+                showPagIbig
+              />
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "bir-alphalist" ? (
+              <div className="space-y-3">
+                <div id="statutory-print-root">
+                  <GovernmentRemittanceReports
+                    companyName={companyName}
+                    philHealthMonth={reportMonth}
+                    pagIbigMonth={reportMonth}
+                    birYear={selectedYearPrefix ? Number(selectedYearPrefix) : new Date().getFullYear()}
+                    printedAt={new Date()}
+                    printedBy={printedBy}
+                    philHealthRows={[]}
+                    pagIbigRows={[]}
+                    birAlphalistRows={filteredBirRows.map((row) => ({
+                      employeeId: row.employeeNumber,
+                      employeeName: row.employeeName,
+                      tinNumber: row.tinNumber ?? "",
+                      sssEmployee: parseAmount(row.sssEmployee),
+                      philHealthEmployee: parseAmount(row.philHealthEmployee),
+                      pagIbigEmployee: parseAmount(row.pagIbigEmployee),
+                      grossCompensation: parseAmount(row.grossCompensation),
+                      taxableCompensation: parseAmount(row.taxableCompensation),
+                      withholdingTax: parseAmount(row.withholdingTax),
+                    }))}
+                    showPhilHealth={false}
+                    showPagIbig={false}
+                    showBirAlphalist
+                  />
+                </div>
+
+                <div className="rounded-md border border-border/60 bg-muted/10 p-3 print:hidden">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    BIR Calc Trace (Per Employee)
+                  </p>
+                  <div className="overflow-x-auto rounded-md border border-border/60">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Employee</th>
+                          <th className="px-3 py-2 text-left">Year</th>
+                          <th className="px-3 py-2 text-left">Annual Tax Due</th>
+                          <th className="px-3 py-2 text-left">Delta</th>
+                          <th className="px-3 py-2 text-left">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBirRows.map((row) => {
+                          const traceKey = `${row.employeeId}-${row.year}`
+                          const expanded = expandedBirTraceKey === traceKey
+
+                          return (
+                            <Fragment key={traceKey}>
+                              <tr key={traceKey} className="border-t border-border/50">
+                                <td className="px-3 py-2">
+                                  <p className="font-medium">{row.employeeName}</p>
+                                  <p className="text-[11px] text-muted-foreground">{row.employeeNumber}</p>
+                                </td>
+                                <td className="px-3 py-2">{row.year}</td>
+                                <td className="px-3 py-2">{row.annualTaxDue}</td>
+                                <td className="px-3 py-2">{row.taxVariance}</td>
+                                <td className="px-3 py-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setExpandedBirTraceKey(expanded ? null : traceKey)}
+                                  >
+                                    {expanded ? <IconChevronUp className="size-3.5" /> : <IconChevronDown className="size-3.5" />}
+                                    Trace
+                                  </Button>
+                                </td>
+                              </tr>
+                              {expanded ? (
+                                <tr className="border-t border-border/50 bg-background">
+                                  <td className="px-3 py-3" colSpan={5}>
+                                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                      <TraceItem label="Gross Compensation" value={row.grossCompensation} />
+                                      <TraceItem label="Non-Taxable Cap Applied" value={row.nonTaxableBenefits} />
+                                      <TraceItem label="Taxable Base" value={row.taxableCompensation} />
+                                      <TraceItem label="Annual Tax Due" value={row.annualTaxDue} />
+                                      <TraceItem label="YTD Withheld" value={row.withholdingTax} />
+                                      <TraceItem label="Delta" value={row.taxVariance} />
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "sss" || resolvedReport.key === "dole13th" ? (
+              <div className="rounded-md border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
+                This report currently exports as CSV template/data.
+              </div>
+            ) : null}
+          </section>
         </CardContent>
       </Card>
     </main>
+    <style jsx global>{`
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+
+        #statutory-print-root,
+        #statutory-print-root * {
+          visibility: visible;
+        }
+
+        #statutory-print-root {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          padding: 0;
+          background: #fff;
+        }
+      }
+    `}</style>
+    </>
+  )
+}
+
+function TraceItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium">{value}</p>
+    </div>
   )
 }

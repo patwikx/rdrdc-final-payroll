@@ -57,8 +57,8 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     roles: ["COMPANY_ADMIN", "PAYROLL_ADMIN"],
     items: [
       { id: "payroll-runs", label: "Payroll Runs", path: "/payroll/runs" },
-      { id: "payslips", label: "Payslips", path: "/payroll/payslips" },
-      { id: "payroll-adjustments", label: "Adjustments", path: "/payroll/adjustments" },
+      { id: "payroll-recurring-deductions", label: "Recurring Deductions", path: "/payroll/recurring-deductions" },
+      { id: "payslips", label: "Payslips History", path: "/payroll/payslips" },
       { id: "statutory-reports", label: "Statutory Reports", path: "/payroll/statutory" },
     ],
   },
@@ -81,6 +81,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     items: [
       { id: "settings-company", label: "Company Profile", path: "/settings/company" },
       { id: "settings-organization", label: "Organization Setup", path: "/settings/organization" },
+      { id: "settings-employment", label: "Employment Setup", path: "/settings/employment" },
       { id: "settings-payroll", label: "Payroll Policies", path: "/settings/payroll" },
       { id: "settings-attendance", label: "Work Schedules", path: "/settings/attendance" },
       { id: "settings-leave-ot", label: "Leave / OT Policies", path: "/settings/leave-overtime" },

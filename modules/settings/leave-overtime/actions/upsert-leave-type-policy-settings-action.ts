@@ -54,6 +54,18 @@ export async function upsertLeaveTypePolicySettingsAction(
     await db.$transaction(async (tx) => {
       let leaveTypeId = payload.leaveTypeId
 
+      const validEmploymentStatus = await tx.employmentStatus.findFirst({
+        where: {
+          id: payload.employmentStatusId,
+          companyId: context.companyId,
+        },
+        select: { id: true },
+      })
+
+      if (!validEmploymentStatus) {
+        throw new Error("Employment status not found in the active company.")
+      }
+
       if (leaveTypeId) {
         const existing = await tx.leaveType.findFirst({
           where: { id: leaveTypeId, companyId: context.companyId },

@@ -6,7 +6,24 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   return Number(value.toString())
 }
 
-const amount = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" })
+const amountNumber = new Intl.NumberFormat("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const toPhpAmount = (value: number): string => `PHP ${amountNumber.format(value)}`
+
+const toPayslipDisplayId = (value: string): string => {
+  if (value.startsWith("PSL-")) {
+    return value
+  }
+
+  if (value.startsWith("RUN-")) {
+    return value.replace("RUN-", "PSL-")
+  }
+
+  return `PSL-${value}`
+}
 
 const toDateLabel = (value: Date): string => {
   return new Intl.DateTimeFormat("en-PH", {
@@ -32,93 +49,74 @@ const toDateTimeLabel = (value: Date | null): string => {
 export type PayrollPayslipsViewModel = {
   companyId: string
   companyName: string
-  selectedRunId: string | null
-  runs: Array<{
-    id: string
-    label: string
-    statusCode: string
-  }>
   payslips: Array<{
     id: string
+    employeeId: string
     payslipNumber: string
     employeeName: string
     employeeNumber: string
+    employeePhotoUrl: string | null
     grossPay: string
     totalDeductions: string
     netPay: string
     releasedAt: string
     generatedAt: string
     runNumber: string
+    runPeriodLabel: string
   }>
 }
 
-export async function getPayrollPayslipsViewModel(companyId: string, selectedRunId?: string): Promise<PayrollPayslipsViewModel> {
+export async function getPayrollPayslipsViewModel(companyId: string): Promise<PayrollPayslipsViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  const runs = await db.payrollRun.findMany({
+  const payslips = await db.payslip.findMany({
     where: {
-      companyId: context.companyId,
-    },
-    include: {
-      payPeriod: {
-        select: {
-          cutoffStartDate: true,
-          cutoffEndDate: true,
-        },
+      payrollRun: {
+        companyId: context.companyId,
       },
     },
-    orderBy: [{ createdAt: "desc" }],
-    take: 40,
-  })
-
-  const resolvedRunId = runs.some((run) => run.id === selectedRunId) ? selectedRunId ?? null : (runs[0]?.id ?? null)
-
-  const payslips = resolvedRunId
-    ? await db.payslip.findMany({
-        where: {
-          payrollRunId: resolvedRunId,
-          payrollRun: {
-            companyId: context.companyId,
-          },
-        },
-        include: {
-          employee: {
-            select: {
+    include: {
+      employee: {
+        select: {
+          id: true,
               firstName: true,
               lastName: true,
               employeeNumber: true,
+              photoUrl: true,
             },
           },
-          payrollRun: {
+      payrollRun: {
+        select: {
+          runNumber: true,
+          payPeriod: {
             select: {
-              runNumber: true,
+              cutoffStartDate: true,
+              cutoffEndDate: true,
             },
           },
         },
-        orderBy: [{ employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }],
-      })
-    : []
+      },
+    },
+    orderBy: [{ generatedAt: "desc" }],
+  })
 
   return {
     companyId: context.companyId,
     companyName: context.companyName,
-    selectedRunId: resolvedRunId,
-    runs: runs.map((run) => ({
-      id: run.id,
-      statusCode: run.statusCode,
-      label: `${run.runNumber} (${toDateLabel(run.payPeriod.cutoffStartDate)} - ${toDateLabel(run.payPeriod.cutoffEndDate)})`,
-    })),
     payslips: payslips.map((payslip) => ({
       id: payslip.id,
-      payslipNumber: payslip.payslipNumber,
+      employeeId: payslip.employee.id,
+      payslipNumber: toPayslipDisplayId(payslip.payslipNumber),
       employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
       employeeNumber: payslip.employee.employeeNumber,
-      grossPay: amount.format(toNumber(payslip.grossPay)),
-      totalDeductions: amount.format(toNumber(payslip.totalDeductions)),
-      netPay: amount.format(toNumber(payslip.netPay)),
+      employeePhotoUrl: payslip.employee.photoUrl,
+      grossPay: toPhpAmount(toNumber(payslip.grossPay)),
+      totalDeductions: toPhpAmount(toNumber(payslip.totalDeductions)),
+      netPay: toPhpAmount(toNumber(payslip.netPay)),
       releasedAt: toDateTimeLabel(payslip.releasedAt),
       generatedAt: toDateTimeLabel(payslip.generatedAt),
       runNumber: payslip.payrollRun.runNumber,
+      runPeriodLabel: `${toDateLabel(payslip.payrollRun.payPeriod.cutoffStartDate)} - ${toDateLabel(payslip.payrollRun.payPeriod.cutoffEndDate)}`,
     })),
   }
 }

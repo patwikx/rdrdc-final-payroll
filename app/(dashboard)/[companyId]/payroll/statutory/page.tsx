@@ -10,12 +10,10 @@ import { getPayrollStatutoryViewModel } from "@/modules/payroll/utils/get-payrol
 
 type PayrollStatutoryPageProps = {
   params: Promise<{ companyId: string }>
-  searchParams: Promise<{ runId?: string }>
 }
 
-export default async function PayrollStatutoryPage({ params, searchParams }: PayrollStatutoryPageProps) {
+export default async function PayrollStatutoryPage({ params }: PayrollStatutoryPageProps) {
   const { companyId } = await params
-  const { runId } = await searchParams
 
   let company: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
 
@@ -32,16 +30,16 @@ export default async function PayrollStatutoryPage({ params, searchParams }: Pay
     redirect(`/${company.companyId}/dashboard`)
   }
 
-  const viewModel = await getPayrollStatutoryViewModel(company.companyId, runId)
+  const viewModel = await getPayrollStatutoryViewModel(company.companyId)
 
   return (
     <PayrollStatutoryPageClient
       companyId={viewModel.companyId}
       companyName={viewModel.companyName}
-      selectedRunId={viewModel.selectedRunId}
-      runs={viewModel.runs}
+      printedBy={viewModel.printedBy}
       totals={viewModel.totals}
       rows={viewModel.rows}
+      birRows={viewModel.birRows}
     />
   )
 }

@@ -142,7 +142,51 @@ const getDateRange = (start: Date, end: Date): Date[] => {
   return dates
 }
 
+const toUtcDateOnly = (value: Date): Date => {
+  const [year, month, day] = toDateKey(value).split("-").map(Number)
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+const getInclusiveDayCount = (start: Date, end: Date): number => {
+  const startUtc = toUtcDateOnly(start)
+  const endUtc = toUtcDateOnly(end)
+  if (endUtc < startUtc) {
+    return 0
+  }
+
+  const diffMs = endUtc.getTime() - startUtc.getTime()
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1
+}
+
 const roundCurrency = (value: number): number => Math.round(value * 100) / 100
+
+const computeAnnualTaxFromBracketRows = (
+  taxableCompensation: number,
+  annualTaxRows: Array<{
+    bracketOver: Prisma.Decimal
+    bracketNotOver: Prisma.Decimal
+    baseTax: Prisma.Decimal
+    taxRatePercent: Prisma.Decimal
+    excessOver: Prisma.Decimal
+  }>
+): number => {
+  if (taxableCompensation <= 0 || annualTaxRows.length === 0) {
+    return 0
+  }
+
+  const matched =
+    annualTaxRows.find((row) => {
+      const bracketOver = toNumber(row.bracketOver)
+      const bracketNotOver = toNumber(row.bracketNotOver)
+      return taxableCompensation >= bracketOver && taxableCompensation <= bracketNotOver
+    }) ??
+    annualTaxRows[annualTaxRows.length - 1]
+
+  const baseTax = toNumber(matched.baseTax)
+  const rate = toNumber(matched.taxRatePercent)
+  const excessOver = toNumber(matched.excessOver)
+  return roundCurrency(Math.max(0, baseTax + (taxableCompensation - excessOver) * rate))
+}
 
 const roundQuantity = (value: number): number => Math.round(value * 10000) / 10000
 
@@ -870,11 +914,22 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   if (!step2?.isCompleted) return { ok: false, error: "Payroll run must pass validation before calculation." }
 
   const filters = parseRunFilters(run.remarks)
+  const isThirteenthMonthRun = run.runTypeCode === "THIRTEENTH_MONTH"
+  const isMidYearBonusRun = run.runTypeCode === "MID_YEAR_BONUS"
+  const isBonusOnlyRun = isThirteenthMonthRun || isMidYearBonusRun
+  // TODO(payroll-final-pay): Confirm HR-approved Final Pay/Separation Pay computation workflow and formulas before implementing FINAL_PAY run logic.
+  const isFinalPayRun = run.runTypeCode === "FINAL_PAY"
+  const yearStartDate = new Date(Date.UTC(run.payPeriod.year, 0, 1))
+  const yearEndDate = new Date(Date.UTC(run.payPeriod.year, 11, 31))
   const employeeWhere: Prisma.EmployeeWhereInput = {
     companyId: run.companyId,
-    isActive: true,
     deletedAt: null,
     payPeriodPatternId: run.payPeriod.patternId,
+    ...(isThirteenthMonthRun
+      ? {
+          OR: [{ isActive: true }, { separationDate: { gte: yearStartDate, lte: yearEndDate } }],
+        }
+      : { isActive: true }),
   }
   if (filters.departmentIds.length > 0) employeeWhere.departmentId = { in: filters.departmentIds }
   if (filters.branchIds.length > 0) employeeWhere.branchId = { in: filters.branchIds }
@@ -895,6 +950,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         },
       },
       workSchedule: { select: { restDays: true } },
+      employmentType: { select: { has13thMonth: true } },
       earnings: {
         where: {
           isActive: true,
@@ -930,7 +986,15 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const employeeIds = employees.map((employee) => employee.id)
   const datesInPeriod = getDateRange(run.payPeriod.cutoffStartDate, run.payPeriod.cutoffEndDate)
 
-  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig] = await Promise.all([
+  const regularRunStatusesFor13th: PayrollRunStatus[] = [
+    PayrollRunStatus.COMPUTED,
+    PayrollRunStatus.FOR_REVIEW,
+    PayrollRunStatus.APPROVED,
+    PayrollRunStatus.FOR_PAYMENT,
+    PayrollRunStatus.PAID,
+  ]
+
+  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig] = await Promise.all([
     db.holiday.findMany({
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
@@ -1011,7 +1075,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     }),
     db.taxTable.findMany({
       where: {
-        taxTableTypeCode: { in: [TaxTableType.SEMI_MONTHLY, TaxTableType.MONTHLY] },
+        taxTableTypeCode: { in: [TaxTableType.SEMI_MONTHLY, TaxTableType.MONTHLY, TaxTableType.ANNUAL] },
         effectiveFrom: { lte: run.payPeriod.cutoffEndDate },
         OR: [{ effectiveTo: null }, { effectiveTo: { gte: run.payPeriod.cutoffStartDate } }],
       },
@@ -1029,6 +1093,38 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         },
       },
       _sum: { grossPay: true, netPay: true, withholdingTax: true },
+    }),
+    db.payslip.groupBy({
+      by: ["employeeId"],
+      where: {
+        employeeId: { in: employeeIds },
+        payrollRun: {
+          companyId: run.companyId,
+          runTypeCode: "REGULAR",
+          statusCode: { in: regularRunStatusesFor13th },
+          payPeriod: {
+            year: run.payPeriod.year,
+            cutoffEndDate: { lte: run.payPeriod.cutoffEndDate },
+          },
+        },
+      },
+      _sum: { basicPay: true },
+    }),
+    db.payslip.groupBy({
+      by: ["employeeId"],
+      where: {
+        employeeId: { in: employeeIds },
+        payrollRun: {
+          companyId: run.companyId,
+          runTypeCode: { in: ["THIRTEENTH_MONTH", "MID_YEAR_BONUS"] },
+          statusCode: PayrollRunStatus.PAID,
+          payPeriod: {
+            year: run.payPeriod.year,
+            cutoffEndDate: { lt: run.payPeriod.cutoffStartDate },
+          },
+        },
+      },
+      _sum: { grossPay: true },
     }),
     db.loanAmortization.findMany({
       where: {
@@ -1131,6 +1227,14 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     paidPayslipTotals.map((row) => [row.employeeId, { grossPay: toNumber(row._sum.grossPay), netPay: toNumber(row._sum.netPay), withholdingTax: toNumber(row._sum.withholdingTax) }])
   )
 
+  const regularBasicYtdByEmployee = new Map(
+    regularPayslipBasicYtd.map((row) => [row.employeeId, toNumber(row._sum.basicPay)])
+  )
+
+  const paidBonusBenefitsYtdByEmployee = new Map(
+    paidBonusBenefitsYtd.map((row) => [row.employeeId, toNumber(row._sum.grossPay)])
+  )
+
   const dueLoanAmortizationsByEmployee = new Map<string, typeof dueLoanAmortizations>()
   for (const amortization of dueLoanAmortizations) {
     const list = dueLoanAmortizationsByEmployee.get(amortization.loan.employeeId)
@@ -1170,6 +1274,20 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const activeTaxRows = latestTaxEffectiveFrom
     ? taxRowsForType.filter((row) => row.effectiveFrom.getTime() === latestTaxEffectiveFrom.getTime())
     : taxRowsForType
+
+  const annualRowsForYear = taxTables
+    .filter((row) => row.taxTableTypeCode === TaxTableType.ANNUAL && row.effectiveYear === run.payPeriod.year)
+    .sort((a, b) => {
+      if (a.effectiveFrom.getTime() !== b.effectiveFrom.getTime()) {
+        return b.effectiveFrom.getTime() - a.effectiveFrom.getTime()
+      }
+
+      return toNumber(a.bracketOver) - toNumber(b.bracketOver)
+    })
+  const latestAnnualEffectiveFrom = annualRowsForYear[0]?.effectiveFrom ?? null
+  const activeAnnualTaxRows = latestAnnualEffectiveFrom
+    ? annualRowsForYear.filter((row) => row.effectiveFrom.getTime() === latestAnnualEffectiveFrom.getTime())
+    : []
 
   try {
     await db.$transaction(async (tx) => {
@@ -1264,6 +1382,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         }
         earnings: {
           basicPay: number
+          ytdRegularBasicFor13th?: number
           overtimePay: number
           nightDiffPay: number
           holidayPay: number
@@ -1311,7 +1430,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           sss: sssTables.length,
           philHealth: philHealthTable ? 1 : 0,
           pagIbig: pagIbigTables.length,
-          withholdingTax: activeTaxRows.length,
+          withholdingTax: activeAnnualTaxRows.length > 0 ? activeAnnualTaxRows.length : activeTaxRows.length,
         },
         employeeStats: {
           sssApplied: 0,
@@ -1342,34 +1461,65 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const dailyRate = salary.dailyRate ? toNumber(salary.dailyRate) : (baseSalary * 12) / monthlyDivisor
         const hourlyRate = salary.hourlyRate ? toNumber(salary.hourlyRate) : dailyRate / hoursPerDay
 
-        const attendanceSnapshot = calculateAttendanceSnapshot({
-          workScheduleRestDays: employee.workSchedule?.restDays ?? null,
-          dailyRate,
-          hourlyRate,
-          holidaysByDate,
-          dtrs: dtrsByEmployeeId.get(employee.id) ?? [],
-          approvedLeaves: approvedLeavesByEmployeeId.get(employee.id) ?? [],
-          approvedOvertimeByDate: approvedOvertimeByEmployeeDate.get(employee.id) ?? new Map<string, number>(),
-          overtimeRateByType,
-          isOvertimeEligible: employee.isOvertimeEligible,
-          isNightDiffEligible: employee.isNightDiffEligible,
-          datesInPeriod,
-        })
+        if (isThirteenthMonthRun && employee.employmentType && !employee.employmentType.has13thMonth) {
+          skippedEmployeeCount += 1
+          continue
+        }
+
+        const attendanceSnapshot = isBonusOnlyRun
+          ? {
+              totalWorkingDays: 0,
+              totalPayableDays: 0,
+              unpaidAbsences: 0,
+              tardinessMins: 0,
+              undertimeMins: 0,
+              overtimeHours: 0,
+              overtimePay: 0,
+              nightDiffHours: 0,
+              holidayPremiumPay: 0,
+              hoursWorked: 0,
+            }
+          : calculateAttendanceSnapshot({
+              workScheduleRestDays: employee.workSchedule?.restDays ?? null,
+              dailyRate,
+              hourlyRate,
+              holidaysByDate,
+              dtrs: dtrsByEmployeeId.get(employee.id) ?? [],
+              approvedLeaves: approvedLeavesByEmployeeId.get(employee.id) ?? [],
+              approvedOvertimeByDate: approvedOvertimeByEmployeeDate.get(employee.id) ?? new Map<string, number>(),
+              overtimeRateByType,
+              isOvertimeEligible: employee.isOvertimeEligible,
+              isNightDiffEligible: employee.isNightDiffEligible,
+              datesInPeriod,
+            })
 
         const periodBaseSalary = (baseSalary * 12) / Math.max(run.payPeriod.pattern.periodsPerYear, 1)
-        const basicPay = roundCurrency(
+        const regularBasicPay = roundCurrency(
           salary.salaryRateTypeCode === "MONTHLY"
             ? Math.max(0, periodBaseSalary - attendanceSnapshot.unpaidAbsences * dailyRate)
             : attendanceSnapshot.totalPayableDays * dailyRate
         )
 
-        const overtimePay = roundCurrency(attendanceSnapshot.overtimePay)
-        const nightDiffPay = roundCurrency(attendanceSnapshot.nightDiffHours * hourlyRate * nightDiffRate)
-        const holidayPay = roundCurrency(attendanceSnapshot.holidayPremiumPay)
+        const ytdRegularBasic = regularBasicYtdByEmployee.get(employee.id) ?? 0
+        const employeeHireDate = toUtcDateOnly(employee.hireDate)
+        const employeeSeparationDate = employee.separationDate ? toUtcDateOnly(employee.separationDate) : null
+        const coverageStart = employeeHireDate > yearStartDate ? employeeHireDate : yearStartDate
+        const runCoverageEnd = toUtcDateOnly(run.payPeriod.cutoffEndDate)
+        const coverageEnd = employeeSeparationDate && employeeSeparationDate < runCoverageEnd ? employeeSeparationDate : runCoverageEnd
+        const fallback13thProrated = roundCurrency(baseSalary * (getInclusiveDayCount(coverageStart, coverageEnd) / 365))
+
+        const thirteenthMonthPay = roundCurrency(ytdRegularBasic > 0 ? ytdRegularBasic / 12 : fallback13thProrated)
+
+        const midYearBonusPay = roundCurrency(baseSalary / 2)
+        const basicPay = isThirteenthMonthRun ? thirteenthMonthPay : isMidYearBonusRun ? midYearBonusPay : regularBasicPay
+
+        const overtimePay = isBonusOnlyRun ? 0 : roundCurrency(attendanceSnapshot.overtimePay)
+        const nightDiffPay = isBonusOnlyRun ? 0 : roundCurrency(attendanceSnapshot.nightDiffHours * hourlyRate * nightDiffRate)
+        const holidayPay = isBonusOnlyRun ? 0 : roundCurrency(attendanceSnapshot.holidayPremiumPay)
 
         const recurringEarningLines: EarningLine[] = []
         let recurringEarningsTotal = 0
-        for (const earning of employee.earnings) {
+        for (const earning of isBonusOnlyRun ? [] : employee.earnings) {
           if (earning.frequency === "MONTHLY" && !secondHalfPeriod) continue
 
           let amount = toNumber(earning.amount)
@@ -1407,8 +1557,22 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const grossPay = roundCurrency(
           basicPay + overtimePay + nightDiffPay + holidayPay + recurringEarningsTotal + manualAdjustmentEarningsTotal
         )
-        const tardinessDeduction = calculateAttendanceRuleDeduction(attendanceSnapshot.tardinessMins, hourlyRate, dailyRate, attendanceRuleByType.get("TARDINESS"))
-        const undertimeDeduction = calculateAttendanceRuleDeduction(attendanceSnapshot.undertimeMins, hourlyRate, dailyRate, attendanceRuleByType.get("UNDERTIME"))
+        const tardinessDeduction = isBonusOnlyRun
+          ? 0
+          : calculateAttendanceRuleDeduction(
+              attendanceSnapshot.tardinessMins,
+              hourlyRate,
+              dailyRate,
+              attendanceRuleByType.get("TARDINESS")
+            )
+        const undertimeDeduction = isBonusOnlyRun
+          ? 0
+          : calculateAttendanceRuleDeduction(
+              attendanceSnapshot.undertimeMins,
+              hourlyRate,
+              dailyRate,
+              attendanceRuleByType.get("UNDERTIME")
+            )
 
         let sssEmployee = 0
         let sssEmployer = 0
@@ -1420,7 +1584,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const matchingSss = sssTables.find((table) => baseSalary >= toNumber(table.salaryBracketMin) && baseSalary <= toNumber(table.salaryBracketMax))
         const matchingPagIbig = pagIbigTables.find((table) => baseSalary >= toNumber(table.salaryBracketMin) && baseSalary <= toNumber(table.salaryBracketMax))
 
-        const applySss = shouldApplyByTiming(
+        const applySss =
+          !isBonusOnlyRun &&
+          shouldApplyByTiming(
           statutorySchedule.sss,
           run.payPeriod.pattern.payFrequencyCode,
           run.payPeriod.periodHalf
@@ -1439,7 +1605,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           statutoryDiagnostics.employeeStats.sssSkippedByTiming += 1
         }
 
-        const applyPhilHealth = shouldApplyByTiming(
+        const applyPhilHealth =
+          !isBonusOnlyRun &&
+          shouldApplyByTiming(
           statutorySchedule.philHealth,
           run.payPeriod.pattern.payFrequencyCode,
           run.payPeriod.periodHalf
@@ -1460,7 +1628,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           statutoryDiagnostics.employeeStats.philHealthSkippedByTiming += 1
         }
 
-        const applyPagIbig = shouldApplyByTiming(
+        const applyPagIbig =
+          !isBonusOnlyRun &&
+          shouldApplyByTiming(
           statutorySchedule.pagIbig,
           run.payPeriod.pattern.payFrequencyCode,
           run.payPeriod.periodHalf
@@ -1483,9 +1653,8 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const provisionalTaxableIncome = roundCurrency(
           Math.max(0, grossPay - (sssEmployee + philHealthEmployee + pagIbigEmployee))
         )
-        const dependentCount = Math.min(Math.max(employee.numberOfDependents, 0), 4)
-        const annualExemption = 50000 * (1 + dependentCount)
-        const periodExemption = taxTableType === TaxTableType.SEMI_MONTHLY ? annualExemption / 24 : annualExemption / 12
+        const previousPaidTotals = paidPayslipTotalsByEmployee.get(employee.id) ?? { grossPay: 0, netPay: 0, withholdingTax: 0 }
+        const ytdContributionMap = ytdContributionsByEmployee.get(employee.id) ?? new Map<string, number>()
 
         const recurringDeductionLines: DeductionLine[] = []
         const netBaseForRecurring = Math.max(
@@ -1493,7 +1662,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           grossPay - (tardinessDeduction + undertimeDeduction + sssEmployee + philHealthEmployee + pagIbigEmployee)
         )
 
-        for (const recurring of employee.recurringDeductions) {
+        for (const recurring of isBonusOnlyRun ? [] : employee.recurringDeductions) {
           const periodApplicability = recurring.deductionType.payPeriodApplicability
           if (periodApplicability === "FIRST_HALF" && run.payPeriod.periodHalf !== "FIRST") continue
           if (periodApplicability === "SECOND_HALF" && run.payPeriod.periodHalf !== "SECOND") continue
@@ -1528,37 +1697,65 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         )
 
         const taxableIncome = roundCurrency(Math.max(0, provisionalTaxableIncome - preTaxRecurringTotal))
-        const adjustedTaxableIncome = Math.max(0, taxableIncome - periodExemption)
 
         let withholdingTax = 0
-        const applyWithholdingTax = shouldApplyByTiming(
+        const applyWithholdingTax =
+          !isBonusOnlyRun &&
+          shouldApplyByTiming(
           statutorySchedule.withholdingTax,
           run.payPeriod.pattern.payFrequencyCode,
           run.payPeriod.periodHalf
         )
         if (applyWithholdingTax) {
           if (employee.isSubstitutedFiling) {
-            withholdingTax = roundCurrency(adjustedTaxableIncome * 0.08)
+            withholdingTax = roundCurrency(taxableIncome * 0.08)
             if (withholdingTax > 0) {
               statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
             }
           } else {
-            const taxBracket = activeTaxRows.find(
-              (table) =>
-                adjustedTaxableIncome >= toNumber(table.bracketOver) &&
-                adjustedTaxableIncome <= toNumber(table.bracketNotOver)
+            const mandatoryContributionsBeforeCurrentRun =
+              (ytdContributionMap.get("SSS") ?? 0) +
+              (ytdContributionMap.get("PHILHEALTH") ?? 0) +
+              (ytdContributionMap.get("PAGIBIG") ?? 0)
+            const mandatoryContributionsProjected =
+              mandatoryContributionsBeforeCurrentRun + sssEmployee + philHealthEmployee + pagIbigEmployee
+
+            const bonusBenefitsBeforeCurrentRun = paidBonusBenefitsYtdByEmployee.get(employee.id) ?? 0
+            const bonusBenefitsProjected = Math.min(90000, bonusBenefitsBeforeCurrentRun)
+
+            const annualGrossProjected = previousPaidTotals.grossPay + grossPay
+            const annualTaxableProjected = Math.max(
+              0,
+              annualGrossProjected - mandatoryContributionsProjected - bonusBenefitsProjected - preTaxRecurringTotal
             )
 
-            if (taxBracket) {
-              withholdingTax = roundCurrency(
-                toNumber(taxBracket.baseTax) +
-                  (adjustedTaxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
+            if (activeAnnualTaxRows.length > 0) {
+              const annualTaxDueProjected = computeAnnualTaxFromBracketRows(
+                annualTaxableProjected,
+                activeAnnualTaxRows
               )
+              withholdingTax = roundCurrency(Math.max(0, annualTaxDueProjected - previousPaidTotals.withholdingTax))
               if (withholdingTax > 0) {
                 statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
               }
-            } else if (adjustedTaxableIncome > 0) {
-              statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
+            } else {
+              const taxBracket = activeTaxRows.find(
+                (table) =>
+                  taxableIncome >= toNumber(table.bracketOver) &&
+                  taxableIncome <= toNumber(table.bracketNotOver)
+              )
+
+              if (taxBracket) {
+                withholdingTax = roundCurrency(
+                  toNumber(taxBracket.baseTax) +
+                    (taxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
+                )
+                if (withholdingTax > 0) {
+                  statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
+                }
+              } else if (taxableIncome > 0) {
+                statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
+              }
             }
           }
         } else {
@@ -1596,7 +1793,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         }> = []
 
         let availableNetForLoans = baseNetBeforeLoans
-        for (const amortization of dueLoanAmortizationsByEmployee.get(employee.id) ?? []) {
+        for (const amortization of isBonusOnlyRun ? [] : dueLoanAmortizationsByEmployee.get(employee.id) ?? []) {
           const amortizationAmount = roundCurrency(toNumber(amortization.totalPayment))
           if (amortizationAmount <= 0) {
             continue
@@ -1698,19 +1895,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const netPay = roundCurrency(Math.max(grossPay - totalDeductionsForPayslip, 0))
         const totalEarnings = roundCurrency(grossPay - basicPay)
 
-        const previousPaidTotals = paidPayslipTotalsByEmployee.get(employee.id) ?? { grossPay: 0, netPay: 0, withholdingTax: 0 }
-        const ytdContributionMap = ytdContributionsByEmployee.get(employee.id) ?? new Map<string, number>()
-
         const payslip = await tx.payslip.create({
           data: {
-            payslipNumber: `${run.runNumber}-${employee.id.slice(0, 6).toUpperCase()}`,
+            payslipNumber: `PSL-${run.runNumber.replace(/^RUN-/, "")}-${employee.id.slice(0, 6).toUpperCase()}`,
             payrollRunId: run.id,
             employeeId: employee.id,
             baseSalary: toDecimalText(roundCurrency(baseSalary)),
             dailyRate: roundQuantity(dailyRate).toFixed(4),
             hourlyRate: roundQuantity(hourlyRate).toFixed(4),
-            workingDays: toDecimalText(run.payPeriod.workingDays ?? attendanceSnapshot.totalWorkingDays),
-            daysWorked: toDecimalText(attendanceSnapshot.totalPayableDays),
+            workingDays: toDecimalText(
+              isBonusOnlyRun ? 0 : (run.payPeriod.workingDays ?? attendanceSnapshot.totalWorkingDays)
+            ),
+            daysWorked: toDecimalText(isBonusOnlyRun ? 0 : attendanceSnapshot.totalPayableDays),
             daysAbsent: toDecimalText(attendanceSnapshot.unpaidAbsences),
             hoursWorked: attendanceSnapshot.hoursWorked > 0 ? toDecimalText(attendanceSnapshot.hoursWorked) : null,
             overtimeHours: toDecimalText(attendanceSnapshot.overtimeHours),
@@ -1742,11 +1938,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
 
         const earningLines: EarningLine[] = [
           {
-            earningTypeId: await getOrCreateEarningTypeId("BASIC_PAY", "Basic Pay"),
-            description: "Basic Pay",
+            earningTypeId: await getOrCreateEarningTypeId(
+              isThirteenthMonthRun
+                ? "THIRTEENTH_MONTH"
+                : isMidYearBonusRun
+                  ? "MID_YEAR_BONUS"
+                  : "BASIC_PAY",
+              isThirteenthMonthRun ? "13th Month Pay" : isMidYearBonusRun ? "Mid-Year Bonus" : "Basic Pay"
+            ),
+            description: isThirteenthMonthRun ? "13th Month Pay" : isMidYearBonusRun ? "Mid-Year Bonus" : "Basic Pay",
             amount: basicPay,
-            days: attendanceSnapshot.totalPayableDays,
-            rate: dailyRate,
+            days: isBonusOnlyRun ? undefined : attendanceSnapshot.totalPayableDays,
+            rate: isBonusOnlyRun ? undefined : dailyRate,
             isTaxable: true,
           },
           ...recurringEarningLines,
@@ -1906,6 +2109,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           },
           earnings: {
             basicPay,
+            ...(isThirteenthMonthRun ? { ytdRegularBasicFor13th: ytdRegularBasic } : {}),
             overtimePay,
             nightDiffPay,
             holidayPay,
@@ -1973,6 +2177,10 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               timezone: "Asia/Manila",
               preTaxRecurringReducesTaxableIncome: true,
               leaveFallbackOnUnmatchedOnLeave: "UNPAID",
+              runTypeCode: run.runTypeCode,
+              thirteenthMonthFormula: isThirteenthMonthRun ? "(ytdRegularBasicOrProratedFallback) / 12" : undefined,
+              midYearBonusFormula: isMidYearBonusRun ? "baseSalary / 2" : undefined,
+              finalPayFormula: isFinalPayRun ? "TODO: pending HR process confirmation" : undefined,
             },
             processedEmployeeCount,
             skippedEmployeeCount,

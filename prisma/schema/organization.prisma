@@ -171,7 +171,9 @@ model Division {
 
 model EmploymentStatus {
   id          String  @id @default(uuid())
-  code        String  @unique
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
   name        String
   description String?
 
@@ -195,13 +197,17 @@ model EmploymentStatus {
   newStatusHistories      EmployeeStatusHistory[] @relation("NewEmploymentStatus")
   leavePolicies           LeavePolicy[]
 
+  @@unique([companyId, code])
   @@index([code])
+  @@index([companyId])
   @@index([isActive])
 }
 
 model EmploymentType {
   id          String  @id @default(uuid())
-  code        String  @unique
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
   name        String
   description String?
 
@@ -223,13 +229,17 @@ model EmploymentType {
 
   employees Employee[]
 
+  @@unique([companyId, code])
   @@index([code])
+  @@index([companyId])
   @@index([isActive])
 }
 
 model EmploymentClass {
   id          String  @id @default(uuid())
-  code        String  @unique
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code        String
   name        String
   description String?
 
@@ -250,7 +260,9 @@ model EmploymentClass {
 
   employees Employee[]
 
+  @@unique([companyId, code])
   @@index([code])
+  @@index([companyId])
   @@index([isActive])
 }
 

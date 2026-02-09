@@ -54,7 +54,7 @@ export async function getEmployeeMovementsViewModel(companyId: string): Promise<
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
         select: { id: true, employeeNumber: true, firstName: true, lastName: true },
       }),
-      db.employmentStatus.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+      db.employmentStatus.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
       db.position.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
       db.department.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
       db.branch.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),

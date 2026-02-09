@@ -82,7 +82,7 @@ export async function getLeaveOtPoliciesViewModel(companyId: string): Promise<Le
       },
     }),
     db.employmentStatus.findMany({
-      where: { isActive: true },
+      where: { companyId: context.companyId, isActive: true },
       orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,

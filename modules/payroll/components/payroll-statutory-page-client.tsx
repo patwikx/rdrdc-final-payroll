@@ -18,8 +18,10 @@ import {
 import { cn } from "@/lib/utils"
 import {
   GovernmentRemittanceReports,
+  type Dole13thMonthRow,
   type PagIbigContributionRow,
   type PhilHealthRemittanceRow,
+  type SssRemittanceRow,
 } from "@/modules/payroll/components/government-remittance-reports"
 
 type PayrollStatutoryPageClientProps = {
@@ -42,6 +44,7 @@ type PayrollStatutoryPageClientProps = {
     employeeNumber: string
     employeePhotoUrl: string | null
     birthDate: string | null
+    sssNumber: string | null
     philHealthPin: string | null
     pagIbigNumber: string | null
     tinNumber: string | null
@@ -72,6 +75,14 @@ type PayrollStatutoryPageClientProps = {
     withholdingTax: string
     annualTaxDue: string
     taxVariance: string
+  }>
+  doleRows: Array<{
+    employeeId: string
+    employeeName: string
+    employeeNumber: string
+    year: number
+    annualBasicSalary: string
+    thirteenthMonthPay: string
   }>
 }
 
@@ -152,6 +163,7 @@ export function PayrollStatutoryPageClient({
   printedBy,
   rows,
   birRows,
+  doleRows,
 }: PayrollStatutoryPageClientProps) {
   const [activeReport, setActiveReport] = useState<ReportKey>("philhealth")
   const [searchText, setSearchText] = useState("")
@@ -216,6 +228,16 @@ export function PayrollStatutoryPageClient({
     }))
   }, [scopedRows])
 
+  const sssRows = useMemo<SssRemittanceRow[]>(() => {
+    return scopedRows.map((row) => ({
+      idNumber: row.employeeNumber,
+      employeeName: row.employeeName,
+      sssNumber: row.sssNumber ?? "",
+      employeeShare: parseAmount(row.sssEmployee),
+      employerShare: parseAmount(row.sssEmployer),
+    }))
+  }, [scopedRows])
+
   const pagIbigRows = useMemo<PagIbigContributionRow[]>(() => {
     return scopedRows.map((row) => {
       const nameParts = extractNameParts(row.employeeName)
@@ -242,6 +264,18 @@ export function PayrollStatutoryPageClient({
     const year = Number(selectedYearPrefix)
     return birRows.filter((row) => row.year === year)
   }, [birRows, selectedYearPrefix])
+
+  const filteredDoleRows = useMemo<Dole13thMonthRow[]>(() => {
+    const targetYear = selectedYearPrefix ? Number(selectedYearPrefix) : undefined
+    const scoped = targetYear ? doleRows.filter((row) => row.year === targetYear) : doleRows
+
+    return scoped.map((row) => ({
+      employeeId: row.employeeNumber,
+      employeeName: row.employeeName,
+      annualBasicSalary: parseAmount(row.annualBasicSalary),
+      thirteenthMonthPay: parseAmount(row.thirteenthMonthPay),
+    }))
+  }, [doleRows, selectedYearPrefix])
 
   const exportCsvTemplate = (report: ReportKey) => {
     if (report === "philhealth") {
@@ -358,22 +392,76 @@ export function PayrollStatutoryPageClient({
     }
 
     if (report === "sss") {
-      downloadCsv(
-        "sss-monthly-remittance.csv",
-        ["Employee Number", "Employee Name", "SSS Employee", "SSS Employer"],
-        scopedRows.map((row) => [row.employeeNumber, row.employeeName, row.sssEmployee, row.sssEmployer])
+      const totals = sssRows.reduce(
+        (acc, row) => {
+          acc.ee += row.employeeShare
+          acc.er += row.employerShare
+          return acc
+        },
+        { ee: 0, er: 0 }
       )
-      toast.success("Generated SSS monthly remittance CSV.")
+
+      const monthLabel = monthYearFormatter.format(reportMonth)
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["SSS MONTHLY REMITTANCE REPORT"],
+        [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
+        [],
+        ["ID #", "EMPLOYEE NAME", "SSS #", "EMPLOYEE SHARE", "EMPLOYER SHARE", "TOTALS"],
+        ...sssRows.map((row) => {
+          const rowTotal = row.employeeShare + row.employerShare
+          return [
+            row.idNumber,
+            row.employeeName.toUpperCase(),
+            row.sssNumber,
+            numberFormatter.format(row.employeeShare),
+            numberFormatter.format(row.employerShare),
+            numberFormatter.format(rowTotal),
+          ]
+        }),
+        [
+          "TOTAL",
+          "",
+          "",
+          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.er),
+          numberFormatter.format(totals.ee + totals.er),
+        ],
+      ]
+
+      downloadCsvRows("sss-monthly-remittance-report.csv", reportRows)
+      toast.success("Generated styled SSS monthly remittance CSV.")
       return
     }
 
     if (report === "dole13th") {
-      downloadCsv(
-        "dole-13th-month-report-template.csv",
-        ["Employee Number", "Employee Name", "13th Month Pay", "Remarks"],
-        scopedRows.map((row) => [row.employeeNumber, row.employeeName, "", ""])
+      const yearLabel = selectedYearPrefix || String(new Date().getFullYear())
+      const totals = filteredDoleRows.reduce(
+        (acc, row) => {
+          acc.annualBasicSalary += row.annualBasicSalary
+          acc.thirteenthMonthPay += row.thirteenthMonthPay
+          return acc
+        },
+        { annualBasicSalary: 0, thirteenthMonthPay: 0 }
       )
-      toast.success("Generated DOLE 13th month report template.")
+
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["DOLE 13TH MONTH PAY REPORT"],
+        [`FOR CALENDAR YEAR ${yearLabel}`],
+        [],
+        ["EMPLOYEE ID", "EMPLOYEE NAME", "ANNUAL BASIC SALARY", "13TH MONTH PAY"],
+        ...filteredDoleRows.map((row) => [
+          row.employeeId,
+          row.employeeName.toUpperCase(),
+          numberFormatter.format(row.annualBasicSalary),
+          numberFormatter.format(row.thirteenthMonthPay),
+        ]),
+        ["TOTAL", "", numberFormatter.format(totals.annualBasicSalary), numberFormatter.format(totals.thirteenthMonthPay)],
+      ]
+
+      downloadCsvRows("dole-13th-month-pay-report.csv", reportRows)
+      toast.success("Generated styled DOLE 13th month report CSV.")
       return
     }
 
@@ -432,7 +520,7 @@ export function PayrollStatutoryPageClient({
           {companyName} Statutory Reports
         </h1>
         <p className="text-xs text-muted-foreground">
-          Iteration 3 locked: agency sidebar + report detail. Select PhilHealth or Pag-IBIG to view the printable report.
+          Select PhilHealth or Pag-IBIG to view the printable report.
         </p>
       </header>
 
@@ -493,13 +581,7 @@ export function PayrollStatutoryPageClient({
                 <p className="text-sm font-semibold">{resolvedReport.label}</p>
                 <p className="text-xs text-muted-foreground">{resolvedReport.frequency}</p>
               </div>
-              {resolvedReport.key === "sss" || resolvedReport.key === "dole13th" ? (
-                <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
-                  <IconDownload className="size-4" />
-                  Export CSV
-                </Button>
-              ) : null}
-              {resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" ? (
+              {resolvedReport.key === "sss" || resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" || resolvedReport.key === "dole13th" ? (
                 <div className="flex items-center gap-2">
                   <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
                     <IconDownload className="size-4" />
@@ -526,6 +608,24 @@ export function PayrollStatutoryPageClient({
                 showPhilHealth
                 showPagIbig={false}
               />
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "sss" ? (
+              <div id="statutory-print-root">
+                <GovernmentRemittanceReports
+                  companyName={companyName}
+                  philHealthMonth={reportMonth}
+                  pagIbigMonth={reportMonth}
+                  printedAt={new Date()}
+                  printedBy={printedBy}
+                  sssRows={sssRows}
+                  philHealthRows={[]}
+                  pagIbigRows={[]}
+                  showSss
+                  showPhilHealth={false}
+                  showPagIbig={false}
+                />
               </div>
             ) : null}
 
@@ -640,11 +740,27 @@ export function PayrollStatutoryPageClient({
               </div>
             ) : null}
 
-            {resolvedReport.key === "sss" || resolvedReport.key === "dole13th" ? (
-              <div className="rounded-md border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
-                This report currently exports as CSV template/data.
+            {resolvedReport.key === "dole13th" ? (
+              <div id="statutory-print-root">
+                <GovernmentRemittanceReports
+                  companyName={companyName}
+                  philHealthMonth={reportMonth}
+                  pagIbigMonth={reportMonth}
+                  birYear={selectedYearPrefix ? Number(selectedYearPrefix) : new Date().getFullYear()}
+                  printedAt={new Date()}
+                  printedBy={printedBy}
+                  sssRows={[]}
+                  philHealthRows={[]}
+                  pagIbigRows={[]}
+                  dole13thRows={filteredDoleRows}
+                  showSss={false}
+                  showPhilHealth={false}
+                  showPagIbig={false}
+                  showDole13th
+                />
               </div>
             ) : null}
+
           </section>
         </CardContent>
       </Card>

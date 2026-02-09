@@ -43,6 +43,7 @@ export type PayrollStatutoryViewModel = {
     employeeNumber: string
     employeePhotoUrl: string | null
     birthDate: string | null
+    sssNumber: string | null
     philHealthPin: string | null
     pagIbigNumber: string | null
     tinNumber: string | null
@@ -73,6 +74,14 @@ export type PayrollStatutoryViewModel = {
     withholdingTax: string
     annualTaxDue: string
     taxVariance: string
+  }>
+  doleRows: Array<{
+    employeeId: string
+    employeeName: string
+    employeeNumber: string
+    year: number
+    annualBasicSalary: string
+    thirteenthMonthPay: string
   }>
 }
 
@@ -123,7 +132,7 @@ export async function getPayrollStatutoryViewModel(
 ): Promise<PayrollStatutoryViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  const userMeta = await db.user.findUnique({
+  const userMetaPromise = db.user.findUnique({
     where: { id: context.userId },
     select: {
       firstName: true,
@@ -132,12 +141,7 @@ export async function getPayrollStatutoryViewModel(
     },
   })
 
-  const printedBy =
-    userMeta && userMeta.firstName && userMeta.lastName
-      ? `${userMeta.firstName} ${userMeta.lastName}`
-      : (userMeta?.username ?? "SYSTEM")
-
-  const payslips = await db.payslip.findMany({
+  const payslipsPromise = db.payslip.findMany({
     where: {
       payrollRun: {
         companyId: context.companyId,
@@ -156,7 +160,7 @@ export async function getPayrollStatutoryViewModel(
               governmentIds: {
                 where: {
                   isActive: true,
-                  idTypeId: { in: ["PHILHEALTH", "PAGIBIG", "TIN"] },
+                  idTypeId: { in: ["PHILHEALTH", "PAGIBIG", "TIN", "SSS"] },
                 },
                 select: {
                   idTypeId: true,
@@ -180,7 +184,7 @@ export async function getPayrollStatutoryViewModel(
     orderBy: [{ generatedAt: "desc" }],
   })
 
-  const birPayslips = await db.payslip.findMany({
+  const birPayslipsPromise = db.payslip.findMany({
     where: {
       payrollRun: {
         companyId: context.companyId,
@@ -219,7 +223,7 @@ export async function getPayrollStatutoryViewModel(
     orderBy: [{ generatedAt: "desc" }],
   })
 
-  const annualTaxRows = await db.taxTable.findMany({
+  const annualTaxRowsPromise = db.taxTable.findMany({
     where: {
       taxTableTypeCode: TaxTableType.ANNUAL,
       isActive: true,
@@ -235,6 +239,18 @@ export async function getPayrollStatutoryViewModel(
     },
     orderBy: [{ effectiveYear: "desc" }, { effectiveFrom: "desc" }, { bracketOver: "asc" }],
   })
+
+  const [userMeta, payslips, birPayslips, annualTaxRows] = await Promise.all([
+    userMetaPromise,
+    payslipsPromise,
+    birPayslipsPromise,
+    annualTaxRowsPromise,
+  ])
+
+  const printedBy =
+    userMeta && userMeta.firstName && userMeta.lastName
+      ? `${userMeta.firstName} ${userMeta.lastName}`
+      : (userMeta?.username ?? "SYSTEM")
 
   const totalsRaw = payslips.reduce(
     (acc, payslip) => {
@@ -276,6 +292,8 @@ export async function getPayrollStatutoryViewModel(
         payslip.employee.governmentIds.find((item) => item.idTypeId === "PHILHEALTH")?.idNumberMasked ?? null
       const pagIbigGovId =
         payslip.employee.governmentIds.find((item) => item.idTypeId === "PAGIBIG")?.idNumberMasked ?? null
+      const sssGovId =
+        payslip.employee.governmentIds.find((item) => item.idTypeId === "SSS")?.idNumberMasked ?? null
       const tinGovId =
         payslip.employee.governmentIds.find((item) => item.idTypeId === "TIN")?.idNumberMasked ?? null
 
@@ -286,6 +304,7 @@ export async function getPayrollStatutoryViewModel(
         employeeNumber: payslip.employee.employeeNumber,
         employeePhotoUrl: payslip.employee.photoUrl,
         birthDate: payslip.employee.birthDate ? payslip.employee.birthDate.toISOString() : null,
+        sssNumber: sssGovId,
         philHealthPin: philHealthGovId,
         pagIbigNumber: pagIbigGovId,
         tinNumber: tinGovId,
@@ -393,6 +412,60 @@ export async function getPayrollStatutoryViewModel(
           taxVariance: toPhp(taxVariance),
         }
       })
+      .sort((a, b) => {
+        if (a.year !== b.year) {
+          return b.year - a.year
+        }
+
+        return a.employeeName.localeCompare(b.employeeName)
+      }),
+    doleRows: Array.from(
+      birPayslips.reduce(
+        (map, payslip) => {
+          const year = payslip.payrollRun.payPeriod.year
+          const key = `${payslip.employee.id}:${year}`
+          const existing = map.get(key)
+
+          const regularBasic = payslip.payrollRun.runTypeCode === "REGULAR" ? toNumber(payslip.basicPay) : 0
+          const thirteenth = payslip.payrollRun.runTypeCode === "THIRTEENTH_MONTH" ? toNumber(payslip.grossPay) : 0
+
+          if (!existing) {
+            map.set(key, {
+              employeeId: payslip.employee.id,
+              employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
+              employeeNumber: payslip.employee.employeeNumber,
+              year,
+              annualBasicSalary: regularBasic,
+              thirteenthMonthPay: thirteenth,
+            })
+          } else {
+            existing.annualBasicSalary += regularBasic
+            existing.thirteenthMonthPay += thirteenth
+          }
+
+          return map
+        },
+        new Map<
+          string,
+          {
+            employeeId: string
+            employeeName: string
+            employeeNumber: string
+            year: number
+            annualBasicSalary: number
+            thirteenthMonthPay: number
+          }
+        >()
+      ).values()
+    )
+      .map((item) => ({
+        employeeId: item.employeeId,
+        employeeName: item.employeeName,
+        employeeNumber: item.employeeNumber,
+        year: item.year,
+        annualBasicSalary: toPhp(item.annualBasicSalary),
+        thirteenthMonthPay: toPhp(item.thirteenthMonthPay),
+      }))
       .sort((a, b) => {
         if (a.year !== b.year) {
           return b.year - a.year

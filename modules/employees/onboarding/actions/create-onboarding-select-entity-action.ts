@@ -26,7 +26,7 @@ const inputSchema = z.object({
 type CreateOnboardingSelectEntityInput = z.infer<typeof inputSchema>
 
 type ActionResult =
-  | { ok: true; option: { id: string; code: string; name: string } }
+  | { ok: true; option: { id: string; code: string; name: string }; warning?: string }
   | { ok: false; error: string }
 
 const toCode = (name: string): string =>
@@ -255,20 +255,28 @@ export async function createOnboardingSelectEntityAction(
       return row
     })
 
-    await createAuditLog({
-      tableName: "OnboardingSelectEntity",
-      recordId: option.id,
-      action: "CREATE",
-      userId: context.userId,
-      reason: `ONBOARDING_${payload.entity.toUpperCase()}_CREATE`,
-      changes: [
-        { fieldName: "entity", newValue: payload.entity },
-        { fieldName: "code", newValue: option.code },
-        { fieldName: "name", newValue: option.name },
-      ],
-    })
+    try {
+      await createAuditLog({
+        tableName: "OnboardingSelectEntity",
+        recordId: option.id,
+        action: "CREATE",
+        userId: context.userId,
+        reason: `ONBOARDING_${payload.entity.toUpperCase()}_CREATE`,
+        changes: [
+          { fieldName: "entity", newValue: payload.entity },
+          { fieldName: "code", newValue: option.code },
+          { fieldName: "name", newValue: option.name },
+        ],
+      })
 
-    return { ok: true, option }
+      return { ok: true, option }
+    } catch {
+      return {
+        ok: true,
+        option,
+        warning: "Record created successfully, but audit logging failed.",
+      }
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { ok: false, error: "A record with the same generated code already exists. Try a different name." }

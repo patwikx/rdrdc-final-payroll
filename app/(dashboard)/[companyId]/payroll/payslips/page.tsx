@@ -36,7 +36,9 @@ export default async function PayrollPayslipsPage({ params }: PayrollPayslipsPag
     <PayrollPayslipsPageClient
       companyId={viewModel.companyId}
       companyName={viewModel.companyName}
-      payslips={viewModel.payslips}
+      defaultStartDate={viewModel.defaultStartDate}
+      defaultEndDate={viewModel.defaultEndDate}
+      pageSize={viewModel.pageSize}
     />
   )
 }

@@ -45,9 +45,10 @@ export default async function EmploymentSettingsRoutePage({ params }: Employment
   }
 
   if (noAccess || !company) {
+    let fallback: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
+
     try {
-      const fallback = await getActiveCompanyContext()
-      redirect(`/${fallback.companyId}/dashboard`)
+      fallback = await getActiveCompanyContext()
     } catch {
       return (
         <main className="flex w-full flex-col gap-2 px-4 py-6 sm:px-6">
@@ -58,6 +59,8 @@ export default async function EmploymentSettingsRoutePage({ params }: Employment
         </main>
       )
     }
+
+    redirect(`/${fallback.companyId}/dashboard`)
   }
 
   const data = await getEmploymentSettingsViewModel(company.companyId)

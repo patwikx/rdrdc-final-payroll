@@ -994,7 +994,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     PayrollRunStatus.PAID,
   ]
 
-  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig] = await Promise.all([
+  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, paidPreTaxRecurringYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig] = await Promise.all([
     db.holiday.findMany({
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
@@ -1126,6 +1126,34 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       },
       _sum: { grossPay: true },
     }),
+    db.payslip.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        payrollRun: {
+          companyId: run.companyId,
+          runTypeCode: "REGULAR",
+          statusCode: PayrollRunStatus.PAID,
+          payPeriod: {
+            year: run.payPeriod.year,
+            cutoffEndDate: { lt: run.payPeriod.cutoffStartDate },
+          },
+        },
+      },
+      select: {
+        employeeId: true,
+        deductions: {
+          where: {
+            referenceType: "RECURRING",
+            deductionType: {
+              isPreTax: true,
+            },
+          },
+          select: {
+            amount: true,
+          },
+        },
+      },
+    }),
     db.loanAmortization.findMany({
       where: {
         loan: {
@@ -1234,6 +1262,13 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const paidBonusBenefitsYtdByEmployee = new Map(
     paidBonusBenefitsYtd.map((row) => [row.employeeId, toNumber(row._sum.grossPay)])
   )
+
+  const paidPreTaxRecurringYtdByEmployee = paidPreTaxRecurringYtd.reduce((map, payslip) => {
+    const current = map.get(payslip.employeeId) ?? 0
+    const deductionTotal = payslip.deductions.reduce((sum, item) => sum + toNumber(item.amount), 0)
+    map.set(payslip.employeeId, roundCurrency(current + deductionTotal))
+    return map
+  }, new Map<string, number>())
 
   const dueLoanAmortizationsByEmployee = new Map<string, typeof dueLoanAmortizations>()
   for (const amortization of dueLoanAmortizations) {
@@ -1723,10 +1758,13 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
             const bonusBenefitsBeforeCurrentRun = paidBonusBenefitsYtdByEmployee.get(employee.id) ?? 0
             const bonusBenefitsProjected = Math.min(90000, bonusBenefitsBeforeCurrentRun)
 
+            const preTaxRecurringBeforeCurrentRun = paidPreTaxRecurringYtdByEmployee.get(employee.id) ?? 0
+            const preTaxRecurringProjected = preTaxRecurringBeforeCurrentRun + preTaxRecurringTotal
+
             const annualGrossProjected = previousPaidTotals.grossPay + grossPay
             const annualTaxableProjected = Math.max(
               0,
-              annualGrossProjected - mandatoryContributionsProjected - bonusBenefitsProjected - preTaxRecurringTotal
+              annualGrossProjected - mandatoryContributionsProjected - bonusBenefitsProjected - preTaxRecurringProjected
             )
 
             if (activeAnnualTaxRows.length > 0) {

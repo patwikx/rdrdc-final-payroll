@@ -133,7 +133,7 @@ export async function updateEmployeeProfileAction(
       const nextBranchId = toNullableId(payload.branchId)
       const nextRankId = toNullableId(payload.rankId)
 
-      if (nextEmploymentStatusId && nextEmploymentStatusId !== employee.employmentStatusId) {
+      if (nextEmploymentStatusId !== employee.employmentStatusId) {
         await tx.employeeStatusHistory.create({
           data: {
             employeeId: employee.id,
@@ -146,7 +146,7 @@ export async function updateEmployeeProfileAction(
         })
       }
 
-      if (nextPositionId && nextPositionId !== employee.positionId) {
+      if (nextPositionId !== employee.positionId) {
         await tx.employeePositionHistory.create({
           data: {
             employeeId: employee.id,
@@ -165,7 +165,7 @@ export async function updateEmployeeProfileAction(
         })
       }
 
-      if (nextRankId && nextRankId !== employee.rankId) {
+      if (nextRankId !== employee.rankId) {
         const [previousRank, newRank] = await Promise.all([
           employee.rankId
             ? tx.rank.findFirst({
@@ -173,10 +173,12 @@ export async function updateEmployeeProfileAction(
                 select: { level: true },
               })
             : Promise.resolve(null),
-          tx.rank.findFirst({
-            where: { id: nextRankId, companyId: context.companyId },
-            select: { level: true },
-          }),
+          nextRankId
+            ? tx.rank.findFirst({
+                where: { id: nextRankId, companyId: context.companyId },
+                select: { level: true },
+              })
+            : Promise.resolve(null),
         ])
 
         let movementType: EmployeeMovementType = EmployeeMovementType.LATERAL

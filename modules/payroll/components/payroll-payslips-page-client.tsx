@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   IconCashBanknote,
   IconChecklist,
@@ -23,21 +23,9 @@ import { cn } from "@/lib/utils"
 type PayrollPayslipsPageClientProps = {
   companyId: string
   companyName: string
-  payslips: Array<{
-    id: string
-    employeeId: string
-    payslipNumber: string
-    employeeName: string
-    employeeNumber: string
-    employeePhotoUrl: string | null
-    grossPay: string
-    totalDeductions: string
-    netPay: string
-    releasedAt: string
-    generatedAt: string
-    runNumber: string
-    runPeriodLabel: string
-  }>
+  defaultStartDate: string
+  defaultEndDate: string
+  pageSize: number
 }
 
 type EmployeeRow = {
@@ -48,81 +36,123 @@ type EmployeeRow = {
   payslipCount: number
 }
 
-const parseCurrency = (value: string): number => Number(value.replace(/[^0-9.-]/g, "")) || 0
+type PayslipRow = {
+  id: string
+  payslipNumber: string
+  runNumber: string
+  runPeriodLabel: string
+  grossPay: string
+  totalDeductions: string
+  netPay: string
+  releasedAt: string
+}
 
-const formatPhp = (value: number): string =>
-  `PHP ${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+type PayslipStats = {
+  totalEmployees: number
+  totalPayslips: number
+  totalNet: string
+  releasedCount: number
+}
 
-export function PayrollPayslipsPageClient({ companyId, companyName, payslips }: PayrollPayslipsPageClientProps) {
+const defaultStats: PayslipStats = {
+  totalEmployees: 0,
+  totalPayslips: 0,
+  totalNet: "PHP 0.00",
+  releasedCount: 0,
+}
+
+export function PayrollPayslipsPageClient({
+  companyId,
+  companyName,
+  defaultStartDate,
+  defaultEndDate,
+  pageSize,
+}: PayrollPayslipsPageClientProps) {
   const [searchText, setSearchText] = useState("")
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [employees, setEmployees] = useState<EmployeeRow[]>([])
+  const [payslips, setPayslips] = useState<PayslipRow[]>([])
+  const [stats, setStats] = useState<PayslipStats>(defaultStats)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [hasMorePayslips, setHasMorePayslips] = useState(false)
 
-  const employeeRows = useMemo(() => {
-    const map = new Map<string, EmployeeRow>()
+  const fetchData = async (options?: { employeeId?: string | null; page?: number }) => {
+    const targetEmployeeId = options?.employeeId ?? selectedEmployeeId
+    const targetPage = options?.page ?? currentPage
 
-    for (const payslip of payslips) {
-      const existing = map.get(payslip.employeeId)
-      if (!existing) {
-        map.set(payslip.employeeId, {
-          employeeId: payslip.employeeId,
-          employeeName: payslip.employeeName,
-          employeeNumber: payslip.employeeNumber,
-          employeePhotoUrl: payslip.employeePhotoUrl,
-          payslipCount: 1,
-        })
-      } else {
-        existing.payslipCount += 1
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams({
+        companyId,
+        search: searchText,
+        page: String(targetPage),
+        pageSize: String(pageSize),
+        startDate: defaultStartDate,
+        endDate: defaultEndDate,
+      })
+
+      if (targetEmployeeId) {
+        params.set("selectedEmployeeId", targetEmployeeId)
       }
+
+      const response = await fetch(`/api/payroll/payslips?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(payload.error ?? "Unable to load payslips.")
+      }
+
+      const payload = (await response.json()) as {
+        employees: EmployeeRow[]
+        selectedEmployeeId: string | null
+        payslips: PayslipRow[]
+        stats: PayslipStats
+        hasMorePayslips: boolean
+      }
+
+      setEmployees(payload.employees)
+      setSelectedEmployeeId(payload.selectedEmployeeId)
+      setPayslips(payload.payslips)
+      setStats(payload.stats)
+      setHasMorePayslips(payload.hasMorePayslips)
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : "Unable to load payslips."
+      setError(message)
+      setEmployees([])
+      setPayslips([])
+      setStats(defaultStats)
+      setHasMorePayslips(false)
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
-  }, [payslips])
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1)
+      void fetchData({ page: 1, employeeId: null })
+    }, 250)
 
-  const filteredEmployees = useMemo(() => {
-    const normalized = searchText.trim().toLowerCase()
-    if (!normalized) {
-      return employeeRows
-    }
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchText])
 
-    return employeeRows.filter((row) => {
-      return (
-        row.employeeName.toLowerCase().includes(normalized) ||
-        row.employeeNumber.toLowerCase().includes(normalized)
-      )
-    })
-  }, [employeeRows, searchText])
+  useEffect(() => {
+    void fetchData({ page: 1, employeeId: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, defaultStartDate, defaultEndDate, pageSize])
 
-  const resolvedSelectedEmployeeId =
-    selectedEmployeeId && filteredEmployees.some((row) => row.employeeId === selectedEmployeeId)
-      ? selectedEmployeeId
-      : (filteredEmployees[0]?.employeeId ?? null)
-
-  const selectedEmployee =
-    resolvedSelectedEmployeeId
-      ? filteredEmployees.find((row) => row.employeeId === resolvedSelectedEmployeeId) ?? null
-      : null
-
-  const selectedEmployeePayslips = useMemo(() => {
-    if (!resolvedSelectedEmployeeId) {
-      return []
-    }
-
-    return payslips.filter((row) => row.employeeId === resolvedSelectedEmployeeId)
-  }, [payslips, resolvedSelectedEmployeeId])
-
-  const stats = useMemo(() => {
-    const totalEmployees = employeeRows.length
-    const totalPayslips = payslips.length
-    const totalNet = payslips.reduce((sum, row) => sum + parseCurrency(row.netPay), 0)
-    const releasedCount = payslips.filter((row) => row.releasedAt !== "-").length
-
-    return {
-      totalEmployees,
-      totalPayslips,
-      totalNet,
-      releasedCount,
-    }
-  }, [employeeRows.length, payslips])
+  const selectedEmployee = useMemo(
+    () => employees.find((row) => row.employeeId === selectedEmployeeId) ?? null,
+    [employees, selectedEmployeeId]
+  )
 
   return (
     <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
@@ -138,7 +168,7 @@ export function PayrollPayslipsPageClient({ companyId, companyName, payslips }: 
         <StatCard label="Employees" value={String(stats.totalEmployees)} icon={<IconUsers className="size-4 text-primary" />} />
         <StatCard label="Total Payslips" value={String(stats.totalPayslips)} icon={<IconReceipt className="size-4 text-primary" />} />
         <StatCard label="Released Payslips" value={String(stats.releasedCount)} icon={<IconChecklist className="size-4 text-primary" />} />
-        <StatCard label="Aggregate Net" value={formatPhp(stats.totalNet)} icon={<IconCashBanknote className="size-4 text-primary" />} />
+        <StatCard label="Aggregate Net" value={stats.totalNet} icon={<IconCashBanknote className="size-4 text-primary" />} />
       </section>
 
       <Card className="rounded-xl border border-border/70 bg-card/80">
@@ -161,17 +191,22 @@ export function PayrollPayslipsPageClient({ companyId, companyName, payslips }: 
             </div>
             <ScrollArea className="h-[560px] pr-1">
               <div className="space-y-2">
-                {filteredEmployees.length === 0 ? (
+                {isLoading ? (
+                  <p className="px-2 py-4 text-xs text-muted-foreground">Loading employees...</p>
+                ) : employees.length === 0 ? (
                   <p className="px-2 py-4 text-xs text-muted-foreground">No employees found.</p>
                 ) : (
-                  filteredEmployees.map((employee) => (
+                  employees.map((employee) => (
                     <button
                       key={employee.employeeId}
                       type="button"
-                      onClick={() => setSelectedEmployeeId(employee.employeeId)}
+                      onClick={() => {
+                        setCurrentPage(1)
+                        void fetchData({ employeeId: employee.employeeId, page: 1 })
+                      }}
                       className={cn(
                         "w-full rounded-md border px-3 py-2 text-left text-xs",
-                        resolvedSelectedEmployeeId === employee.employeeId
+                        selectedEmployeeId === employee.employeeId
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border/60 bg-background hover:bg-muted/40"
                       )}
@@ -207,6 +242,7 @@ export function PayrollPayslipsPageClient({ companyId, companyName, payslips }: 
           </aside>
 
           <section className="space-y-3 rounded-md border border-border/60 p-3">
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
             {selectedEmployee ? (
               <>
                 <div>
@@ -229,35 +265,75 @@ export function PayrollPayslipsPageClient({ companyId, companyName, payslips }: 
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedEmployeePayslips.map((payslip) => (
-                        <tr key={payslip.id} className="border-t border-border/50">
-                          <td className="px-3 py-2 font-medium">{payslip.payslipNumber}</td>
-                          <td className="px-3 py-2">{payslip.runNumber}</td>
-                          <td className="px-3 py-2">{payslip.runPeriodLabel}</td>
-                          <td className="px-3 py-2">{payslip.grossPay}</td>
-                          <td className="px-3 py-2">{payslip.totalDeductions}</td>
-                          <td className="px-3 py-2 font-medium">{payslip.netPay}</td>
-                          <td className="px-3 py-2">{payslip.releasedAt}</td>
-                          <td className="px-3 py-2">
-                            <div className="flex gap-2">
-                              <Button asChild variant="outline" size="sm">
-                                <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1">
-                                  <IconEye className="size-3.5" />
-                                  View
-                                </Link>
-                              </Button>
-                              <Button asChild size="sm">
-                                <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1">
-                                  <IconDownload className="size-3.5" />
-                                  Download
-                                </Link>
-                              </Button>
-                            </div>
-                          </td>
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">Loading payslips...</td>
                         </tr>
-                      ))}
+                      ) : payslips.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">No payslips found.</td>
+                        </tr>
+                      ) : (
+                        payslips.map((payslip) => (
+                          <tr key={payslip.id} className="border-t border-border/50">
+                            <td className="px-3 py-2 font-medium">{payslip.payslipNumber}</td>
+                            <td className="px-3 py-2">{payslip.runNumber}</td>
+                            <td className="px-3 py-2">{payslip.runPeriodLabel}</td>
+                            <td className="px-3 py-2">{payslip.grossPay}</td>
+                            <td className="px-3 py-2">{payslip.totalDeductions}</td>
+                            <td className="px-3 py-2 font-medium">{payslip.netPay}</td>
+                            <td className="px-3 py-2">{payslip.releasedAt}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex gap-2">
+                                <Button asChild variant="outline" size="sm">
+                                  <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1">
+                                    <IconEye className="size-3.5" />
+                                    View
+                                  </Link>
+                                </Button>
+                                <Button asChild size="sm">
+                                  <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1">
+                                    <IconDownload className="size-3.5" />
+                                    Download
+                                  </Link>
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const next = Math.max(1, currentPage - 1)
+                      setCurrentPage(next)
+                      void fetchData({ page: next })
+                    }}
+                    disabled={currentPage <= 1 || isLoading}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">Page {currentPage}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const next = currentPage + 1
+                      setCurrentPage(next)
+                      void fetchData({ page: next })
+                    }}
+                    disabled={!hasMorePayslips || isLoading}
+                  >
+                    Next
+                  </Button>
                 </div>
               </>
             ) : (

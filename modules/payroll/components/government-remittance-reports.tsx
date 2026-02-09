@@ -8,6 +8,14 @@ export type PhilHealthRemittanceRow = {
   employerShare: number
 }
 
+export type SssRemittanceRow = {
+  idNumber: string
+  employeeName: string
+  sssNumber: string
+  employeeShare: number
+  employerShare: number
+}
+
 export type PagIbigContributionRow = {
   employeeId: string
   surname: string
@@ -19,6 +27,13 @@ export type PagIbigContributionRow = {
   employerShare: number
 }
 
+export type Dole13thMonthRow = {
+  employeeId: string
+  employeeName: string
+  annualBasicSalary: number
+  thirteenthMonthPay: number
+}
+
 export type GovernmentRemittanceReportsProps = {
   companyName: string
   philHealthMonth: Date
@@ -27,7 +42,9 @@ export type GovernmentRemittanceReportsProps = {
   printedBy: string
   pageLabel?: string
   philHealthRows: PhilHealthRemittanceRow[]
+  sssRows?: SssRemittanceRow[]
   pagIbigRows: PagIbigContributionRow[]
+  dole13thRows?: Dole13thMonthRow[]
   birAlphalistRows?: Array<{
     employeeId: string
     employeeName: string
@@ -41,7 +58,9 @@ export type GovernmentRemittanceReportsProps = {
   }>
   birYear?: number
   showPhilHealth?: boolean
+  showSss?: boolean
   showPagIbig?: boolean
+  showDole13th?: boolean
   showBirAlphalist?: boolean
 }
 
@@ -97,11 +116,15 @@ export function GovernmentRemittanceReports({
   printedBy,
   pageLabel = "Page 1 of 1",
   philHealthRows,
+  sssRows = [],
   pagIbigRows,
+  dole13thRows = [],
   birAlphalistRows = [],
   birYear = new Date().getFullYear(),
   showPhilHealth = true,
+  showSss = false,
   showPagIbig = true,
+  showDole13th = false,
   showBirAlphalist = false,
 }: GovernmentRemittanceReportsProps) {
   const philHealthTotals = philHealthRows.reduce(
@@ -120,6 +143,24 @@ export function GovernmentRemittanceReports({
       return acc
     },
     { employeeShare: 0, employerShare: 0 }
+  )
+
+  const sssTotals = sssRows.reduce(
+    (acc, row) => {
+      acc.employeeShare += row.employeeShare
+      acc.employerShare += row.employerShare
+      return acc
+    },
+    { employeeShare: 0, employerShare: 0 }
+  )
+
+  const doleTotals = dole13thRows.reduce(
+    (acc, row) => {
+      acc.annualBasicSalary += row.annualBasicSalary
+      acc.thirteenthMonthPay += row.thirteenthMonthPay
+      return acc
+    },
+    { annualBasicSalary: 0, thirteenthMonthPay: 0 }
   )
 
   const birTotals = birAlphalistRows.reduce(
@@ -295,6 +336,73 @@ export function GovernmentRemittanceReports({
       </section>
       ) : null}
 
+      {showSss ? (
+      <section className={styles.reportPage} aria-label="SSS Monthly Remittance Report">
+        <div className={styles.reportStartSeparator} />
+        <header className={styles.headerCenter}>
+          <h1>{companyName.toUpperCase()}</h1>
+          <h2>SSS MONTHLY REMITTANCE REPORT</h2>
+          <p>FOR THE MONTH OF {monthYearFormatter.format(philHealthMonth).toUpperCase()}</p>
+        </header>
+
+        <div className={styles.tableWrap}>
+          <table className={styles.reportTable}>
+            <colgroup>
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "34%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className={styles.leftText}>ID #</th>
+                <th className={styles.leftText}>EMPLOYEE NAME</th>
+                <th className={styles.leftText}>SSS #</th>
+                <th className={styles.rightText}>EMPLOYEE SHARE</th>
+                <th className={styles.rightText}>EMPLOYER SHARE</th>
+                <th className={styles.rightText}>TOTALS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sssRows.map((row) => {
+                const rowTotal = row.employeeShare + row.employerShare
+
+                return (
+                  <tr key={`${row.idNumber}-${row.sssNumber}`}>
+                    <td className={styles.leftText}>{row.idNumber.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.sssNumber.toUpperCase()}</td>
+                    <td className={styles.rightText}>{formatMoney(row.employeeShare)}</td>
+                    <td className={styles.rightText}>{formatMoney(row.employerShare)}</td>
+                    <td className={styles.rightText}>{formatMoney(rowTotal)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot>
+              <tr className={styles.totalsRow}>
+                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(sssTotals.employerShare)}</td>
+                <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare + sssTotals.employerShare)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className={styles.printFooter}>
+          <span>
+            Print Date : {printDateFormatter.format(printedAt)} | Print Time : {printTimeFormatter.format(printedAt)}
+          </span>
+          <span>
+            {pageLabel} | User : {printedBy}
+          </span>
+        </div>
+      </section>
+      ) : null}
+
       {showBirAlphalist ? (
       <section className={styles.reportPage} aria-label="BIR Alphalist Report">
         <div className={styles.reportStartSeparator} />
@@ -355,6 +463,63 @@ export function GovernmentRemittanceReports({
                 <td className={styles.rightText}>{formatMoney(birTotals.grossCompensation)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.taxableCompensation)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.withholdingTax)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className={styles.printFooter}>
+          <span>
+            Print Date : {printDateFormatter.format(printedAt)} | Print Time : {printTimeFormatter.format(printedAt)}
+          </span>
+          <span>
+            {pageLabel} | User : {printedBy}
+          </span>
+        </div>
+      </section>
+      ) : null}
+
+      {showDole13th ? (
+      <section className={styles.reportPage} aria-label="DOLE 13th Month Pay Report">
+        <div className={styles.reportStartSeparator} />
+
+        <header className={styles.headerCenter}>
+          <h1>{companyName.toUpperCase()}</h1>
+          <h2>DOLE 13TH MONTH PAY REPORT</h2>
+          <p>FOR CALENDAR YEAR {String(birYear).toUpperCase()}</p>
+        </header>
+
+        <div className={styles.tableWrap}>
+          <table className={styles.reportTable}>
+            <colgroup>
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "38%" }} />
+              <col style={{ width: "24%" }} />
+              <col style={{ width: "24%" }} />
+            </colgroup>
+            <thead className={styles.capsHeader}>
+              <tr>
+                <th>EMPLOYEE ID</th>
+                <th>EMPLOYEE NAME</th>
+                <th className={styles.rightText}>ANNUAL BASIC SALARY</th>
+                <th className={styles.rightText}>13TH MONTH PAY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dole13thRows.map((row) => (
+                <tr key={`${row.employeeId}-${row.employeeName}`}>
+                  <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <td className={styles.rightText}>{formatMoney(row.annualBasicSalary)}</td>
+                  <td className={styles.rightText}>{formatMoney(row.thirteenthMonthPay)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className={styles.totalsRow}>
+                <td colSpan={2} className={styles.leftText}>TOTAL</td>
+                <td className={styles.rightText}>{formatMoney(doleTotals.annualBasicSalary)}</td>
+                <td className={styles.rightText}>{formatMoney(doleTotals.thirteenthMonthPay)}</td>
               </tr>
             </tfoot>
           </table>

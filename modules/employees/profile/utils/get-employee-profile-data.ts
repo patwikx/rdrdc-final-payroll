@@ -682,20 +682,20 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       positionHistory: employee.positionHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousPosition?.name ?? "-",
-        current: item.newPosition.name,
+        current: item.newPosition?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
       })),
       statusHistory: employee.statusHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousStatus?.name ?? "-",
-        current: item.newStatus.name,
+        current: item.newStatus?.name ?? "Unassigned",
         reason: item.reason ?? "-",
       })),
       rankHistory: employee.rankHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousRank?.name ?? "-",
-        current: item.newRank.name,
+        current: item.newRank?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
       })),

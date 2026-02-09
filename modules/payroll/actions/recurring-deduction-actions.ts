@@ -183,8 +183,13 @@ export async function createRecurringDeductionAction(input: CreateRecurringDeduc
     revalidateRecurringDeductions(context.companyId)
     return { ok: true, message: "Recurring deduction created successfully." }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return { ok: false, error: `Failed to create recurring deduction: ${message}` }
+    console.error("[createRecurringDeductionAction] Failed to create recurring deduction", {
+      companyId: context.companyId,
+      employeeId: payload.employeeId,
+      deductionTypeId: payload.deductionTypeId,
+      error,
+    })
+    return { ok: false, error: "Failed to create recurring deduction." }
   }
 }
 
@@ -236,8 +241,13 @@ export async function updateRecurringDeductionStatusAction(input: UpdateRecurrin
     revalidateRecurringDeductions(context.companyId)
     return { ok: true, message: "Recurring deduction status updated." }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return { ok: false, error: `Failed to update recurring deduction status: ${message}` }
+    console.error("[updateRecurringDeductionStatusAction] Failed to update recurring deduction status", {
+      companyId: context.companyId,
+      recurringDeductionId: payload.recurringDeductionId,
+      statusCode: payload.statusCode,
+      error,
+    })
+    return { ok: false, error: "Failed to update recurring deduction status." }
   }
 }
 
@@ -295,7 +305,12 @@ export async function createDeductionTypeAction(input: CreateDeductionTypeInput)
     revalidateRecurringDeductions(context.companyId)
     return { ok: true, message: "Deduction type created successfully.", deductionTypeId: created.id }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return { ok: false, error: `Failed to create deduction type: ${message}` }
+    console.error("[createDeductionTypeAction] Failed to create deduction type", {
+      companyId: context.companyId,
+      code: payload.code,
+      name: payload.name,
+      error,
+    })
+    return { ok: false, error: "Failed to create deduction type." }
   }
 }

@@ -207,6 +207,8 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - PhilHealth/Pag-IBIG/BIR now support print-ready report layouts and styled CSV export outputs
   - monthly statutory report source rows are safeguarded to `REGULAR` payroll runs only
   - statutory report currency labels use `PHP` code format consistently
+  - report print behavior is now report-scoped (prints report content only, not full app chrome)
+  - report print defaults include landscape paper mode, print footer metadata, and print-only metadata visibility
 - Hardened payroll lifecycle stage transitions and gating:
   - added `completeReviewPayrollRunAction` (step 4 -> step 5 progression with validation checks)
   - added `generatePayslipsPayrollRunAction` (step 5 completion with payslip presence check, no auto-advance)
@@ -524,6 +526,11 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - 2026-02-09: Added statutory safeguard so monthly contribution reports only source rows from `REGULAR` payroll runs.
 - 2026-02-09: Upgraded BIR annual alphalist computation to use annual WTAX table logic (gross compensation, mandatory contributions, non-taxable benefit cap, taxable compensation, annual tax due, and tax variance vs withheld).
 - 2026-02-09: Refined payroll withholding computation to use annual-projected WTAX delta method when annual tax-table rows are available, with period-bracket fallback behavior when annual tables are unavailable.
+- 2026-02-09: Added full HTML report templates for `SSS Monthly Remittance` and `DOLE 13th Month Pay Report` in statutory reports, matching print/export workflow used by PhilHealth/Pag-IBIG/BIR.
+- 2026-02-09: Added compact BIR per-employee `Calc Trace` section (gross, non-taxable cap applied, taxable base, annual tax due, YTD withheld, delta) for HR audit visibility.
+- 2026-02-09: Fixed annual withholding projection to include YTD pre-tax recurring deductions (not current-period only), preventing over-withholding on semi-monthly runs.
+- 2026-02-09: Refactored statutory view-model data loading to use Promise.all for independent DB calls (`user`, `payslips`, `birPayslips`, `annualTaxRows`) for better performance.
+- 2026-02-09: Reworked payroll payslips history page to bounded client-fetch architecture via `/api/payroll/payslips` (paginated/date-scoped slices) instead of serializing full payslip arrays from RSC.
 - 2026-02-09: Added recurring deductions management page at `/[companyId]/payroll/recurring-deductions` with company-scoped create and status-management actions (activate/suspend/cancel), PH-local effective-date calendar inputs, payroll module authorization checks, and audit logging.
 - 2026-02-09: Added payroll navigation entry for `Recurring Deductions` under Payroll module.
 - 2026-02-09: Updated recurring deductions deduction-type selector behavior:

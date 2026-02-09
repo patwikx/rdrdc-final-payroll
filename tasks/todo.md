@@ -250,16 +250,28 @@ Last updated: 2026-02-09
     - Pending HR process confirmation for business flow, eligibility, and formula policy.
     - Added in-code TODO marker in payroll calculation action to track this dependency.
   - [x] Implemented statutory report suite with locked Iteration 3 UX.
-    - Added report selector workspace and print-friendly report templates for PhilHealth, Pag-IBIG, and BIR Alphalist.
-    - Added styled CSV exports that mirror report headings/column structures.
+    - Added report selector workspace and print-friendly report templates for SSS, PhilHealth, Pag-IBIG, DOLE 13th Month, and BIR Alphalist.
+    - Added styled CSV exports that mirror report headings/column structures for all implemented statutory reports.
     - Added print metadata footer handling (date/time/page/user) in report print output.
+    - Added report-scoped print behavior so print action renders report HTML only (not full app page).
     - Added monthly report safeguard so statutory monthly reports only use `REGULAR` payroll-run rows.
   - [x] Upgraded BIR annual tax logic to align with annual WTAX-table computation flow.
     - Added annual alphalist computation (gross compensation, mandatory contributions, non-taxable benefits cap, taxable compensation, annual tax due, withheld variance).
     - Added BIR report columns for SSS/PH/PG employee share and aligned value rendering.
+    - Added compact per-employee BIR calculation trace section for HR audit review.
   - [x] Refined payroll withholding tax computation to annual-projected delta method when annual WTAX rows are available.
     - Withholding now computes projected annual tax due and withholds only remaining delta after YTD withheld.
     - Preserved period-bracket fallback behavior when annual WTAX rows are not configured.
+    - Fixed annual projection to include YTD pre-tax recurring deductions (not current period only).
+  - [x] Reworked admin payslips history data loading to bounded API-driven slices.
+    - Added `/api/payroll/payslips` endpoint with bounded page-size limits and date-scope filters.
+    - Updated payslips page client to fetch paginated/date-scoped data instead of receiving full payslip arrays from RSC.
+  - [x] Hardened non-fatal logging behavior in onboarding and recurring deductions actions.
+    - Onboarding quick-create now returns success even if audit logging fails (with warning payload).
+    - Recurring deduction action catch blocks now avoid exposing raw server/database errors to client messages.
+  - [x] Updated employee movement history null-transition support.
+    - Profile updates now record transitions when status/position/rank are cleared to `null`.
+    - Movement history `new*Id` fields are nullable via schema + migration to preserve clear/unassign history events.
   - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
   - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
   - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).

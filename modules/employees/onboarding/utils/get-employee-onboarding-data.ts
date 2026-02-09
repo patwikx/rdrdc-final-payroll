@@ -85,9 +85,9 @@ export async function getEmployeeOnboardingViewModel(companyId: string): Promise
 
   const [employmentStatuses, employmentTypes, employmentClasses, departments, divisions, positions, ranks, branches, managers, workSchedules, payPeriodPatterns] =
     await Promise.all([
-      db.employmentStatus.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
-      db.employmentType.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
-      db.employmentClass.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentStatus.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentType.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentClass.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.department.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.division.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.position.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),

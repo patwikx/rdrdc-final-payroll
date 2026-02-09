@@ -121,9 +121,15 @@ export async function initializeSystemAction(
       })
 
       const regularStatus = await tx.employmentStatus.upsert({
-        where: { code: "REGULAR" },
+        where: {
+          companyId_code: {
+            companyId: company.id,
+            code: "REGULAR",
+          },
+        },
         update: {},
         create: {
+          companyId: company.id,
           code: "REGULAR",
           name: "Regular",
           allowsPayroll: true,
@@ -136,9 +142,15 @@ export async function initializeSystemAction(
       })
 
       await tx.employmentStatus.upsert({
-        where: { code: "PROBATIONARY" },
+        where: {
+          companyId_code: {
+            companyId: company.id,
+            code: "PROBATIONARY",
+          },
+        },
         update: {},
         create: {
+          companyId: company.id,
           code: "PROBATIONARY",
           name: "Probationary",
           allowsPayroll: true,
@@ -150,9 +162,15 @@ export async function initializeSystemAction(
       })
 
       await tx.employmentType.upsert({
-        where: { code: "FULL_TIME" },
+        where: {
+          companyId_code: {
+            companyId: company.id,
+            code: "FULL_TIME",
+          },
+        },
         update: {},
         create: {
+          companyId: company.id,
           code: "FULL_TIME",
           name: "Full Time",
           createdById: superAdmin.id,
@@ -161,9 +179,15 @@ export async function initializeSystemAction(
       })
 
       await tx.employmentClass.upsert({
-        where: { code: "STANDARD" },
+        where: {
+          companyId_code: {
+            companyId: company.id,
+            code: "STANDARD",
+          },
+        },
         update: {},
         create: {
+          companyId: company.id,
           code: "STANDARD",
           name: "Standard",
           createdById: superAdmin.id,

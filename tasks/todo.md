@@ -216,10 +216,62 @@ Last updated: 2026-02-09
   - [x] Added idempotency safeguards for close and email dispatch actions.
     - `closePayrollRunAction` now returns safe idempotent success when run is already closed and uses guarded transition updates to avoid duplicate concurrent close transitions.
     - Batch payslip send action now blocks immediate duplicate dispatch attempts within a short guard window.
+  - [x] Added recurring deductions management in Payroll module.
+    - Added route/page: `/[companyId]/payroll/recurring-deductions`.
+    - Added recurring deductions view model + client page for create/list/search and status actions.
+    - Added server actions + zod schemas for creating deductions and updating status with strict company scoping, payroll authz checks, PH-local date handling, and audit logging.
+    - Added Payroll sidebar item for `Recurring Deductions`.
+    - Updated deduction-type selector to exclude mandatory/government deduction types.
+    - Added dynamic in-selector `Create Deduction Type` dialog flow and create action, then auto-refreshes options/selection.
+    - Updated `Create Deduction Type` dialog layout: `Pay Period Applicability` + `Pre-tax deduction` in a 2-column grid.
+    - Matched `Pre-tax deduction` control row height with the adjacent select component.
+    - Added matched label rows and fixed control heights (`h-9`) to keep the two fields visually aligned.
+    - Renamed long form label from `Pay Period Applicability` to `Payroll Timing`.
+    - Removed bordered container around `Pre-tax Deduction` checkbox row for cleaner inline control styling.
+    - Adjusted checkbox row spacing to align visually with adjacent select control.
+    - Updated deduction-type selector options to hide statutory/system types (e.g., SSS) and display name-only labels.
+    - Removed `Recurring Category` input from create form; recurring category now maps internally from selected deduction type.
+    - Updated recurring-deductions page layout to match Leave / OT Policies UX pattern (left records list + right sticky form panel).
+    - Added row-select editing behavior: selected record auto-populates right-side form and save button switches to update mode.
+    - Added status filter button beside search and upgraded status badges to solid semantic colors.
+    - Updated row action button styling to adapt against selected-row blue highlight context.
+    - Placed filter button immediately beside search input in records toolbar with matched height.
+    - Added `Reactivate` action path for cancelled recurring deduction records.
   - [x] Restored quality-gate pass state across repository after payroll changes.
     - Fixed lint blocker in employee movements page by replacing inline-render component declarations with render-helper functions.
     - Verified `npm run lint` passes.
     - Verified `npm run build` passes.
+  - [x] Implemented bonus run calculations for payroll run types.
+    - Added `THIRTEENTH_MONTH` calculation using YTD regular basic pay divided by 12.
+    - Added prorated fallback for 13th month when no regular-run basic-pay history is available for the employee.
+    - Added `MID_YEAR_BONUS` calculation using fixed policy formula (`baseSalary / 2`).
+    - Confirmed bonus run types do not lock pay periods (pay period is context-only).
+  - [ ] Implement FINAL_PAY / separation pay payroll calculations.
+    - Pending HR process confirmation for business flow, eligibility, and formula policy.
+    - Added in-code TODO marker in payroll calculation action to track this dependency.
+  - [x] Implemented statutory report suite with locked Iteration 3 UX.
+    - Added report selector workspace and print-friendly report templates for SSS, PhilHealth, Pag-IBIG, DOLE 13th Month, and BIR Alphalist.
+    - Added styled CSV exports that mirror report headings/column structures for all implemented statutory reports.
+    - Added print metadata footer handling (date/time/page/user) in report print output.
+    - Added report-scoped print behavior so print action renders report HTML only (not full app page).
+    - Added monthly report safeguard so statutory monthly reports only use `REGULAR` payroll-run rows.
+  - [x] Upgraded BIR annual tax logic to align with annual WTAX-table computation flow.
+    - Added annual alphalist computation (gross compensation, mandatory contributions, non-taxable benefits cap, taxable compensation, annual tax due, withheld variance).
+    - Added BIR report columns for SSS/PH/PG employee share and aligned value rendering.
+    - Added compact per-employee BIR calculation trace section for HR audit review.
+  - [x] Refined payroll withholding tax computation to annual-projected delta method when annual WTAX rows are available.
+    - Withholding now computes projected annual tax due and withholds only remaining delta after YTD withheld.
+    - Preserved period-bracket fallback behavior when annual WTAX rows are not configured.
+    - Fixed annual projection to include YTD pre-tax recurring deductions (not current period only).
+  - [x] Reworked admin payslips history data loading to bounded API-driven slices.
+    - Added `/api/payroll/payslips` endpoint with bounded page-size limits and date-scope filters.
+    - Updated payslips page client to fetch paginated/date-scoped data instead of receiving full payslip arrays from RSC.
+  - [x] Hardened non-fatal logging behavior in onboarding and recurring deductions actions.
+    - Onboarding quick-create now returns success even if audit logging fails (with warning payload).
+    - Recurring deduction action catch blocks now avoid exposing raw server/database errors to client messages.
+  - [x] Updated employee movement history null-transition support.
+    - Profile updates now record transitions when status/position/rank are cleared to `null`.
+    - Movement history `new*Id` fields are nullable via schema + migration to preserve clear/unassign history events.
   - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
   - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
   - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).

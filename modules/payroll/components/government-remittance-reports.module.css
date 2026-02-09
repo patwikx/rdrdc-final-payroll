@@ -1,0 +1,164 @@
+.printRoot {
+  font-family: inherit;
+  color: #000;
+  background: #fff;
+  line-height: 1.3;
+}
+
+.reportPage {
+  background: #fff;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: none;
+  break-after: page;
+}
+
+.reportStartSeparator {
+  border-top: 2px solid #000;
+  margin-bottom: 30px;
+}
+
+.printFooter {
+  display: none;
+}
+
+.reportPage:last-child {
+  break-after: auto;
+}
+
+.metadataRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-bottom: 6px;
+}
+
+.printOnly {
+  display: none;
+}
+
+.metadataBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.headerLeft h1,
+.headerCenter h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.headerLeft h2,
+.headerCenter h2 {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.headerLeft p,
+.headerCenter p {
+  margin: 3px 0 0;
+  font-size: 10px;
+}
+
+.headerCenter {
+  text-align: center;
+}
+
+.headerLeft {
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.employerLine {
+  font-size: 10px;
+  margin: 10px 0 6px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.reportTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 10px;
+  background: #fff;
+}
+
+.reportTable th,
+.reportTable td {
+  border: 1px solid #000;
+  padding: 5px;
+  vertical-align: middle;
+  background: #fff;
+}
+
+.reportTable thead th {
+  font-weight: 700;
+}
+
+.capsHeader th {
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.doubleTopHeader th {
+  border-top: 3px double #000;
+}
+
+.leftText {
+  text-align: left;
+}
+
+.rightText {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.centerText {
+  text-align: center;
+}
+
+.totalsRow td {
+  font-weight: 700;
+}
+
+.headCount {
+  font-weight: 700;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 0.2in 0.15in 0.45in 0.15in;
+  }
+
+  .reportPage {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .printOnly {
+    display: flex;
+  }
+
+  .reportStartSeparator {
+    display: none;
+  }
+
+  .printFooter {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    border-top: 1px solid #000;
+    margin-top: 12px;
+    padding-top: 6px;
+    font-size: 10px;
+  }
+}

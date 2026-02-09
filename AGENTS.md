@@ -163,3 +163,25 @@ Use this section as the single running log for implementation lessons/progress n
 - Leave balance cards should be rendered by leave type so cards still appear even when explicit balance rows are zero/missing.
 - For leave balances, show concise metrics (starting balance + current available) with leave-type-specific icons.
 - Employee Portal scope note: Loan Applications and Loan Calculator are currently out of scope; do not expose them in the employee-portal sidebar.
+
+### Cross-Module Progress Notes (2026-02-09)
+
+- Added `Employment Setup` route (`/[companyId]/settings/employment`) for centralized management of positions, employment status/type/class.
+- Added table-level search + status filters and server-side deactivation guardrails to prevent deactivating records currently assigned to active employees.
+- Migrated `EmploymentStatus`, `EmploymentType`, and `EmploymentClass` to company-scoped data (`companyId`) and updated read/write flows to enforce tenant-safe lookups.
+- Added post-migration verification script `npm run verify:employment:scope` to check null-company rows, cross-company employee/status-type-class mismatches, and per-company coverage counts.
+- Updated employee profile edit flow to auto-create movement history for salary, position, employment status, and rank changes.
+- Updated employee profile Employment tab layout to support 5-column Employment Details rows on large screens.
+- Updated onboarding payroll behavior to auto-calculate daily/hourly from monthly rate using annualized divisor formula and keep derived fields read-only.
+- Added onboarding Step 2 dynamic select creation dialog flow for employment/organization references (status/type/class, department/division/position/rank/branch) with in-select blue `+ Add` affordance.
+- Reworked statutory reports to locked Iteration 3 workspace and added print-ready HTML report templates for SSS, PhilHealth, Pag-IBIG, DOLE 13th Month, and BIR Alphalist with report-scoped print mode.
+- Added styled CSV exports that mirror report headers/column structures for SSS/PhilHealth/Pag-IBIG/DOLE/BIR report flows.
+- Added annual BIR tax projection and payroll withholding refinements:
+  - annual WTAX-table based annual tax due computation in BIR report outputs,
+  - annual withholding delta method in payroll calculation,
+  - YTD pre-tax recurring deduction accumulation in annual taxable projection.
+- Added compact BIR per-employee calculation trace section for HR audit visibility (gross, non-taxable cap, taxable base, annual due, YTD withheld, delta).
+- Reworked admin payslips history page to bounded data loading via paginated/date-scoped API fetches instead of sending full payslip arrays from RSC.
+- Added report-scoped print behavior so statutory print actions render report HTML only (not full application page chrome).
+- Updated annual withholding projection to include YTD pre-tax recurring deductions in annual taxable projection math.
+- Updated movement history capture to include null-transition events (status/position/rank clear/unassign), with nullable `new*Id` history fields.

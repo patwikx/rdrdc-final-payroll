@@ -15,7 +15,24 @@ const toDateLabel = (value: Date): string => {
   }).format(value)
 }
 
-const amount = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" })
+const amountNumber = new Intl.NumberFormat("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const toPhpAmount = (value: number): string => `PHP ${amountNumber.format(value)}`
+
+const toPayslipDisplayId = (value: string): string => {
+  if (value.startsWith("PSL-")) {
+    return value
+  }
+
+  if (value.startsWith("RUN-")) {
+    return value.replace("RUN-", "PSL-")
+  }
+
+  return `PSL-${value}`
+}
 
 export type PayrollPayslipDetailViewModel = {
   companyId: string
@@ -28,6 +45,7 @@ export type PayrollPayslipDetailViewModel = {
     runId: string
     runNumber: string
     periodLabel: string
+    semiMonthlyBase: string
     basicPay: string
     grossPay: string
     totalDeductions: string
@@ -108,36 +126,37 @@ export async function getPayrollPayslipDetailViewModel(
     companyName: context.companyName,
     payslip: {
       id: payslip.id,
-      payslipNumber: payslip.payslipNumber,
+      payslipNumber: toPayslipDisplayId(payslip.payslipNumber),
       employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
       employeeNumber: payslip.employee.employeeNumber,
       runId: payslip.payrollRun.id,
       runNumber: payslip.payrollRun.runNumber,
       periodLabel: `${toDateLabel(payslip.payrollRun.payPeriod.cutoffStartDate)} - ${toDateLabel(payslip.payrollRun.payPeriod.cutoffEndDate)}`,
-      basicPay: amount.format(toNumber(payslip.basicPay)),
-      grossPay: amount.format(toNumber(payslip.grossPay)),
-      totalDeductions: amount.format(toNumber(payslip.totalDeductions)),
-      netPay: amount.format(toNumber(payslip.netPay)),
+      semiMonthlyBase: toPhpAmount(toNumber(payslip.baseSalary) / 2),
+      basicPay: toPhpAmount(toNumber(payslip.basicPay)),
+      grossPay: toPhpAmount(toNumber(payslip.grossPay)),
+      totalDeductions: toPhpAmount(toNumber(payslip.totalDeductions)),
+      netPay: toPhpAmount(toNumber(payslip.netPay)),
       daysWorked: toNumber(payslip.daysWorked),
       daysAbsent: toNumber(payslip.daysAbsent),
       overtimeHours: toNumber(payslip.overtimeHours),
       tardinessMins: payslip.tardinessMins,
       undertimeMins: payslip.undertimeMins,
       nightDiffHours: toNumber(payslip.nightDiffHours),
-      sssEmployee: amount.format(toNumber(payslip.sssEmployee)),
-      philHealthEmployee: amount.format(toNumber(payslip.philHealthEmployee)),
-      pagIbigEmployee: amount.format(toNumber(payslip.pagIbigEmployee)),
-      withholdingTax: amount.format(toNumber(payslip.withholdingTax)),
+      sssEmployee: toPhpAmount(toNumber(payslip.sssEmployee)),
+      philHealthEmployee: toPhpAmount(toNumber(payslip.philHealthEmployee)),
+      pagIbigEmployee: toPhpAmount(toNumber(payslip.pagIbigEmployee)),
+      withholdingTax: toPhpAmount(toNumber(payslip.withholdingTax)),
       earnings: payslip.earnings.map((entry) => ({
         id: entry.id,
         description: entry.description ?? "Earning",
-        amount: amount.format(toNumber(entry.amount)),
+        amount: toPhpAmount(toNumber(entry.amount)),
         isTaxable: entry.isTaxable,
       })),
       deductions: payslip.deductions.map((entry) => ({
         id: entry.id,
         description: entry.description ?? "Deduction",
-        amount: amount.format(toNumber(entry.amount)),
+        amount: toPhpAmount(toNumber(entry.amount)),
         referenceType: entry.referenceType ?? "OTHER",
       })),
     },

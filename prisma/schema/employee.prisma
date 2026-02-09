@@ -534,8 +534,8 @@ model EmployeeStatusHistory {
   employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   previousStatusId String?
   previousStatus   EmploymentStatus? @relation("PreviousEmploymentStatus", fields: [previousStatusId], references: [id])
-  newStatusId      String
-  newStatus        EmploymentStatus  @relation("NewEmploymentStatus", fields: [newStatusId], references: [id])
+  newStatusId      String?
+  newStatus        EmploymentStatus? @relation("NewEmploymentStatus", fields: [newStatusId], references: [id])
   effectiveDate    DateTime          @db.Date
   reason           String?
   remarks          String?           @db.Text
@@ -554,8 +554,8 @@ model EmployeePositionHistory {
   employee             Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   previousPositionId   String?
   previousPosition     Position?   @relation("PreviousPosition", fields: [previousPositionId], references: [id])
-  newPositionId        String
-  newPosition          Position    @relation("NewPosition", fields: [newPositionId], references: [id])
+  newPositionId        String?
+  newPosition          Position?   @relation("NewPosition", fields: [newPositionId], references: [id])
   previousDepartmentId String?
   previousDepartment   Department? @relation("PreviousDepartment", fields: [previousDepartmentId], references: [id])
   newDepartmentId      String?
@@ -624,8 +624,8 @@ model EmployeeRankHistory {
   employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   previousRankId String?
   previousRank   Rank?     @relation("PreviousRank", fields: [previousRankId], references: [id])
-  newRankId      String
-  newRank        Rank      @relation("NewRank", fields: [newRankId], references: [id])
+  newRankId      String?
+  newRank        Rank?     @relation("NewRank", fields: [newRankId], references: [id])
   movementType   EmployeeMovementType
   effectiveDate  DateTime             @db.Date
   reason         String?

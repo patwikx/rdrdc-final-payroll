@@ -114,6 +114,19 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - `/[companyId]/settings/organization/divisions`
   - `/[companyId]/settings/organization/ranks`
 
+### 10) Employment Settings Module (New)
+
+- Route: `/[companyId]/settings/employment`
+- Added centralized management page for:
+  - Positions
+  - Employment Statuses
+  - Employment Types
+  - Employment Classes
+- Added table-level search and active/inactive filtering per section.
+- Added server-side deactivation guardrails that block deactivation when records are still assigned to active employees.
+- Added company-scoped, authz-protected upsert actions and view-model loader with audit logging.
+- Added navigation entry under System Settings: `Employment Setup`.
+
 ### 10) Payroll Policies Module
 
 - Route: `/[companyId]/settings/payroll`
@@ -142,7 +155,7 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - `archivePayrollYearAction` for year lock/archive (new)
 - Audit log + revalidation included after save
 
-### 22) Payroll Module Bootstrap (In Progress)
+### 23) Payroll Module Bootstrap (In Progress)
 
 - Added initial active payroll routes:
   - `/[companyId]/payroll`
@@ -184,8 +197,18 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - added admin PDF download endpoint: `/[companyId]/payroll/payslips/[payslipId]/download`
 - Added active payroll statutory reporting route:
   - `/[companyId]/payroll/statutory`
-  - selected-run statutory totals (employee/employer shares and withholding tax)
-  - employee-level statutory breakdown table with direct payslip drill-down links
+  - statutory reports workspace now uses locked Iteration 3 UX (left report selector + right report detail/preview)
+  - includes printable/exportable report flows for:
+    - `SSS Monthly Remittance`
+    - `PhilHealth EPRS Remittance`
+    - `Pag-IBIG MCRF (Contributions)`
+    - `DOLE 13th Month Pay Report`
+    - `BIR Annual Alphalist`
+  - PhilHealth/Pag-IBIG/BIR now support print-ready report layouts and styled CSV export outputs
+  - monthly statutory report source rows are safeguarded to `REGULAR` payroll runs only
+  - statutory report currency labels use `PHP` code format consistently
+  - report print behavior is now report-scoped (prints report content only, not full app chrome)
+  - report print defaults include landscape paper mode, print footer metadata, and print-only metadata visibility
 - Hardened payroll lifecycle stage transitions and gating:
   - added `completeReviewPayrollRunAction` (step 4 -> step 5 progression with validation checks)
   - added `generatePayslipsPayrollRunAction` (step 5 completion with payslip presence check, no auto-advance)
@@ -232,6 +255,10 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - pay period field in create-run form is now a disabled display input (system-selected), not a user-selectable dropdown
   - pay period field now includes an info tooltip explaining unlocked-period auto-selection policy
 - Current implementation is an active scaffold phase and will be expanded to full reference business-logic parity.
+ - Added run-type-specific bonus calculations:
+   - `THIRTEENTH_MONTH`: computes 13th month pay using YTD regular basic pay / 12, with prorated fallback for employees without regular-run history yet.
+   - `MID_YEAR_BONUS`: computes fixed policy bonus as half of employee base salary (`baseSalary / 2`).
+   - Bonus runs (`THIRTEENTH_MONTH`, `MID_YEAR_BONUS`) use pay period as context only and do not lock pay periods.
 
 ### 11) Work Schedules Module (New)
 
@@ -293,6 +320,22 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - Expanded editable payroll fields (base/daily/hourly, divisor, hours/day, salary grade/band, min wage region)
   - Expanded editable personal/government fields (religion, blood type, birth date, height/weight, TIN/SSS/PhilHealth/Pag-IBIG/UMID)
   - Save action with company-scoped authz, zod validation, audit log, and revalidation
+  - Profile edit now auto-writes movement history rows when changed in edit mode for:
+    - salary (`EmployeeSalaryHistory`)
+    - position (`EmployeePositionHistory`)
+    - employment status (`EmployeeStatusHistory`)
+    - rank (`EmployeeRankHistory`)
+  - Employment tab layout updated so Employment Details uses a 5-column row layout on large screens.
+
+- Onboarding step 2 enhancements:
+  - Payroll section now auto-computes Daily/Hourly rates from Monthly Rate using annualized divisor formula:
+    - `dailyRate = (monthlyRate * 12) / monthlyDivisor`
+    - `hourlyRate = dailyRate / hoursPerDay`
+  - Daily/Hourly are display-only in onboarding and auto-filled from Monthly Rate.
+  - Monthly Divisor and Hours/Day are shown as disabled defaults in onboarding payroll form.
+  - Step 2 select inputs now support inline dynamic creation via in-page add dialog for:
+    - employment status, type, class
+    - department, division, position, rank, branch
 
 ### 14) Attendance Operations (DTR + Biometrics + Leave Calendar)
 
@@ -467,9 +510,50 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - DTR policy note: manual DTR auto-approval is intentional for the HR-operated workflow.
 - Approval direction: continue using `User.isRequestApprover` for approver assignment and access in current portal flows.
 - Approval workflow engine expansion is currently out of scope.
+- Final Pay / Separation Pay calculation policy is pending HR process confirmation before implementation in payroll run logic.
 
 ## Recent Changes
 
+- 2026-02-09: Added Employment Setup module at `/[companyId]/settings/employment` with CRUD management for positions, employment status/type/class, table search/filter controls, and server-side deactivation guardrails for active employee assignments.
+- 2026-02-09: Migrated `EmploymentStatus`, `EmploymentType`, and `EmploymentClass` to company-scoped models (`companyId`-scoped) with migration-based cloning/remapping, app query/action updates, and tenant-safety enforcement (`companyId + code` uniqueness).
+- 2026-02-09: Added verification script `npm run verify:employment:scope` to validate company-scoping consistency (null-company checks, cross-company assignment mismatches, and per-company coverage counts).
+- 2026-02-09: Enhanced employee profile edit flow to auto-create salary/position/status/rank history records on change and updated `Edit Record` primary action styling to blue.
+- 2026-02-09: Enhanced onboarding Step 2 with computed payroll rates and dynamic select creation dialogs (with blue `+ Add` option) for employment/organization references.
+- 2026-02-09: Implemented payroll run-type bonus calculations for `THIRTEENTH_MONTH` (with prorated fallback support) and `MID_YEAR_BONUS` (`baseSalary / 2`), while keeping bonus runs non-locking for pay periods.
+- 2026-02-09: Added in-code TODO marker for `FINAL_PAY`/separation-pay calculation flow pending HR-approved business process and formula definition.
+- 2026-02-09: Reworked statutory reports page to locked Iteration 3 design and added full printable report templates for PhilHealth, Pag-IBIG, and BIR Alphalist with print-only metadata footer and report-scoped print mode.
+- 2026-02-09: Added styled CSV export output for PhilHealth, Pag-IBIG, and BIR reports to mirror report headings/column structure.
+- 2026-02-09: Added statutory safeguard so monthly contribution reports only source rows from `REGULAR` payroll runs.
+- 2026-02-09: Upgraded BIR annual alphalist computation to use annual WTAX table logic (gross compensation, mandatory contributions, non-taxable benefit cap, taxable compensation, annual tax due, and tax variance vs withheld).
+- 2026-02-09: Refined payroll withholding computation to use annual-projected WTAX delta method when annual tax-table rows are available, with period-bracket fallback behavior when annual tables are unavailable.
+- 2026-02-09: Added full HTML report templates for `SSS Monthly Remittance` and `DOLE 13th Month Pay Report` in statutory reports, matching print/export workflow used by PhilHealth/Pag-IBIG/BIR.
+- 2026-02-09: Added compact BIR per-employee `Calc Trace` section (gross, non-taxable cap applied, taxable base, annual tax due, YTD withheld, delta) for HR audit visibility.
+- 2026-02-09: Fixed annual withholding projection to include YTD pre-tax recurring deductions (not current-period only), preventing over-withholding on semi-monthly runs.
+- 2026-02-09: Refactored statutory view-model data loading to use Promise.all for independent DB calls (`user`, `payslips`, `birPayslips`, `annualTaxRows`) for better performance.
+- 2026-02-09: Reworked payroll payslips history page to bounded client-fetch architecture via `/api/payroll/payslips` (paginated/date-scoped slices) instead of serializing full payslip arrays from RSC.
+- 2026-02-09: Added recurring deductions management page at `/[companyId]/payroll/recurring-deductions` with company-scoped create and status-management actions (activate/suspend/cancel), PH-local effective-date calendar inputs, payroll module authorization checks, and audit logging.
+- 2026-02-09: Added payroll navigation entry for `Recurring Deductions` under Payroll module.
+- 2026-02-09: Updated recurring deductions deduction-type selector behavior:
+  - excluded government-mandated/system deduction types from selectable options on recurring deductions page.
+  - added dynamic `+ Create Deduction Type` flow in selector via in-page dialog, with payroll-authz scoped server action and audit logging.
+- 2026-02-09: Updated `Create Deduction Type` dialog layout so `Pay Period Applicability` and `Pre-tax deduction` render in a two-column grid for cleaner form density.
+- 2026-02-09: Aligned `Pre-tax deduction` row height to match adjacent `Pay Period Applicability` select control in `Create Deduction Type` dialog.
+- 2026-02-09: Refined `Create Deduction Type` two-column alignment by adding a matching label row and fixed-height controls (`h-9`) for both `Pay Period Applicability` and `Pre-tax Deduction` fields.
+- 2026-02-09: Renamed `Pay Period Applicability` label to shorter `Payroll Timing` in `Create Deduction Type` dialog.
+- 2026-02-09: Removed extra bordered container wrapper around `Pre-tax Deduction` checkbox row in `Create Deduction Type` dialog.
+- 2026-02-09: Aligned `Pre-tax Deduction` checkbox row spacing with adjacent `Payroll Timing` select control (matching left inset and control row height).
+- 2026-02-09: Refined recurring-deduction deduction-type selector:
+  - excluded statutory/system deduction codes (including `SSS`, `PHILHEALTH`, `PAGIBIG`, `WTAX`) from available options.
+  - simplified option labels to show deduction `name` only (no code prefix).
+- 2026-02-09: Removed separate `Recurring Category` user input from recurring-deductions create flow; category is now derived internally from selected deduction type metadata.
+- 2026-02-09: Updated recurring deductions page to use the same core UX layout pattern as Leave / OT Policies (left records list + right sticky form panel) for consistency across policy configuration screens.
+- 2026-02-09: Enhanced recurring deductions table/form UX:
+  - status badges now use solid semantic colors (`ACTIVE` green, `SUSPENDED` amber, `CANCELLED` red).
+  - row selection now auto-populates the right-side form for editing existing recurring deductions.
+  - added inline status filter button beside search.
+  - action buttons adapt styling when row is selected within blue-highlight context.
+- 2026-02-09: Adjusted recurring-deductions toolbar so filter control sits directly beside the search input with matched control height.
+- 2026-02-09: Enabled reactivation path for cancelled recurring deductions from records table actions (`Reactivate` action now available for `CANCELLED` rows).
 - 2026-02-09: Added idempotency hardening for critical payroll side effects:
   - close-run action now behaves idempotently for already-closed runs and uses guarded state transition update to prevent duplicate concurrent close transitions.
   - batch payslip email send now has a short duplicate-dispatch guard window to block accidental double-trigger sends.

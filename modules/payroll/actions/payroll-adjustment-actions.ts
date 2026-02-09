@@ -356,7 +356,7 @@ export async function upsertPayslipAdjustmentAction(input: UpsertPayslipAdjustme
     })
 
     revalidatePath(`/${access.context.companyId}/payroll/runs/${payslip.payrollRun.id}`)
-    revalidatePath(`/${access.context.companyId}/payroll/adjustments`)
+    revalidatePath(`/${access.context.companyId}/payroll/payslips`)
 
     return {
       ok: true,
@@ -467,7 +467,7 @@ export async function removePayslipAdjustmentAction(input: RemovePayslipAdjustme
     })
 
     revalidatePath(`/${access.context.companyId}/payroll/runs/${payslip.payrollRun.id}`)
-    revalidatePath(`/${access.context.companyId}/payroll/adjustments`)
+    revalidatePath(`/${access.context.companyId}/payroll/payslips`)
 
     return {
       ok: true,

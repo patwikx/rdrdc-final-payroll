@@ -102,6 +102,30 @@ const maskIdValue = (value: string): string => {
   return `${"*".repeat(Math.max(0, value.length - 4))}${tail}`
 }
 
+const computeDailyRate = (monthlyRate: number, monthlyDivisor: number): number => {
+  if (!Number.isFinite(monthlyRate) || monthlyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(monthlyDivisor) || monthlyDivisor <= 0) {
+    return 0
+  }
+
+  return (monthlyRate * 12) / monthlyDivisor
+}
+
+const computeHourlyRate = (dailyRate: number, hoursPerDay: number): number => {
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(hoursPerDay) || hoursPerDay <= 0) {
+    return 0
+  }
+
+  return dailyRate / hoursPerDay
+}
+
 export async function createEmployeeOnboardingAction(
   input: EmployeeOnboardingInput
 ): Promise<CreateEmployeeOnboardingActionResult> {
@@ -235,6 +259,11 @@ export async function createEmployeeOnboardingAction(
 
       await tx.employeeSalary.create({
         data: {
+          dailyRate: computeDailyRate(payload.payroll.monthlyRate, payload.payroll.monthlyDivisor).toFixed(2),
+          hourlyRate: computeHourlyRate(
+            computeDailyRate(payload.payroll.monthlyRate, payload.payroll.monthlyDivisor),
+            payload.payroll.hoursPerDay
+          ).toFixed(2),
           employeeId: employee.id,
           baseSalary: payload.payroll.monthlyRate.toString(),
           salaryRateTypeCode: "MONTHLY",

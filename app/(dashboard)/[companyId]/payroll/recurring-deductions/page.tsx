@@ -5,17 +5,15 @@ import {
   getActiveCompanyContext,
 } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
-import { PayrollAdjustmentsPageClient } from "@/modules/payroll/components/payroll-adjustments-page-client"
-import { getPayrollAdjustmentsViewModel } from "@/modules/payroll/utils/get-payroll-adjustments-view-model"
+import { PayrollRecurringDeductionsPageClient } from "@/modules/payroll/components/payroll-recurring-deductions-page-client"
+import { getRecurringDeductionsViewModel } from "@/modules/payroll/utils/get-recurring-deductions-view-model"
 
-type PayrollAdjustmentsPageProps = {
+type PayrollRecurringDeductionsPageProps = {
   params: Promise<{ companyId: string }>
-  searchParams: Promise<{ runId?: string }>
 }
 
-export default async function PayrollAdjustmentsPage({ params, searchParams }: PayrollAdjustmentsPageProps) {
+export default async function PayrollRecurringDeductionsPage({ params }: PayrollRecurringDeductionsPageProps) {
   const { companyId } = await params
-  const { runId } = await searchParams
 
   let company: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
 
@@ -32,15 +30,15 @@ export default async function PayrollAdjustmentsPage({ params, searchParams }: P
     redirect(`/${company.companyId}/dashboard`)
   }
 
-  const viewModel = await getPayrollAdjustmentsViewModel(company.companyId, runId)
+  const viewModel = await getRecurringDeductionsViewModel(company.companyId)
 
   return (
-    <PayrollAdjustmentsPageClient
+    <PayrollRecurringDeductionsPageClient
       companyId={viewModel.companyId}
       companyName={viewModel.companyName}
-      selectedRunId={viewModel.selectedRunId}
-      runs={viewModel.runs}
-      payslips={viewModel.payslips}
+      employees={viewModel.employees}
+      deductionTypes={viewModel.deductionTypes}
+      records={viewModel.records}
     />
   )
 }

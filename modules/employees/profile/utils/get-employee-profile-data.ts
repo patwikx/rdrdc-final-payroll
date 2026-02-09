@@ -257,9 +257,9 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
 
   const [employmentStatuses, employmentTypes, employmentClasses, departments, divisions, positions, ranks, branches, managers, workSchedules, payPeriodPatterns] =
     await Promise.all([
-      db.employmentStatus.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
-      db.employmentType.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
-      db.employmentClass.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentStatus.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentType.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
+      db.employmentClass.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.department.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.division.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.position.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
@@ -682,20 +682,20 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       positionHistory: employee.positionHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousPosition?.name ?? "-",
-        current: item.newPosition.name,
+        current: item.newPosition?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
       })),
       statusHistory: employee.statusHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousStatus?.name ?? "-",
-        current: item.newStatus.name,
+        current: item.newStatus?.name ?? "Unassigned",
         reason: item.reason ?? "-",
       })),
       rankHistory: employee.rankHistory.map((item) => ({
         effectiveDate: formatDate(item.effectiveDate),
         previous: item.previousRank?.name ?? "-",
-        current: item.newRank.name,
+        current: item.newRank?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
       })),

@@ -10,12 +10,10 @@ import { getPayrollPayslipsViewModel } from "@/modules/payroll/utils/get-payroll
 
 type PayrollPayslipsPageProps = {
   params: Promise<{ companyId: string }>
-  searchParams: Promise<{ runId?: string }>
 }
 
-export default async function PayrollPayslipsPage({ params, searchParams }: PayrollPayslipsPageProps) {
+export default async function PayrollPayslipsPage({ params }: PayrollPayslipsPageProps) {
   const { companyId } = await params
-  const { runId } = await searchParams
 
   let company: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
 
@@ -32,15 +30,15 @@ export default async function PayrollPayslipsPage({ params, searchParams }: Payr
     redirect(`/${company.companyId}/dashboard`)
   }
 
-  const viewModel = await getPayrollPayslipsViewModel(company.companyId, runId)
+  const viewModel = await getPayrollPayslipsViewModel(company.companyId)
 
   return (
     <PayrollPayslipsPageClient
       companyId={viewModel.companyId}
       companyName={viewModel.companyName}
-      selectedRunId={viewModel.selectedRunId}
-      runs={viewModel.runs}
-      payslips={viewModel.payslips}
+      defaultStartDate={viewModel.defaultStartDate}
+      defaultEndDate={viewModel.defaultEndDate}
+      pageSize={viewModel.pageSize}
     />
   )
 }

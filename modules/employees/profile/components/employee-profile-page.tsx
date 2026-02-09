@@ -120,6 +120,46 @@ type EmployeeProfileDraft = {
   isWfhEligible: boolean
 }
 
+const toPositiveNumber = (value: string): number | null => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null
+  }
+
+  return parsed
+}
+
+const toRateString = (value: number): string => value.toFixed(2)
+
+const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDraft => {
+  const monthlyRate = toPositiveNumber(draft.monthlyRate)
+  if (!monthlyRate) {
+    return {
+      ...draft,
+      dailyRate: "",
+      hourlyRate: "",
+    }
+  }
+
+  const monthlyDivisor = toPositiveNumber(draft.monthlyDivisor)
+  if (!monthlyDivisor) {
+    return {
+      ...draft,
+      dailyRate: "",
+      hourlyRate: "",
+    }
+  }
+
+  const dailyRate = (monthlyRate * 12) / monthlyDivisor
+  const hoursPerDay = toPositiveNumber(draft.hoursPerDay)
+
+  return {
+    ...draft,
+    dailyRate: toRateString(dailyRate),
+    hourlyRate: hoursPerDay ? toRateString(dailyRate / hoursPerDay) : "",
+  }
+}
+
 export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const employee = data.employee
   const router = useRouter()
@@ -305,7 +345,10 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Button
+                onClick={() => setIsEditing(true)}
+                className="bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-600"
+              >
                 Edit Record
               </Button>
             )}
@@ -547,7 +590,7 @@ function EmploymentTab({
   return (
     <div className="space-y-8">
       <SectionHeader title="Employment Details" number="01" icon={IconBriefcase} />
-      <FieldGrid>
+      <FieldGrid className="md:grid-cols-3 xl:grid-cols-5">
         <Field label="Employee Number" value={employee.employeeNumber} />
         <SelectField label="Employment Status" value={employee.employmentStatus} editable={isEditing} selectedValue={draft.employmentStatusId} options={options.employmentStatuses} placeholder="Select status" onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentStatusId: value }))} />
         <SelectField label="Employment Class" value={employee.employmentClass} editable={isEditing} selectedValue={draft.employmentClassId} options={options.employmentClasses} placeholder="Select class" onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentClassId: value }))} />
@@ -626,13 +669,40 @@ function PayrollTab({
     <div className="space-y-8">
       <SectionHeader title="Salary Information" number="01" icon={IconCreditCard} />
       <FieldGrid>
-        <Field label="Base Salary" value={employee.monthlyRate} editable={isEditing} inputValue={draft.monthlyRate} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, monthlyRate: value }))} />
+        <Field
+          label="Base Salary"
+          value={employee.monthlyRate}
+          editable={isEditing}
+          inputValue={draft.monthlyRate}
+          inputMode="decimal"
+          onInputChange={(value) =>
+            setDraft((prev) => recalculateDerivedRates({ ...prev, monthlyRate: value }))
+          }
+        />
         <Field label="Currency" value={employee.currency} />
         <Field label="Rate Type" value={employee.salaryRateType} />
         <Field label="Daily Rate" value={employee.dailyRate} editable={isEditing} inputValue={draft.dailyRate} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, dailyRate: value }))} />
         <Field label="Hourly Rate" value={employee.hourlyRate} editable={isEditing} inputValue={draft.hourlyRate} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, hourlyRate: value }))} />
-        <Field label="Monthly Divisor" value={employee.monthlyDivisor} editable={isEditing} inputValue={draft.monthlyDivisor} inputMode="numeric" onInputChange={(value) => setDraft((prev) => ({ ...prev, monthlyDivisor: value }))} />
-        <Field label="Hours Per Day" value={employee.hoursPerDay} editable={isEditing} inputValue={draft.hoursPerDay} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, hoursPerDay: value }))} />
+        <Field
+          label="Monthly Divisor"
+          value={employee.monthlyDivisor}
+          editable={isEditing}
+          inputValue={draft.monthlyDivisor}
+          inputMode="numeric"
+          onInputChange={(value) =>
+            setDraft((prev) => recalculateDerivedRates({ ...prev, monthlyDivisor: value }))
+          }
+        />
+        <Field
+          label="Hours Per Day"
+          value={employee.hoursPerDay}
+          editable={isEditing}
+          inputValue={draft.hoursPerDay}
+          inputMode="decimal"
+          onInputChange={(value) =>
+            setDraft((prev) => recalculateDerivedRates({ ...prev, hoursPerDay: value }))
+          }
+        />
         <Field label="Salary Grade" value={employee.salaryGrade} editable={isEditing} inputValue={draft.salaryGrade} onInputChange={(value) => setDraft((prev) => ({ ...prev, salaryGrade: value }))} />
         <Field label="Salary Band" value={employee.salaryBand} editable={isEditing} inputValue={draft.salaryBand} onInputChange={(value) => setDraft((prev) => ({ ...prev, salaryBand: value }))} />
         <Field label="Minimum Wage Region" value={employee.minimumWageRegion} editable={isEditing} inputValue={draft.minimumWageRegion} onInputChange={(value) => setDraft((prev) => ({ ...prev, minimumWageRegion: value }))} />
@@ -801,8 +871,8 @@ function SectionHeader({
   )
 }
 
-function FieldGrid({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-1 gap-x-10 gap-y-6 md:grid-cols-3">{children}</div>
+function FieldGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("grid grid-cols-1 gap-x-10 gap-y-6 md:grid-cols-3", className)}>{children}</div>
 }
 
 function Field({

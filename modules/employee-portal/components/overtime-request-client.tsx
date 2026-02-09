@@ -296,17 +296,26 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">OT Date</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Time</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Hours</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reason</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
+              </div>
               {requests.map((request) => (
                 <div key={request.id} className="group border-b border-border/60 last:border-b-0 hover:bg-muted/20">
                   <div className="grid grid-cols-12 items-center gap-3 px-3 py-4">
-                    <div className="col-span-2">
-                      <Badge variant={statusVariant(request.statusCode)} className="w-full justify-center rounded-full border px-2 py-1 text-xs shadow-none">{statusLabel(request.statusCode)}</Badge>
-                    </div>
+                    <div className="col-span-2 text-xs text-muted-foreground">{request.requestNumber}</div>
                     <div className="col-span-2 text-sm text-foreground">{request.overtimeDate}</div>
                     <div className="col-span-2 text-sm font-medium text-foreground">{formatClock(request.startTime)} - {formatClock(request.endTime)}</div>
                     <div className="col-span-1 text-sm text-foreground">{request.hours} HRS</div>
-                    <div className="col-span-2 text-xs text-muted-foreground">{request.requestNumber}</div>
                     <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{request.reason || "No reason provided"}</div>
+                    <div className="col-span-2">
+                      <Badge variant={statusVariant(request.statusCode)} className="w-full justify-center rounded-full border px-2 py-1 text-xs shadow-none">{statusLabel(request.statusCode)}</Badge>
+                    </div>
                     <div className="col-span-1 flex justify-end">
                       {request.statusCode === "PENDING" ? (
                         <AlertDialog>

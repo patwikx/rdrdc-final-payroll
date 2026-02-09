@@ -77,10 +77,9 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
         : {
             employee: { companyId: context.companyId },
             supervisorApproverId: context.employee!.id,
-            supervisorApprovedAt: { not: null },
             statusCode: { in: ["SUPERVISOR_APPROVED", "APPROVED", "REJECTED"] },
           },
-      orderBy: isHR ? [{ hrApprovedAt: "desc" }, { hrRejectedAt: "desc" }] : [{ supervisorApprovedAt: "desc" }],
+      orderBy: isHR ? [{ hrApprovedAt: "desc" }, { hrRejectedAt: "desc" }] : [{ updatedAt: "desc" }],
       include: {
         employee: {
           select: {
@@ -113,7 +112,9 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
   }))
 
   const historyRows: LeaveApprovalHistoryRow[] = historyRequests.map((item) => {
-    const decidedAt = isHR ? item.hrApprovedAt ?? item.hrRejectedAt ?? item.approvedAt ?? item.rejectedAt ?? item.updatedAt : item.supervisorApprovedAt ?? item.updatedAt
+    const decidedAt = isHR
+      ? item.hrApprovedAt ?? item.hrRejectedAt ?? item.approvedAt ?? item.rejectedAt ?? item.updatedAt
+      : item.supervisorApprovedAt ?? item.rejectedAt ?? item.updatedAt
     return {
       id: item.id,
       requestNumber: item.requestNumber,

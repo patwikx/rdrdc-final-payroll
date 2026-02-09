@@ -39,6 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils"
 import { getDtrEmployeesAction } from "@/modules/attendance/dtr/actions/get-dtr-employees-action"
 import { getEmployeeDtrLogsAction } from "@/modules/attendance/dtr/actions/get-employee-dtr-logs-action"
+import { getEmployeeLeaveOverlaysAction } from "@/modules/attendance/dtr/actions/get-employee-leave-overlays-action"
 import { ModifyDtrSheet } from "@/modules/attendance/dtr/components/modify-dtr-sheet"
 import type { DtrLogItem, LeaveOverlayItem } from "@/modules/attendance/dtr/types"
 
@@ -110,6 +111,7 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("")
   const [employees, setEmployees] = useState<EmployeeWithSchedule[]>([])
   const [logs, setLogs] = useState<DtrLogItem[]>([])
+  const [employeeLeaveOverlays, setEmployeeLeaveOverlays] = useState<LeaveOverlayItem[]>([])
   const [comboboxOpen, setComboboxOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<DtrLogItem | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
@@ -121,14 +123,20 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
   const calendarDays = eachDayOfInterval({ start: startDate, end: endDate })
 
   const leaveOverlaysByEmployeeId = useMemo(() => {
+    const useEmployeeOverlays =
+      Boolean(selectedEmployeeId) &&
+      employeeLeaveOverlays.length > 0 &&
+      employeeLeaveOverlays.every((overlay) => overlay.employeeId === selectedEmployeeId)
+
+    const source = useEmployeeOverlays ? employeeLeaveOverlays : leaveOverlays
     const map = new Map<string, LeaveOverlayItem[]>()
-    for (const leave of leaveOverlays) {
+    for (const leave of source) {
       const items = map.get(leave.employeeId) ?? []
       items.push(leave)
       map.set(leave.employeeId, items)
     }
     return map
-  }, [leaveOverlays])
+  }, [employeeLeaveOverlays, leaveOverlays, selectedEmployeeId])
 
   const currentRange = useMemo(() => {
     const start = startOfMonth(currentMonth)
@@ -158,6 +166,21 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
     }).then((result) => {
       if (result.ok) {
         setLogs(result.data)
+      }
+    })
+  }, [companyId, currentRange.endDate, currentRange.startDate, selectedEmployeeId])
+
+  useEffect(() => {
+    if (!selectedEmployeeId) return
+
+    getEmployeeLeaveOverlaysAction({
+      companyId,
+      employeeId: selectedEmployeeId,
+      startDate: currentRange.startDate,
+      endDate: currentRange.endDate,
+    }).then((result) => {
+      if (result.ok) {
+        setEmployeeLeaveOverlays(result.data)
       }
     })
   }, [companyId, currentRange.endDate, currentRange.startDate, selectedEmployeeId])

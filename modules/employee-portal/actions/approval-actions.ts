@@ -194,6 +194,71 @@ export async function approveLeaveBySupervisorAction(input: z.input<typeof decis
   return { ok: true, message: "Leave request approved." }
 }
 
+export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+  const parsed = decisionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Invalid request payload." }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actor = await findActorEmployee(context.userId, context.companyId)
+  if (!actor) return { ok: false, error: "Employee profile not found." }
+
+  const request = await db.leaveRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      supervisorApproverId: actor.id,
+      statusCode: RequestStatus.PENDING,
+      employee: { companyId: context.companyId },
+    },
+    select: {
+      id: true,
+      requestNumber: true,
+      employeeId: true,
+      leaveTypeId: true,
+      numberOfDays: true,
+      startDate: true,
+      leaveType: { select: { isPaid: true } },
+    },
+  })
+
+  if (!request) return { ok: false, error: "Leave request not found or no longer pending." }
+
+  try {
+    await db.$transaction(async (tx) => {
+      if (request.leaveType.isPaid) {
+        const released = await releaseReservedLeaveBalanceForRequest(tx, {
+          employeeId: request.employeeId,
+          leaveTypeId: request.leaveTypeId,
+          requestId: request.id,
+          requestNumber: request.requestNumber,
+          requestStartDate: request.startDate,
+          numberOfDays: Number(request.numberOfDays),
+          processedById: context.userId,
+        })
+
+        if (!released.ok) {
+          throw new Error(released.error)
+        }
+      }
+
+      await tx.leaveRequest.update({
+        where: { id: request.id },
+        data: {
+          statusCode: RequestStatus.REJECTED,
+          approverId: actor.id,
+          rejectedAt: new Date(),
+          rejectionReason: payload.remarks?.trim() || "Rejected by supervisor",
+        },
+      })
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { ok: false, error: `Failed to reject leave request: ${message}` }
+  }
+
+  return { ok: true, message: "Leave request rejected." }
+}
+
 export async function approveLeaveByHrAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
   const parsed = decisionSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid request payload." }
@@ -463,6 +528,40 @@ export async function approveOvertimeBySupervisorAction(input: z.input<typeof de
   })
 
   return { ok: true, message: "Overtime request approved." }
+}
+
+export async function rejectOvertimeBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+  const parsed = decisionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Invalid request payload." }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actor = await findActorEmployee(context.userId, context.companyId)
+  if (!actor) return { ok: false, error: "Employee profile not found." }
+
+  const request = await db.overtimeRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      supervisorApproverId: actor.id,
+      statusCode: RequestStatus.PENDING,
+      employee: { companyId: context.companyId },
+    },
+    select: { id: true },
+  })
+
+  if (!request) return { ok: false, error: "Overtime request not found or no longer pending." }
+
+  await db.overtimeRequest.update({
+    where: { id: request.id },
+    data: {
+      statusCode: RequestStatus.REJECTED,
+      approverId: actor.id,
+      rejectedAt: new Date(),
+      rejectionReason: payload.remarks?.trim() || "Rejected by supervisor",
+    },
+  })
+
+  return { ok: true, message: "Overtime request rejected." }
 }
 
 export async function approveOvertimeByHrAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {

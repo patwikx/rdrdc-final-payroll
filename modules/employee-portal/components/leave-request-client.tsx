@@ -465,6 +465,15 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Leave Type</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Range</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Days</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reason</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
+              </div>
               {requests.map((request) => (
                 <div key={request.id} className="group border-b border-border/60 last:border-b-0 hover:bg-muted/20">
                   <div className="hidden grid-cols-12 items-center gap-3 px-3 py-4 md:grid">

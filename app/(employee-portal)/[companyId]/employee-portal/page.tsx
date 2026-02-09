@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import type { ComponentType } from "react"
+import { PayrollRunType } from "@prisma/client"
 import {
   IconAlertCircle,
   IconArrowRight,
@@ -115,6 +116,10 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     db.payslip.findMany({
       where: {
         employeeId: context.employee.id,
+        payrollRun: {
+          companyId: context.companyId,
+          runTypeCode: { not: PayrollRunType.TRIAL_RUN },
+        },
       },
       orderBy: { generatedAt: "desc" },
       take: 3,

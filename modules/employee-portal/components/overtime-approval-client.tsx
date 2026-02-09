@@ -18,8 +18,9 @@ import { toast } from "sonner"
 import {
   approveOvertimeByHrAction,
   approveOvertimeBySupervisorAction,
+  rejectOvertimeBySupervisorAction,
   rejectOvertimeByHrAction,
-} from "@/modules/employee-portal/actions/approval-actions"
+} from "@/modules/overtime/actions/overtime-approval-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -119,7 +120,9 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
         ? actionType === "approve"
           ? await approveOvertimeByHrAction({ companyId, requestId: selectedId, remarks })
           : await rejectOvertimeByHrAction({ companyId, requestId: selectedId, remarks })
-        : await approveOvertimeBySupervisorAction({ companyId, requestId: selectedId, remarks })
+        : actionType === "approve"
+          ? await approveOvertimeBySupervisorAction({ companyId, requestId: selectedId, remarks })
+          : await rejectOvertimeBySupervisorAction({ companyId, requestId: selectedId, remarks })
 
       if (!response.ok) {
         toast.error(response.error)
@@ -166,8 +169,18 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
           <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">No requests pending your approval.</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">OT Date</p>
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Hours</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Reason</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
+              <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
+            </div>
             {rows.map((row) => (
               <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
                 <div className="col-span-2">
                   <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
                   <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
@@ -179,20 +192,20 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                     <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
                   ) : null}
                 </div>
-                <div className="col-span-3 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
+                <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
                 <div className="col-span-2">
                   <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
                     {toLabel(row.statusCode)}
                   </Badge>
                 </div>
                 <div className="col-span-2 flex justify-end gap-2">
-                  {isHR ? (
-                    <Button variant="outline" size="icon-sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
-                      <IconX className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : null}
-                  <Button size="icon-sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
-                    <IconCheck className="h-3.5 w-3.5" />
+                  <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
+                    <IconX className="mr-1 h-3.5 w-3.5" />
+                    Reject
+                  </Button>
+                  <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                    <IconCheck className="mr-1 h-3.5 w-3.5" />
+                    Approve
                   </Button>
                 </div>
               </div>
@@ -287,8 +300,18 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Employee</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">OT Date</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Hours</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reason</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">CTO</p>
+              </div>
               {filteredHistoryRows.map((row) => (
                 <div key={`history-${row.id}`} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                  <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
                   <div className="col-span-2">
                     <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
                     <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
@@ -307,7 +330,9 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                     </Badge>
                     <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
                   </div>
-                  <div className="col-span-3 text-right text-xs text-muted-foreground">{row.requestNumber}</div>
+                  <div className="col-span-2 text-right text-xs text-muted-foreground">
+                    {isHR && row.ctoConversionPreview ? "CTO 1:1" : "-"}
+                  </div>
                 </div>
               ))}
             </div>

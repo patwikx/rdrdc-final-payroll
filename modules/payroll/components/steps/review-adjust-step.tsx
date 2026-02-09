@@ -249,6 +249,18 @@ export function ReviewAdjustStep({ companyId, runId, payslips }: ReviewAdjustSte
           </div>
         </div>
 
+        <div className="space-y-2 rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Review Guide</h3>
+          <p className="text-xs text-foreground/80">Rows marked with a <span className="font-semibold">CHECK</span> badge need manual validation before proceeding.</p>
+          <ul className="list-disc space-y-1 pl-4 text-xs text-foreground/80">
+            <li>Net pay is zero or negative.</li>
+            <li>Gross pay is zero or negative.</li>
+            <li>Deductions are greater than gross pay.</li>
+            <li>Deductions are more than 60% of gross pay.</li>
+          </ul>
+          <p className="text-xs text-foreground/80">Use <span className="font-semibold">Adjust</span> on the row to correct values, then recheck totals.</p>
+        </div>
+
         <div className="space-y-3 rounded-lg border border-border/60 bg-card p-4">
           <div className="flex items-start gap-2">
             <Checkbox

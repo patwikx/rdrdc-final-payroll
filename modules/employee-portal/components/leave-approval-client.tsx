@@ -19,8 +19,9 @@ import { toast } from "sonner"
 import {
   approveLeaveByHrAction,
   approveLeaveBySupervisorAction,
+  rejectLeaveBySupervisorAction,
   rejectLeaveByHrAction,
-} from "@/modules/employee-portal/actions/approval-actions"
+} from "@/modules/leave/actions/leave-approval-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -121,7 +122,9 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
         ? actionType === "approve"
           ? await approveLeaveByHrAction({ companyId, requestId: selectedId, remarks })
           : await rejectLeaveByHrAction({ companyId, requestId: selectedId, remarks })
-        : await approveLeaveBySupervisorAction({ companyId, requestId: selectedId, remarks })
+        : actionType === "approve"
+          ? await approveLeaveBySupervisorAction({ companyId, requestId: selectedId, remarks })
+          : await rejectLeaveBySupervisorAction({ companyId, requestId: selectedId, remarks })
 
       if (!response.ok) {
         toast.error(response.error)
@@ -137,7 +140,7 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
       <div className="border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6">
-        <p className="text-xs text-muted-foreground">Request Management</p>
+        <p className="text-xs text-foreground/70">Request Management</p>
         <div className="mt-2 flex items-center gap-4">
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Leave Approvals</h1>
           <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
@@ -156,7 +159,7 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
           ].map((stat) => (
             <div key={stat.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
               <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <p className="text-xs text-foreground/70">{stat.label}</p>
                 <stat.icon className="h-4 w-4 text-primary" />
               </div>
               <span className="text-2xl font-semibold text-foreground">{stat.value}</span>
@@ -165,32 +168,43 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
         </div>
 
         {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">No requests pending your approval.</div>
+          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">No requests pending your approval.</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
+              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Date Range</p>
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Days</p>
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Reason</p>
+              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
+              <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
+            </div>
             {rows.map((row) => (
               <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                <div className="col-span-1 text-xs text-foreground/70">{row.requestNumber}</div>
                 <div className="col-span-2">
                   <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
-                  <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
+                  <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
                 </div>
                 <div className="col-span-2 text-sm text-foreground">{row.leaveTypeName}</div>
-                <div className="col-span-2 text-sm text-foreground">{row.startDate} to {row.endDate}</div>
+                <div className="col-span-2 text-sm leading-tight text-foreground whitespace-normal break-words">{row.startDate} to {row.endDate}</div>
                 <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
-                <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
-                <div className="col-span-2">
+                <div className="col-span-1 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
+                <div className="col-span-1">
                   <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
                     {toLabel(row.statusCode)}
                   </Badge>
                 </div>
-                <div className="col-span-1 flex justify-end gap-2">
-                  {isHR ? (
-                    <Button variant="outline" size="icon-sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
-                      <IconX className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : null}
-                  <Button size="icon-sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
-                    <IconCheck className="h-3.5 w-3.5" />
+                <div className="col-span-2 flex justify-end gap-2">
+                  <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
+                    <IconX className="mr-1 h-3.5 w-3.5" />
+                    Reject
+                  </Button>
+                  <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                    <IconCheck className="mr-1 h-3.5 w-3.5" />
+                    Approve
                   </Button>
                 </div>
               </div>
@@ -201,12 +215,12 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval History</h2>
-            <span className="text-xs text-muted-foreground">{filteredHistoryRows.length} records</span>
+            <span className="text-xs text-foreground/70">{filteredHistoryRows.length} records</span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div className="relative">
-              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
               <Input placeholder="Search employee/request..." value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} className="rounded-lg pl-8" />
             </div>
             <Select value={historyStatus} onValueChange={setHistoryStatus}>
@@ -222,7 +236,7 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
             </Select>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyFromDate && "text-muted-foreground")}>
+                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyFromDate && "text-foreground/70")}>
                   <IconCalendarEvent className="mr-2 h-4 w-4" />
                   {historyFromDate ? format(fromDateValue(historyFromDate) as Date, "PPP") : "From date"}
                 </Button>
@@ -244,7 +258,7 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
             </Popover>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyToDate && "text-muted-foreground")}>
+                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyToDate && "text-foreground/70")}>
                   <IconCalendarEvent className="mr-2 h-4 w-4" />
                   {historyToDate ? format(fromDateValue(historyToDate) as Date, "PPP") : "To date"}
                 </Button>
@@ -280,28 +294,37 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
           </div>
 
           {filteredHistoryRows.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-8 text-center text-sm text-foreground/70">
               No approval history found for the selected filters.
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Date Range</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Days</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Reason</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
+              </div>
               {filteredHistoryRows.map((row) => (
                 <div key={`history-${row.id}`} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                  <div className="col-span-1 text-xs text-foreground/70">{row.requestNumber}</div>
                   <div className="col-span-2">
                     <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
-                    <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
+                    <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
                   </div>
                   <div className="col-span-2 text-sm text-foreground">{row.leaveTypeName}</div>
-                  <div className="col-span-2 text-sm text-foreground">{row.startDate} to {row.endDate}</div>
+                  <div className="col-span-2 text-sm leading-tight text-foreground whitespace-normal break-words">{row.startDate} to {row.endDate}</div>
                   <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
-                  <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
+                  <div className="col-span-2 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
                   <div className="col-span-2 space-y-1">
                     <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
                       {toLabel(row.statusCode)}
                     </Badge>
-                    <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
+                    <p className="text-center text-[11px] text-foreground/70">{row.decidedAtLabel}</p>
                   </div>
-                  <div className="col-span-1 text-right text-xs text-muted-foreground">{row.requestNumber}</div>
                 </div>
               ))}
             </div>
@@ -315,7 +338,7 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
             <DialogTitle className="text-base font-semibold">
               {actionType === "approve" ? "Approve" : "Reject"} Leave Request
             </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
+            <DialogDescription className="text-sm text-foreground/70">
               {selected?.requestNumber} - {selected?.employeeName}
             </DialogDescription>
           </DialogHeader>
@@ -323,11 +346,11 @@ export function LeaveApprovalClient({ companyId, isHR, rows, historyRows }: Leav
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
               <div>
-                <p className="text-xs text-muted-foreground">Leave Type</p>
+                <p className="text-xs text-foreground/70">Leave Type</p>
                 <p className="mt-1 text-sm font-medium text-foreground">{selected?.leaveTypeName}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Duration</p>
+                <p className="text-xs text-foreground/70">Duration</p>
                 <p className="mt-1 text-sm font-medium text-foreground">{selected?.numberOfDays} Days</p>
               </div>
             </div>

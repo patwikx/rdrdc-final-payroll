@@ -17,7 +17,7 @@ type CalculatePayrollStepProps = {
   calculationNotes: string
 }
 
-const money = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" })
+const money = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", currencyDisplay: "code" })
 
 export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNetPay, calculationNotes }: CalculatePayrollStepProps) {
   const router = useRouter()

@@ -4,7 +4,7 @@ import { Suspense } from "react"
 import { ForceLogout } from "@/modules/auth/components/force-logout"
 
 export const metadata: Metadata = {
-  title: "Logging Out | Final Payroll System",
+  title: "Logging Out | RD Realty Group HRIS System",
   description: "Ending your session securely.",
 }
 

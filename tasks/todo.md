@@ -279,6 +279,25 @@ Last updated: 2026-02-09
   - Normalize DTR time handling and export consistency for payroll consumption.
   - Keep manual DTR auto-approval behavior as-is (intentional HR-only operating model).
 
+## Backlog (Lower Priority / Later)
+
+- [ ] Expand automated test coverage across modules.
+  - Add unit tests for schemas, formatters, and pure domain utilities.
+  - Add integration tests for server actions and DB-backed workflows (payroll, leave, attendance).
+  - Add E2E tests for critical business paths and role-restricted flows.
+- [ ] Implement `FINAL_PAY` / separation-pay payroll calculations.
+  - Pending HR-approved process and formula policy.
+- [ ] Re-introduce Leave Reports module for payroll-source reporting when prioritized.
+  - Current pay period auto-resolve.
+  - Filed leave + overtime with supervisor-approved source rows.
+  - Rich filtering + export-ready output.
+- [ ] Remove remaining Employee Portal loan entry points to match current scope policy.
+  - Employee Portal should not expose Loans or Loan Calculator in sidebar/quick actions.
+- [ ] Formalize `modules/leave` as a full domain module (not UI-only).
+  - Add `actions`, `schemas`, `utils`, and `types` under `modules/leave`.
+  - Move leave domain queries/transforms from route files/components into module-level loaders/services.
+  - Standardize typed action result contracts and centralized leave domain validations.
+
 ## Decisions
 
 - Approval model direction: keep current two-stage leave/overtime approvals and use `User.isRequestApprover` as the approver flag source.

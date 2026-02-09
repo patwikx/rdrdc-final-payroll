@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation"
+import { PayrollRunType } from "@prisma/client"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { db } from "@/lib/db"
@@ -36,7 +37,10 @@ export default async function PayslipsPage({ params }: PayslipsPageProps) {
   const payslips = await db.payslip.findMany({
     where: {
       employeeId: context.employee.id,
-      payrollRun: { companyId: context.companyId },
+      payrollRun: {
+        companyId: context.companyId,
+        runTypeCode: { not: PayrollRunType.TRIAL_RUN },
+      },
     },
     orderBy: { generatedAt: "desc" },
     take: 100,

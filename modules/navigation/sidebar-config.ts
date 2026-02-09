@@ -70,6 +70,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     roles: ALL_ROLES,
     items: [
       { id: "approval-queue", label: "Approval Queue", path: "/approvals" },
+      { id: "leave-balances", label: "Leave Balance", path: "/leave/balances" },
     ],
   },
   {

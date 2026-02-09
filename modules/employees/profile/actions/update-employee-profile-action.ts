@@ -140,7 +140,7 @@ export async function updateEmployeeProfileAction(
             previousStatusId: employee.employmentStatusId,
             newStatusId: nextEmploymentStatusId,
             effectiveDate,
-            reason: "Profile edit: employment status updated",
+            reason: "Employment status updated",
             changedById: context.userId,
           },
         })

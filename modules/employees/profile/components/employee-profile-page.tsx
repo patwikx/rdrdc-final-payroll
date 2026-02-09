@@ -1076,7 +1076,7 @@ function HistoryTable({ headers, rows }: { headers: string[]; rows: string[][] }
           {rows.map((row, index) => (
             <tr key={`${row[0]}-${index}`} className="border-t border-border/60">
               {row.map((cell, idx) => (
-                <td key={`${cell}-${idx}`} className="px-3 py-2 text-muted-foreground">{cell}</td>
+                <td key={`${cell}-${idx}`} className="px-3 py-2">{cell}</td>
               ))}
             </tr>
           ))}

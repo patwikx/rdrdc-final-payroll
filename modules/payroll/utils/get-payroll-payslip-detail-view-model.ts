@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { PayrollRunType } from "@prisma/client"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 
 const toNumber = (value: { toString(): string } | null | undefined): number => {
@@ -86,6 +87,9 @@ export async function getPayrollPayslipDetailViewModel(
       id: payslipId,
       payrollRun: {
         companyId: context.companyId,
+        runTypeCode: {
+          not: PayrollRunType.TRIAL_RUN,
+        },
       },
     },
     include: {

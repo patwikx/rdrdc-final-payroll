@@ -9,6 +9,12 @@ import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
+  calculateOvertimeDurationHours,
+  generateOvertimeRequestNumber,
+  parseOvertimeDateInput,
+  parseOvertimeTimeInput,
+} from "@/modules/overtime/utils/overtime-domain"
+import {
   cancelOvertimeRequestInputSchema,
   createOvertimeRequestInputSchema,
   type CancelOvertimeRequestInput,
@@ -18,46 +24,6 @@ import {
 type OvertimeRequestActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string }
-
-const parseDateInput = (value: string): Date => {
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const parseTimeInput = (value: string): Date => {
-  const [hour, minute] = value.split(":").map((part) => Number(part))
-  return new Date(Date.UTC(1970, 0, 1, hour, minute, 0, 0))
-}
-
-const durationHours = (start: string, end: string): number => {
-  const [startHour, startMinute] = start.split(":").map((part) => Number(part))
-  const [endHour, endMinute] = end.split(":").map((part) => Number(part))
-  const startMinutes = startHour * 60 + startMinute
-  const endMinutes = endHour * 60 + endMinute
-  return (endMinutes - startMinutes) / 60
-}
-
-const generateOvertimeRequestNumber = async (): Promise<string> => {
-  const stamp = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-    .format(new Date())
-    .replace(/-/g, "")
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const suffix = Math.floor(Math.random() * 1_000_000)
-      .toString()
-      .padStart(6, "0")
-    const candidate = `OT-${stamp}-${suffix}`
-    const exists = await db.overtimeRequest.findUnique({ where: { requestNumber: candidate }, select: { id: true } })
-    if (!exists) return candidate
-  }
-
-  throw new Error("REQUEST_NUMBER_GENERATION_FAILED")
-}
 
 export async function createOvertimeRequestAction(
   input: CreateOvertimeRequestInput
@@ -92,7 +58,7 @@ export async function createOvertimeRequestAction(
     return { ok: false, error: "Employee profile not found for the active company." }
   }
 
-  const hours = durationHours(payload.startTime, payload.endTime)
+  const hours = calculateOvertimeDurationHours(payload.startTime, payload.endTime)
   if (hours <= 0) {
     return { ok: false, error: "End time must be later than start time." }
   }
@@ -107,9 +73,9 @@ export async function createOvertimeRequestAction(
     data: {
       requestNumber,
       employeeId: employee.id,
-      overtimeDate: parseDateInput(payload.overtimeDate),
-      startTime: parseTimeInput(payload.startTime),
-      endTime: parseTimeInput(payload.endTime),
+      overtimeDate: parseOvertimeDateInput(payload.overtimeDate),
+      startTime: parseOvertimeTimeInput(payload.startTime),
+      endTime: parseOvertimeTimeInput(payload.endTime),
       hours,
       reason: payload.reason?.trim() || null,
       statusCode: RequestStatus.PENDING,

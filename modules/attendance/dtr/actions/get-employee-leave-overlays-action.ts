@@ -1,11 +1,10 @@
 "use server"
 
-import { RequestStatus } from "@prisma/client"
-
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import type { LeaveOverlayItem } from "@/modules/attendance/dtr/types"
+import { getApprovedLeaveOverlaysForEmployee } from "@/modules/leave/utils/leave-domain"
 
 type GetEmployeeLeaveOverlaysActionResult =
   | { ok: true; data: LeaveOverlayItem[] }
@@ -40,55 +39,15 @@ export async function getEmployeeLeaveOverlaysAction(params: {
     return { ok: false, error: "Employee not found for this company." }
   }
 
-  const leaves = await db.leaveRequest.findMany({
-    where: {
-      employeeId: params.employeeId,
-      statusCode: RequestStatus.APPROVED,
-      startDate: { lte: toPhDate(params.endDate) },
-      endDate: { gte: toPhDate(params.startDate) },
-    },
-    orderBy: [{ startDate: "asc" }],
-    select: {
-      id: true,
-      employeeId: true,
-      startDate: true,
-      endDate: true,
-      isHalfDay: true,
-      halfDayPeriod: true,
-      leaveType: { select: { name: true, code: true, isPaid: true } },
-      employee: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          employeeNumber: true,
-          photoUrl: true,
-        },
-      },
-    },
+  const leaves = await getApprovedLeaveOverlaysForEmployee({
+    companyId: context.companyId,
+    employeeId: params.employeeId,
+    startDate: toPhDate(params.startDate),
+    endDate: toPhDate(params.endDate),
   })
 
   return {
     ok: true,
-    data: leaves.map((leave) => ({
-      id: leave.id,
-      employeeId: leave.employeeId,
-      startDate: leave.startDate.toISOString(),
-      endDate: leave.endDate.toISOString(),
-      isHalfDay: leave.isHalfDay,
-      halfDayPeriod: leave.halfDayPeriod,
-      leaveType: {
-        name: leave.leaveType.name,
-        code: leave.leaveType.code,
-        isPaid: leave.leaveType.isPaid,
-      },
-      employee: {
-        id: leave.employee.id,
-        firstName: leave.employee.firstName,
-        lastName: leave.employee.lastName,
-        employeeNumber: leave.employee.employeeNumber,
-        photoUrl: leave.employee.photoUrl,
-      },
-    })),
+    data: leaves satisfies LeaveOverlayItem[],
   }
 }

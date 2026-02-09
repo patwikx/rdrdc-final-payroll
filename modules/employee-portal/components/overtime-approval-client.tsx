@@ -20,7 +20,7 @@ import {
   approveOvertimeBySupervisorAction,
   rejectOvertimeBySupervisorAction,
   rejectOvertimeByHrAction,
-} from "@/modules/employee-portal/actions/approval-actions"
+} from "@/modules/overtime/actions/overtime-approval-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"

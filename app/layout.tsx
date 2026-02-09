@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Final Payroll System",
+  title: "RD Realty Group HRIS System",
   description: "Multi-company payroll and HR platform",
 }
 

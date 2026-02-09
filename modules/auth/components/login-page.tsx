@@ -83,23 +83,26 @@ export function LoginPage() {
     <main className="grid min-h-screen overflow-hidden bg-background lg:grid-cols-[1.1fr_0.9fr]">
       <section className="relative flex flex-col justify-between border-b border-border/70 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-6 sm:p-10 lg:border-b-0 lg:border-r lg:p-14">
         <div className="space-y-3">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Final Payroll System</p>
           <h1 className="max-w-md text-2xl font-semibold text-foreground sm:text-3xl">
-            Keep compensation accurate and always on schedule.
+            RD REALTY GROUP <br /> HRIS SYSTEM
           </h1>
           <p className="max-w-md text-sm text-muted-foreground">
-            Role-aware access keeps payroll, HR, and auditors in their proper lanes.
+            A MEMBER OF RD GROUP OF COMPANIES
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+            <IconShieldCheck className="size-3.5 text-primary" />
+            RD Realty Development Corporation
+          </span>
           <span className="inline-flex items-center gap-1.5">
             <IconShieldCheck className="size-3.5 text-primary" />
-            SOC-ready controls
+            RD Hardware & Fishing Supply, Inc.
           </span>
           <span className="inline-flex items-center gap-1.5">
             <IconFingerprint className="size-3.5 text-primary" />
-            MFA available
+            Tropicana Worldwide Corporation
           </span>
         </div>
       </section>

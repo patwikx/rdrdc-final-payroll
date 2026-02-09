@@ -4,6 +4,7 @@ import Link from "next/link"
 import { IconArrowLeft, IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import type { LeaveBalanceSummaryReportEmployeeRow } from "@/modules/leave/types/leave-domain-types"
 
 type LeaveBalanceSummaryReportClientProps = {
   companyId: string
@@ -11,12 +12,7 @@ type LeaveBalanceSummaryReportClientProps = {
   year: number
   generatedAtLabel: string
   leaveTypeColumns: string[]
-  rows: Array<{
-    employeeNumber: string
-    employeeName: string
-    departmentName: string
-    leaveBalances: Record<string, number>
-  }>
+  rows: LeaveBalanceSummaryReportEmployeeRow[]
 }
 
 const valueFormat = new Intl.NumberFormat("en-PH", {

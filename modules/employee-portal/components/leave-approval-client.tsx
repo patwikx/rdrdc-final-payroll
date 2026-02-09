@@ -21,7 +21,7 @@ import {
   approveLeaveBySupervisorAction,
   rejectLeaveBySupervisorAction,
   rejectLeaveByHrAction,
-} from "@/modules/employee-portal/actions/approval-actions"
+} from "@/modules/leave/actions/leave-approval-actions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"

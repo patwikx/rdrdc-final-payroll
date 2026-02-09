@@ -6,7 +6,7 @@ import { LoginPage } from "@/modules/auth/components/login-page"
 import { getSetupState } from "@/modules/setup/utils/setup-state"
 
 export const metadata: Metadata = {
-  title: "Login | Final Payroll System",
+  title: "Login | RD Realty Group HRIS System",
   description: "Secure sign in for payroll and HR operations.",
 }
 

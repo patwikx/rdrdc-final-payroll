@@ -26,37 +26,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-
-type BalanceRow = {
-  employeeId: string
-  employeeName: string
-  employeeNumber: string
-  photoUrl: string | null
-  departmentName: string
-  leaveTypeName: string
-  currentBalance: number
-  availableBalance: number
-  pendingRequests: number
-}
-
-type HistoryRow = {
-  id: string
-  employeeId: string
-  requestNumber: string
-  leaveTypeName: string
-  statusCode: string
-  numberOfDays: number
-  startDateIso: string
-  endDateIso: string
-  createdAtIso: string
-}
+import type {
+  LeaveBalanceWorkspaceHistoryRow,
+  LeaveBalanceWorkspaceRow,
+} from "@/modules/leave/types/leave-domain-types"
 
 type Props = {
   companyId: string
   selectedYear: number
   years: number[]
-  balanceRows: BalanceRow[]
-  historyRows: HistoryRow[]
+  balanceRows: LeaveBalanceWorkspaceRow[]
+  historyRows: LeaveBalanceWorkspaceHistoryRow[]
 }
 
 const days = new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })

@@ -21,7 +21,25 @@ type SendPayslipBatchResult =
     }
   | { ok: false; error: string }
 
+type PreviewPayslipEmailResult =
+  | {
+      ok: true
+      data: {
+        recipientEmail: string
+        employeeName: string
+        subject: string
+        html: string
+        plainText: string
+      }
+    }
+  | { ok: false; error: string }
+
 const toCompanyRole = (value: string): CompanyRole => value as CompanyRole
+
+const EMAIL_BATCH_WINDOW_MS = 10 * 60 * 1000
+const EMAIL_BATCH_MAX_PER_WINDOW = 100
+const EMAIL_RETRY_COOLDOWN_MS = 60 * 1000
+const EMAIL_BATCH_DUPLICATE_GUARD_MS = 90 * 1000
 
 const monthShort = new Intl.DateTimeFormat("en-PH", {
   month: "short",
@@ -55,12 +73,26 @@ const buildPayslipEmailTemplate = (input: {
   periodRange: string
 }) => {
   const periodLabel = toHalfLabel(input.periodHalf)
-  const subject = `Payslip • ${periodLabel} • ${input.periodRange}`
+  const sanitizeSubject = (value: string): string => value.replace(/[\r\n]+/g, " ").trim()
+  const escapeHtml = (value: string): string =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;")
+
+  const safeCompanyName = escapeHtml(input.companyName)
+  const safeEmployeeName = escapeHtml(input.employeeName)
+  const safePeriodLabel = escapeHtml(periodLabel)
+  const safePeriodRange = escapeHtml(input.periodRange)
+
+  const subject = sanitizeSubject(`Payslip • ${periodLabel} • ${input.periodRange}`)
   const html = `
     <div style="font-family:Arial,sans-serif;color:#111;line-height:1.6;max-width:620px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:10px;">
-      <h2 style="margin:0 0 10px;font-size:20px;">${input.companyName} Payslip</h2>
-      <p style="margin:0 0 12px;">Hello ${input.employeeName},</p>
-      <p style="margin:0 0 12px;">Your payslip for the <strong>${periodLabel}</strong> payroll period (<strong>${input.periodRange}</strong>) is attached to this email.</p>
+      <h2 style="margin:0 0 10px;font-size:20px;">${safeCompanyName} Payslip</h2>
+      <p style="margin:0 0 12px;">Hello ${safeEmployeeName},</p>
+      <p style="margin:0 0 12px;">Your payslip for the <strong>${safePeriodLabel}</strong> payroll period (<strong>${safePeriodRange}</strong>) is attached to this email.</p>
       <p style="margin:0 0 12px;">Please keep this document for your records.</p>
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0;" />
       <p style="margin:0;font-size:12px;color:#6b7280;">This is an automated payroll message. Please do not reply to this email.</p>
@@ -68,6 +100,14 @@ const buildPayslipEmailTemplate = (input: {
   `
 
   return { subject, html }
+}
+
+const htmlToPlainText = (value: string): string => {
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 const ensurePayrollAccess = async (companyId: string): Promise<{ ok: true; context: Awaited<ReturnType<typeof getActiveCompanyContext>> } | { ok: false; error: string }> => {
@@ -81,6 +121,122 @@ const ensurePayrollAccess = async (companyId: string): Promise<{ ok: true; conte
 
 const toFailedMessageId = (payslipId: string): string => `FAILED-${payslipId}-${Date.now()}`
 
+const assertBatchSendRateLimit = async (userId: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+  const windowStart = new Date(Date.now() - EMAIL_BATCH_WINDOW_MS)
+  const recentSendCount = await db.emailDeliveryRecord.count({
+    where: {
+      sentBy: userId,
+      sentAt: { gte: windowStart },
+    },
+  })
+
+  if (recentSendCount >= EMAIL_BATCH_MAX_PER_WINDOW) {
+    return {
+      ok: false,
+      error: "Email rate limit reached. Please wait a few minutes before sending more payslips.",
+    }
+  }
+
+  return { ok: true }
+}
+
+const assertRetryCooldown = async (payslipId: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+  const recentRecord = await db.emailDeliveryRecord.findFirst({
+    where: { payslipId },
+    orderBy: { sentAt: "desc" },
+    select: { sentAt: true },
+  })
+
+  if (!recentRecord?.sentAt) return { ok: true }
+
+  if (Date.now() - recentRecord.sentAt.getTime() < EMAIL_RETRY_COOLDOWN_MS) {
+    return { ok: false, error: "Please wait at least 1 minute before retrying this payslip email." }
+  }
+
+  return { ok: true }
+}
+
+export async function previewPayrollPayslipEmailAction(input: {
+  companyId: string
+  payslipId: string
+}): Promise<PreviewPayslipEmailResult> {
+  const access = await ensurePayrollAccess(input.companyId)
+  if (!access.ok) return access
+  const { context } = access
+
+  const payslip = await db.payslip.findFirst({
+    where: {
+      id: input.payslipId,
+      payrollRun: { companyId: context.companyId },
+    },
+    select: {
+      id: true,
+      employee: {
+        select: {
+          firstName: true,
+          lastName: true,
+          emails: {
+            where: { isActive: true },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: { email: true },
+          },
+          user: {
+            select: { email: true },
+          },
+        },
+      },
+      payrollRun: {
+        select: {
+          company: {
+            select: {
+              name: true,
+            },
+          },
+          payPeriod: {
+            select: {
+              periodHalf: true,
+              cutoffStartDate: true,
+              cutoffEndDate: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!payslip) {
+    return { ok: false, error: "Payslip not found." }
+  }
+
+  const recipientEmail = payslip.employee.emails[0]?.email ?? payslip.employee.user?.email ?? null
+  if (!recipientEmail) {
+    return { ok: false, error: "No active employee email." }
+  }
+
+  const employeeName = `${payslip.employee.lastName}, ${payslip.employee.firstName}`
+  const periodRange = toPeriodRangeLabel(
+    payslip.payrollRun.payPeriod.cutoffStartDate,
+    payslip.payrollRun.payPeriod.cutoffEndDate
+  )
+  const template = buildPayslipEmailTemplate({
+    employeeName,
+    companyName: payslip.payrollRun.company.name,
+    periodHalf: payslip.payrollRun.payPeriod.periodHalf,
+    periodRange,
+  })
+
+  return {
+    ok: true,
+    data: {
+      recipientEmail,
+      employeeName,
+      subject: template.subject,
+      html: template.html,
+      plainText: htmlToPlainText(template.html),
+    },
+  }
+}
+
 export async function sendPayrollRunPayslipEmailsAction(input: { companyId: string; runId: string }): Promise<SendPayslipBatchResult> {
   const parsed = payrollRunActionInputSchema.safeParse(input)
   if (!parsed.success) {
@@ -90,6 +246,9 @@ export async function sendPayrollRunPayslipEmailsAction(input: { companyId: stri
   const access = await ensurePayrollAccess(parsed.data.companyId)
   if (!access.ok) return access
   const { context } = access
+
+  const rateLimitResult = await assertBatchSendRateLimit(context.userId)
+  if (!rateLimitResult.ok) return rateLimitResult
 
   const resendApiKey = process.env.RESEND_API_KEY
   const fromAddress = process.env.PAYSLIP_EMAIL_FROM
@@ -161,6 +320,21 @@ export async function sendPayrollRunPayslipEmailsAction(input: { companyId: stri
 
   if (run.payslips.length === 0) {
     return { ok: false, error: "No payslips found for this run." }
+  }
+
+  const duplicateGuardStart = new Date(Date.now() - EMAIL_BATCH_DUPLICATE_GUARD_MS)
+  const recentBatchDispatch = await db.auditLog.count({
+    where: {
+      tableName: "PayrollRun",
+      recordId: run.id,
+      userId: context.userId,
+      reason: "SEND_PAYSLIPS_EMAIL_BATCH",
+      createdAt: { gte: duplicateGuardStart },
+    },
+  })
+
+  if (recentBatchDispatch > 0) {
+    return { ok: false, error: "Batch send already triggered recently. Please wait before sending again." }
   }
 
   const resend = new Resend(resendApiKey)
@@ -387,6 +561,12 @@ export async function resendPayrollPayslipEmailAction(input: {
   const access = await ensurePayrollAccess(input.companyId)
   if (!access.ok) return access
   const { context } = access
+
+  const rateLimitResult = await assertBatchSendRateLimit(context.userId)
+  if (!rateLimitResult.ok) return rateLimitResult
+
+  const retryCooldownResult = await assertRetryCooldown(input.payslipId)
+  if (!retryCooldownResult.ok) return retryCooldownResult
 
   const resendApiKey = process.env.RESEND_API_KEY
   const fromAddress = process.env.PAYSLIP_EMAIL_FROM

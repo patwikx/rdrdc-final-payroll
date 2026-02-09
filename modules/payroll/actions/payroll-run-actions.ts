@@ -36,6 +36,8 @@ const toNumber = (value: Prisma.Decimal | null | undefined): number => {
 
 const toDecimalText = (value: number): string => value.toFixed(2)
 
+const PAYROLL_CALCULATION_VERSION = "PH-PAYROLL-CALC-V2026.02.09"
+
 const stepBlueprint: Array<{ stepNumber: number; stepName: PayrollProcessStepName }> = [
   { stepNumber: 1, stepName: PayrollProcessStepName.CREATE_RUN },
   { stepNumber: 2, stepName: PayrollProcessStepName.VALIDATE_DATA },
@@ -69,6 +71,7 @@ type DeductionLine = {
   description: string
   amount: number
   employerShare?: number
+  isPreTax?: boolean
   referenceType?: string
   referenceId?: string
 }
@@ -314,7 +317,11 @@ const calculateAttendanceSnapshot = (params: {
     })
 
     const leaveDayValue = activeLeave?.isHalfDay ? 0.5 : 1
-    const isHalfDayDtr = dtr?.remarks?.toUpperCase().includes("[HALF_DAY]") === true
+    const dtrRemarks = dtr?.remarks?.toUpperCase() ?? ""
+    const isHalfDayDtr =
+      dtrRemarks.includes("[HALF_DAY]") ||
+      dtrRemarks.includes("HALF DAY") ||
+      dtrRemarks.includes("HALFDAY")
     const dtrPayableValue = isHalfDayDtr ? 0.5 : 1
 
     if (isHoliday) {
@@ -331,7 +338,13 @@ const calculateAttendanceSnapshot = (params: {
         unpaidAbsences += 0.5
       }
     } else if (dtr?.attendanceStatus === AttendanceStatus.ON_LEAVE) {
-      totalPayableDays += leaveDayValue
+      if (activeLeave?.isPaid) {
+        totalPayableDays += leaveDayValue
+      } else if (activeLeave && !activeLeave.isPaid) {
+        unpaidAbsences += leaveDayValue
+      } else {
+        unpaidAbsences += dtrPayableValue
+      }
     } else {
       unpaidAbsences += 1
     }
@@ -904,6 +917,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               payPeriodApplicability: true,
               percentageBase: true,
               maxDeductionLimit: true,
+              isPreTax: true,
             },
           },
         },
@@ -1229,6 +1243,49 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         totalDeductions: number
         netPay: number
       }> = []
+      const employeeCalculationTraces: Array<{
+        employeeId: string
+        employeeNumber: string
+        employeeName: string
+        attendance: {
+          workingDays: number
+          payableDays: number
+          unpaidAbsences: number
+          tardinessMins: number
+          undertimeMins: number
+          overtimeHours: number
+          nightDiffHours: number
+        }
+        rates: {
+          salaryRateType: string
+          baseSalary: number
+          dailyRate: number
+          hourlyRate: number
+        }
+        earnings: {
+          basicPay: number
+          overtimePay: number
+          nightDiffPay: number
+          holidayPay: number
+          recurringEarnings: number
+          adjustmentEarnings: number
+          grossPay: number
+        }
+        deductions: {
+          tardiness: number
+          undertime: number
+          sss: number
+          philHealth: number
+          pagIbig: number
+          preTaxRecurring: number
+          withholdingTax: number
+          recurring: number
+          adjustments: number
+          loans: number
+          totalDeductions: number
+          netPay: number
+        }
+      }> = []
 
       const statutoryDiagnostics = {
         schedule: statutorySchedule,
@@ -1423,48 +1480,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           statutoryDiagnostics.employeeStats.pagIbigSkippedByTiming += 1
         }
 
-        const taxableIncome = roundCurrency(Math.max(0, grossPay - (sssEmployee + philHealthEmployee + pagIbigEmployee)))
+        const provisionalTaxableIncome = roundCurrency(
+          Math.max(0, grossPay - (sssEmployee + philHealthEmployee + pagIbigEmployee))
+        )
         const dependentCount = Math.min(Math.max(employee.numberOfDependents, 0), 4)
         const annualExemption = 50000 * (1 + dependentCount)
         const periodExemption = taxTableType === TaxTableType.SEMI_MONTHLY ? annualExemption / 24 : annualExemption / 12
-        const adjustedTaxableIncome = Math.max(0, taxableIncome - periodExemption)
-
-        let withholdingTax = 0
-        const applyWithholdingTax = shouldApplyByTiming(
-          statutorySchedule.withholdingTax,
-          run.payPeriod.pattern.payFrequencyCode,
-          run.payPeriod.periodHalf
-        )
-        if (applyWithholdingTax) {
-          if (employee.isSubstitutedFiling) {
-            withholdingTax = roundCurrency(adjustedTaxableIncome * 0.08)
-            if (withholdingTax > 0) {
-              statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
-            }
-          } else {
-            const taxBracket = activeTaxRows.find(
-              (table) =>
-                adjustedTaxableIncome >= toNumber(table.bracketOver) &&
-                adjustedTaxableIncome <= toNumber(table.bracketNotOver)
-            )
-
-            if (taxBracket) {
-              withholdingTax = roundCurrency(
-                toNumber(taxBracket.baseTax) + (adjustedTaxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
-              )
-              if (withholdingTax > 0) {
-                statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
-              }
-            } else if (adjustedTaxableIncome > 0) {
-              statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
-            }
-          }
-        } else {
-          statutoryDiagnostics.employeeStats.withholdingTaxSkippedByTiming += 1
-        }
 
         const recurringDeductionLines: DeductionLine[] = []
-        const netBaseForRecurring = Math.max(0, grossPay - (tardinessDeduction + undertimeDeduction + sssEmployee + philHealthEmployee + pagIbigEmployee + withholdingTax))
+        const netBaseForRecurring = Math.max(
+          0,
+          grossPay - (tardinessDeduction + undertimeDeduction + sssEmployee + philHealthEmployee + pagIbigEmployee)
+        )
 
         for (const recurring of employee.recurringDeductions) {
           const periodApplicability = recurring.deductionType.payPeriodApplicability
@@ -1488,9 +1515,54 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
             deductionTypeId: recurring.deductionTypeId,
             description: recurring.description || recurring.deductionType.name,
             amount: normalizedAmount,
+            isPreTax: recurring.deductionType.isPreTax,
             referenceType: "RECURRING",
             referenceId: recurring.id,
           })
+        }
+
+        const preTaxRecurringTotal = roundCurrency(
+          recurringDeductionLines
+            .filter((line) => line.isPreTax)
+            .reduce((sum, line) => sum + line.amount, 0)
+        )
+
+        const taxableIncome = roundCurrency(Math.max(0, provisionalTaxableIncome - preTaxRecurringTotal))
+        const adjustedTaxableIncome = Math.max(0, taxableIncome - periodExemption)
+
+        let withholdingTax = 0
+        const applyWithholdingTax = shouldApplyByTiming(
+          statutorySchedule.withholdingTax,
+          run.payPeriod.pattern.payFrequencyCode,
+          run.payPeriod.periodHalf
+        )
+        if (applyWithholdingTax) {
+          if (employee.isSubstitutedFiling) {
+            withholdingTax = roundCurrency(adjustedTaxableIncome * 0.08)
+            if (withholdingTax > 0) {
+              statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
+            }
+          } else {
+            const taxBracket = activeTaxRows.find(
+              (table) =>
+                adjustedTaxableIncome >= toNumber(table.bracketOver) &&
+                adjustedTaxableIncome <= toNumber(table.bracketNotOver)
+            )
+
+            if (taxBracket) {
+              withholdingTax = roundCurrency(
+                toNumber(taxBracket.baseTax) +
+                  (adjustedTaxableIncome - toNumber(taxBracket.excessOver)) * toNumber(taxBracket.taxRatePercent)
+              )
+              if (withholdingTax > 0) {
+                statutoryDiagnostics.employeeStats.withholdingTaxApplied += 1
+              }
+            } else if (adjustedTaxableIncome > 0) {
+              statutoryDiagnostics.employeeStats.withholdingTaxNoBracketMatch += 1
+            }
+          }
+        } else {
+          statutoryDiagnostics.employeeStats.withholdingTaxSkippedByTiming += 1
         }
 
         const manualAdjustmentDeductions: DeductionLine[] = (manualAdjustments?.deductions ?? []).map((item) => ({
@@ -1813,6 +1885,50 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         totalNet += netPay
         totalEmployerContributions += sssEmployer + philHealthEmployer + pagIbigEmployer
 
+        employeeCalculationTraces.push({
+          employeeId: employee.id,
+          employeeNumber: employee.employeeNumber,
+          employeeName: `${employee.lastName}, ${employee.firstName}`,
+          attendance: {
+            workingDays: attendanceSnapshot.totalWorkingDays,
+            payableDays: attendanceSnapshot.totalPayableDays,
+            unpaidAbsences: attendanceSnapshot.unpaidAbsences,
+            tardinessMins: attendanceSnapshot.tardinessMins,
+            undertimeMins: attendanceSnapshot.undertimeMins,
+            overtimeHours: attendanceSnapshot.overtimeHours,
+            nightDiffHours: attendanceSnapshot.nightDiffHours,
+          },
+          rates: {
+            salaryRateType: salary.salaryRateTypeCode,
+            baseSalary,
+            dailyRate,
+            hourlyRate,
+          },
+          earnings: {
+            basicPay,
+            overtimePay,
+            nightDiffPay,
+            holidayPay,
+            recurringEarnings: recurringEarningLines.reduce((sum, line) => sum + line.amount, 0),
+            adjustmentEarnings: manualAdjustmentEarnings.reduce((sum, line) => sum + line.amount, 0),
+            grossPay,
+          },
+          deductions: {
+            tardiness: tardinessDeduction,
+            undertime: undertimeDeduction,
+            sss: sssEmployee,
+            philHealth: philHealthEmployee,
+            pagIbig: pagIbigEmployee,
+            preTaxRecurring: preTaxRecurringTotal,
+            withholdingTax,
+            recurring: recurringDeductionLines.reduce((sum, line) => sum + line.amount, 0),
+            adjustments: manualAdjustmentDeductions.reduce((sum, line) => sum + line.amount, 0),
+            loans: loanDeductionLines.reduce((sum, line) => sum + line.amount, 0),
+            totalDeductions: totalDeductionsForPayslip,
+            netPay,
+          },
+        })
+
         employeeSummaries.push({
           employeeId: employee.id,
           employeeNumber: employee.employeeNumber,
@@ -1851,10 +1967,18 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           isCompleted: true,
           completedAt: new Date(),
           notes: JSON.stringify({
+            calculationVersion: PAYROLL_CALCULATION_VERSION,
+            formulaPolicy: {
+              locale: "PH",
+              timezone: "Asia/Manila",
+              preTaxRecurringReducesTaxableIncome: true,
+              leaveFallbackOnUnmatchedOnLeave: "UNPAID",
+            },
             processedEmployeeCount,
             skippedEmployeeCount,
             statutoryDiagnostics,
             employeeSummaries,
+            employeeCalculationTraces,
           }),
         },
       })
@@ -2229,6 +2353,10 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
     return { ok: false, error: "Payroll run not found." }
   }
 
+  if (run.statusCode === PayrollRunStatus.PAID) {
+    return { ok: true, message: "Payroll run is already closed and locked." }
+  }
+
   const closableStatuses = new Set<PayrollRunStatus>([PayrollRunStatus.FOR_PAYMENT, PayrollRunStatus.APPROVED])
 
   if (!closableStatuses.has(run.statusCode)) {
@@ -2242,8 +2370,11 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
 
   try {
     await db.$transaction(async (tx) => {
-      await tx.payrollRun.update({
-        where: { id: run.id },
+      const transition = await tx.payrollRun.updateMany({
+        where: {
+          id: run.id,
+          statusCode: { in: [PayrollRunStatus.FOR_PAYMENT, PayrollRunStatus.APPROVED] },
+        },
         data: {
           statusCode: PayrollRunStatus.PAID,
           currentStepNumber: 6,
@@ -2254,6 +2385,10 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
           approvedById: run.approvedById ?? context.userId,
         },
       })
+
+      if (transition.count === 0) {
+        throw new Error("Payroll run was already closed by another request.")
+      }
 
       await tx.payrollProcessStep.updateMany({
         where: { payrollRunId: run.id, stepNumber: { in: [4, 5] }, isCompleted: false },

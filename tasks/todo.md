@@ -186,6 +186,7 @@ Last updated: 2026-02-09
     - Updated Send Payslips flow to reference-style batch delivery dialog (confirmation, progress, result summary, failed list, and retry failed sends).
     - Improved payslip email template copy to use pay-period wording (`period half` + formatted cutoff date range) instead of run-number phrasing.
     - Fixed strict TS object-literal typing issue in payslip email actions by routing PDF input through payload variables before `generatePayslipPdfBuffer` calls.
+    - Added per-payslip preview-before-send modal (HTML + plain-text preview with direct send action) in Generate Payslips employee row actions.
   - [x] Fixed non-payroll build blocker in employee user access module.
     - Guarded nullable `employee.user` access in approver-update action by extracting non-null user locals after validation.
     - Removed strict-null TypeScript errors in transaction/audit updates for linked user approver toggles.
@@ -193,6 +194,32 @@ Last updated: 2026-02-09
     - Wrapped logout client component render in `Suspense` boundary in `app/(root)/logout/page.tsx`.
   - [x] Fixed `/login` build blocker for `useSearchParams()` during prerender.
     - Wrapped login client component render in `Suspense` boundary in `app/(root)/login/page.tsx`.
+  - [x] Added and executed PH-focused payroll E2E audit harness.
+    - Added `scripts/payroll-ph-e2e-audit.mjs` and script alias `npm run audit:payroll:ph`.
+    - Audit validates DTR/payroll consistency signals, PH statutory timing enforcement for semi-monthly periods, gross/deduction/net arithmetic integrity, lifecycle step gating, and lock-state policy consistency.
+    - Latest local run audit result: `failures: 0`, `warnings: 0` (run `RUN-2026-00001`, semi-monthly first-half).
+    - Updated lock-state policy assertion to require pay-period lock only for `REGULAR` runs (non-regular/trial paid runs no longer produce false-positive lock failures).
+    - Executed audit sweep on all available recent runs in local dataset (currently one run: `RUN-2026-00001`) with `failures: 0`, `warnings: 0`.
+  - [x] Addressed key payroll-calculation risk gaps from PH policy review.
+    - Improved half-day DTR marker detection robustness (`[HALF_DAY]`, `HALF DAY`, `HALFDAY`).
+    - Updated `ON_LEAVE` fallback behavior to avoid treating unmatched/unapproved leave days as payable.
+    - Applied pre-tax recurring deductions to taxable income before withholding tax calculation.
+  - [x] Added payroll calculation traceability metadata for enterprise-grade auditability.
+    - Added `calculationVersion` and `formulaPolicy` stamping into calculation step notes.
+    - Added `employeeCalculationTraces` payload for per-employee input/output explainability.
+    - Extended PH payroll audit script to validate presence/readability of calculation trace metadata.
+    - Added and executed legacy metadata backfill script (`npm run backfill:payroll:calc-meta`) so existing step-3 records comply with trace/version audit checks.
+  - [x] Hardened payslip email security controls.
+    - Escaped dynamic email-template fields and sanitized subject lines.
+    - Replaced direct HTML preview rendering with sandboxed iframe preview.
+    - Added server-side email send rate limit and retry cooldown guards.
+  - [x] Added idempotency safeguards for close and email dispatch actions.
+    - `closePayrollRunAction` now returns safe idempotent success when run is already closed and uses guarded transition updates to avoid duplicate concurrent close transitions.
+    - Batch payslip send action now blocks immediate duplicate dispatch attempts within a short guard window.
+  - [x] Restored quality-gate pass state across repository after payroll changes.
+    - Fixed lint blocker in employee movements page by replacing inline-render component declarations with render-helper functions.
+    - Verified `npm run lint` passes.
+    - Verified `npm run build` passes.
   - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
   - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
   - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).

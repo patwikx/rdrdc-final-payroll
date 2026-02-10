@@ -1,21 +1,25 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
+  IconChevronLeft,
+  IconChevronRight,
   IconCashBanknote,
   IconChecklist,
   IconDownload,
+  IconDots,
   IconEye,
   IconFileInvoice,
   IconReceipt,
   IconSearch,
+  IconUser,
   IconUsers,
 } from "@tabler/icons-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -153,33 +157,63 @@ export function PayrollPayslipsPageClient({
     () => employees.find((row) => row.employeeId === selectedEmployeeId) ?? null,
     [employees, selectedEmployeeId]
   )
+  const hasEmployeeRows = employees.length > 0
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
+        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
           <IconFileInvoice className="size-5" />
           {companyName} Payslips History
         </h1>
-        <p className="text-xs text-muted-foreground">Select an employee on the left to review all generated payslips.</p>
+        <p className="text-sm text-muted-foreground">Select an employee on the left to review all generated payslips.</p>
       </header>
 
-      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Employees" value={String(stats.totalEmployees)} icon={<IconUsers className="size-4 text-primary" />} />
-        <StatCard label="Total Payslips" value={String(stats.totalPayslips)} icon={<IconReceipt className="size-4 text-primary" />} />
-        <StatCard label="Released Payslips" value={String(stats.releasedCount)} icon={<IconChecklist className="size-4 text-primary" />} />
-        <StatCard label="Aggregate Net" value={stats.totalNet} icon={<IconCashBanknote className="size-4 text-primary" />} />
-      </section>
+      <div
+        className="space-y-4 py-6"
+      >
+        <section className="overflow-hidden border border-border/60">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 sm:divide-x sm:divide-border/60">
+            <div className="border-b border-border/60 p-3 sm:border-b-0">
+              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
+                <IconUsers className="size-4" />
+              </div>
+              <p className="text-xs text-muted-foreground">Employees</p>
+              <p className="text-lg font-semibold text-foreground">{String(stats.totalEmployees)}</p>
+            </div>
+            <div className="border-b border-border/60 p-3 sm:border-b-0">
+              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
+                <IconReceipt className="size-4" />
+              </div>
+              <p className="text-xs text-muted-foreground">Total Payslips</p>
+              <p className="text-lg font-semibold text-foreground">{String(stats.totalPayslips)}</p>
+            </div>
+            <div className="border-b border-border/60 p-3 sm:border-b-0">
+              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <IconChecklist className="size-4" />
+              </div>
+              <p className="text-xs text-muted-foreground">Released Payslips</p>
+              <p className="text-lg font-semibold text-foreground">{String(stats.releasedCount)}</p>
+            </div>
+            <div className="p-3">
+              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
+                <IconCashBanknote className="size-4" />
+              </div>
+              <p className="text-xs text-muted-foreground">Aggregate Net</p>
+              <p className="text-lg font-semibold text-foreground">{stats.totalNet}</p>
+            </div>
+          </div>
+        </section>
 
-      <Card className="rounded-xl border border-border/70 bg-card/80">
-        <CardHeader className="pb-2">
-          <CardTitle className="inline-flex items-center gap-2 text-base">
+        <section className="overflow-hidden border-y border-border/60">
+          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
+            <h2 className="inline-flex items-center gap-2 text-base font-medium">
             <IconReceipt className="size-4 text-primary" />
             Payslip Review Workspace
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[340px_1fr]">
-          <aside className="space-y-3 rounded-md border border-border/60 p-3">
+            </h2>
+          </div>
+          <div className="grid lg:grid-cols-[340px_1fr]">
+          <aside className="space-y-3 border-r border-border/60 p-4 sm:p-6">
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -191,7 +225,7 @@ export function PayrollPayslipsPageClient({
             </div>
             <ScrollArea className="h-[560px] pr-1">
               <div className="space-y-2">
-                {isLoading ? (
+                {isLoading && !hasEmployeeRows ? (
                   <p className="px-2 py-4 text-xs text-muted-foreground">Loading employees...</p>
                 ) : employees.length === 0 ? (
                   <p className="px-2 py-4 text-xs text-muted-foreground">No employees found.</p>
@@ -202,23 +236,24 @@ export function PayrollPayslipsPageClient({
                       type="button"
                       onClick={() => {
                         setCurrentPage(1)
+                        setSelectedEmployeeId(employee.employeeId)
                         void fetchData({ employeeId: employee.employeeId, page: 1 })
                       }}
                       className={cn(
-                        "w-full rounded-md border px-3 py-2 text-left text-xs",
+                        "w-full border px-3 py-2 text-left text-xs",
                         selectedEmployeeId === employee.employeeId
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border/60 bg-background hover:bg-muted/40"
                       )}
                     >
                       <div className="flex items-start gap-2">
-                        <Avatar className="h-10 w-8 shrink-0 rounded-md border border-border/60">
+                        <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
                           <AvatarImage
                             src={employee.employeePhotoUrl ?? undefined}
                             alt={employee.employeeName}
-                            className="rounded-md object-cover"
+                            className="!rounded-md object-cover"
                           />
-                          <AvatarFallback className="rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                          <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
                             {employee.employeeName
                               .split(",")
                               .map((part) => part.trim()[0] ?? "")
@@ -229,9 +264,6 @@ export function PayrollPayslipsPageClient({
                         <div>
                           <p className="font-medium">{employee.employeeName}</p>
                           <p className="text-muted-foreground">{employee.employeeNumber}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {employee.payslipCount} payslip{employee.payslipCount === 1 ? "" : "s"}
-                          </p>
                         </div>
                       </div>
                     </button>
@@ -241,16 +273,19 @@ export function PayrollPayslipsPageClient({
             </ScrollArea>
           </aside>
 
-          <section className="space-y-3 rounded-md border border-border/60 p-3">
+          <section className="space-y-3 p-4 sm:p-6">
             {error ? <p className="text-xs text-destructive">{error}</p> : null}
             {selectedEmployee ? (
               <>
                 <div>
-                  <h2 className="text-sm font-semibold">{selectedEmployee.employeeName}</h2>
+                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                    <IconUser className="size-3.5 text-primary" />
+                    <span>{selectedEmployee.employeeName}</span>
+                  </h2>
                   <p className="text-xs text-muted-foreground">{selectedEmployee.employeeNumber}</p>
                 </div>
 
-                <div className="overflow-x-auto rounded-md border border-border/60">
+                <div className="overflow-x-auto border border-border/60">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/50">
                       <tr>
@@ -284,20 +319,28 @@ export function PayrollPayslipsPageClient({
                             <td className="px-3 py-2 font-medium">{payslip.netPay}</td>
                             <td className="px-3 py-2">{payslip.releasedAt}</td>
                             <td className="px-3 py-2">
-                              <div className="flex gap-2">
-                                <Button asChild variant="outline" size="sm">
-                                  <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1">
-                                    <IconEye className="size-3.5" />
-                                    View
-                                  </Link>
-                                </Button>
-                                <Button asChild size="sm">
-                                  <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1">
-                                    <IconDownload className="size-3.5" />
-                                    Download
-                                  </Link>
-                                </Button>
-                              </div>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" size="icon-sm" variant="ghost">
+                                    <IconDots className="size-4 rotate-90" />
+                                    <span className="sr-only">Open actions</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40">
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1.5">
+                                      <IconEye className="size-3.5" />
+                                      View
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1.5">
+                                      <IconDownload className="size-3.5" />
+                                      Download
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </td>
                           </tr>
                         ))
@@ -318,6 +361,7 @@ export function PayrollPayslipsPageClient({
                     }}
                     disabled={currentPage <= 1 || isLoading}
                   >
+                    <IconChevronLeft className="size-3.5" />
                     Previous
                   </Button>
                   <span className="text-xs text-muted-foreground">Page {currentPage}</span>
@@ -333,29 +377,20 @@ export function PayrollPayslipsPageClient({
                     disabled={!hasMorePayslips || isLoading}
                   >
                     Next
+                    <IconChevronRight className="size-3.5" />
                   </Button>
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">No employee selected.</p>
+              <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <IconUsers className="size-3.5" />
+                No employee selected.
+              </p>
             )}
           </section>
-        </CardContent>
-      </Card>
+          </div>
+        </section>
+      </div>
     </main>
-  )
-}
-
-function StatCard({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
-  return (
-    <Card className="rounded-xl border border-border/70 bg-card/80">
-      <CardContent className="grid grid-cols-[auto_1fr_auto] items-center gap-2 p-2.5">
-        <div className="inline-flex items-center justify-center rounded-md border border-border/60 bg-background p-1.5">
-          {icon}
-        </div>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-sm font-semibold text-foreground">{value}</p>
-      </CardContent>
-    </Card>
   )
 }

@@ -1,11 +1,19 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { IconBuilding, IconCalendarEvent, IconCheck, IconRefresh } from "@tabler/icons-react"
+import {
+  IconBriefcase,
+  IconBuilding,
+  IconCalendarEvent,
+  IconCheck,
+  IconId,
+  IconMail,
+  IconMapPin,
+  IconRefresh,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Calendar } from "@/components/ui/calendar"
@@ -46,8 +54,6 @@ type CompanyProfilePageProps = {
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => index + 1)
-
-const sectionCardClass = "rounded-xl border border-border/70 bg-card/80"
 
 const formatDisplayDate = (value: string): string => {
   if (!value) {
@@ -161,12 +167,12 @@ export function CompanyProfilePage({
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconBuilding className="size-5" /> {companyName} Company Profile</h1>
-            <p className="text-xs text-muted-foreground">Complete legal, tax, contact, and operational company profile.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconBuilding className="size-5" /> {companyName} Company Profile</h1>
+            <p className="text-sm text-muted-foreground">Complete legal, tax, contact, and operational company profile.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={handleReset} disabled={isPending}>
@@ -181,14 +187,16 @@ export function CompanyProfilePage({
         </div>
       </header>
 
-      <ComplianceLayout
-        form={form}
-        parentCompanyOptions={parentCompanyOptions}
-        updateCompanyField={updateCompanyField}
-        updateAddressField={updateAddressField}
-        updateContactField={updateContactField}
-        updateEmailField={updateEmailField}
-      />
+      <div className="space-y-3 py-6">
+        <ComplianceLayout
+          form={form}
+          parentCompanyOptions={parentCompanyOptions}
+          updateCompanyField={updateCompanyField}
+          updateAddressField={updateAddressField}
+          updateContactField={updateContactField}
+          updateEmailField={updateEmailField}
+        />
+      </div>
     </main>
   )
 }
@@ -217,25 +225,25 @@ type LayoutProps = {
 function ComplianceLayout(props: LayoutProps) {
   return (
     <div className="space-y-3">
-      <Card className={sectionCardClass}>
-        <CardHeader>
-          <CardTitle>Registration and Government IDs</CardTitle>
-          <CardDescription>Maintain legal, tax, and statutory identifiers.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="border-y border-border/60 px-4 py-4 sm:px-6">
+        <div className="mb-3">
+          <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconId className="size-4" /> Registration and Government IDs</h2>
+          <p className="text-sm text-muted-foreground">Maintain legal, tax, and statutory identifiers.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <RegistrationGovernmentFields {...props} />
-        </CardContent>
-      </Card>
-      <Card className={sectionCardClass}>
-        <CardHeader>
-          <CardTitle>Business Configuration</CardTitle>
-          <CardDescription>Classification, fiscal settings, and active status.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        </div>
+      </section>
+      <section className="border-y border-border/60 px-4 py-4 sm:px-6">
+        <div className="mb-3">
+          <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconBriefcase className="size-4" /> Business Configuration</h2>
+          <p className="text-sm text-muted-foreground">Classification, fiscal settings, and active status.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ClassificationFiscalFields {...props} />
-        </CardContent>
-      </Card>
-      <div className="grid gap-3 lg:grid-cols-2">
+        </div>
+      </section>
+      <div className="grid gap-3 px-4 sm:px-6 lg:grid-cols-2">
         <IdentityCard {...props} />
         <ContactAndAddressCard {...props} />
       </div>
@@ -245,33 +253,33 @@ function ComplianceLayout(props: LayoutProps) {
 
 function IdentityCard(props: LayoutProps) {
   return (
-    <Card className={sectionCardClass}>
-      <CardHeader>
-        <CardTitle>Company Identity</CardTitle>
-        <CardDescription>Brand, legal naming, and hierarchy profile.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="border border-border/60 p-4">
+      <div className="mb-3">
+        <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconBuilding className="size-4" /> Company Identity</h2>
+        <p className="text-sm text-muted-foreground">Brand, legal naming, and hierarchy profile.</p>
+      </div>
+      <div className="space-y-4">
         <IdentityFields {...props} />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
 function ContactAndAddressCard(props: LayoutProps) {
   return (
-    <Card className={sectionCardClass}>
-      <CardHeader>
-        <CardTitle>Contact Directory</CardTitle>
-        <CardDescription>Primary address, phone, and email records.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="border border-border/60 p-4">
+      <div className="mb-3">
+        <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconMapPin className="size-4" /> Contact Directory</h2>
+        <p className="text-sm text-muted-foreground">Primary address, phone, and email records.</p>
+      </div>
+      <div className="space-y-4">
         <AddressFields {...props} />
         <Separator />
         <ContactFields {...props} />
         <Separator />
         <EmailFields {...props} />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -475,6 +483,9 @@ function ClassificationFiscalFields({ form, updateCompanyField }: LayoutProps) {
 function AddressFields({ form, updateAddressField }: LayoutProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><IconMapPin className="size-3.5" /> Address</p>
+      </div>
       <Field label="Address Type" required>
         <Select
           value={form.primaryAddress.addressTypeId}
@@ -505,6 +516,9 @@ function AddressFields({ form, updateAddressField }: LayoutProps) {
 function ContactFields({ form, updateContactField }: LayoutProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><IconBriefcase className="size-3.5" /> Contact Number</p>
+      </div>
       <Field label="Contact Type" required>
         <Select
           value={form.primaryContact.contactTypeId}
@@ -531,6 +545,9 @@ function ContactFields({ form, updateContactField }: LayoutProps) {
 function EmailFields({ form, updateEmailField }: LayoutProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <p className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><IconMail className="size-3.5" /> Email</p>
+      </div>
       <Field label="Email Type" required>
         <Select
           value={form.primaryEmail.emailTypeId}

@@ -2,12 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconRefresh, IconSitemap } from "@tabler/icons-react"
+import { IconBriefcase, IconChartBar, IconEdit, IconGitBranch, IconMapPin, IconPlus, IconRefresh, IconSitemap } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -36,7 +35,6 @@ type OrganizationSetupPageProps = {
   data: OrganizationOverviewData
 }
 
-const sectionClass = "rounded-xl border border-border/70 bg-card/80"
 const tableClass = "text-xs"
 
 type DepartmentForm = {
@@ -91,7 +89,19 @@ type BranchForm = {
 
 type EntityTableRow = {
   id: string
-  values: string[]
+  values: Array<string | React.ReactNode>
+}
+
+const renderActiveBadge = (isActive: boolean): React.ReactNode => {
+  if (isActive) {
+    return <Badge className="border-emerald-700 bg-emerald-600 text-white">Active</Badge>
+  }
+
+  return (
+    <Badge variant="outline" className="border-border/70 text-muted-foreground">
+      Inactive
+    </Badge>
+  )
 }
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
@@ -362,12 +372,12 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconSitemap className="size-5" /> {data.companyName} Organization View</h1>
-            <p className="text-xs text-muted-foreground">Manage departments, divisions, ranks, and branches with table-based workflows.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconSitemap className="size-5" /> {data.companyName} Organization View</h1>
+            <p className="text-sm text-muted-foreground">Manage departments, divisions, ranks, and branches with table-based workflows.</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline">{data.companyCode}</Badge>
@@ -380,11 +390,12 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
         </div>
       </header>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 px-4 py-6 sm:px-6 lg:grid-cols-2">
         <EntityTableCard
           className="lg:col-span-2"
           title="Departments"
           description="Company department records"
+          icon={<IconBriefcase className="size-4" />}
           headers={["Code", "Name", "Parent", "Order", "Status", "Action"]}
           rows={data.departments.map((item) => ({
             id: item.id,
@@ -393,7 +404,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
               item.name,
               item.parentLabel ?? "-",
               String(item.displayOrder),
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           onEdit={handleEditDepartment}
@@ -415,6 +426,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           className=""
           title="Divisions"
           description="Company division records"
+          icon={<IconGitBranch className="size-4" />}
           headers={["Code", "Name", "Parent", "Order", "Status", "Action"]}
           rows={data.divisions.map((item) => ({
             id: item.id,
@@ -423,7 +435,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
               item.name,
               item.parentLabel ?? "-",
               String(item.displayOrder),
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           onEdit={handleEditDivision}
@@ -445,6 +457,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           className=""
           title="Ranks"
           description="Company rank records"
+          icon={<IconChartBar className="size-4" />}
           headers={["Code", "Name", "Level", "Category", "Status", "Action"]}
           rows={data.ranks.map((item) => ({
             id: item.id,
@@ -453,7 +466,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
               item.name,
               String(item.level),
               item.category ?? "-",
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           onEdit={handleEditRank}
@@ -475,6 +488,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           className="lg:col-span-2"
           title="Branches"
           description="Company branch records"
+          icon={<IconMapPin className="size-4" />}
           headers={["Code", "Name", "Location", "Phone", "Status", "Action"]}
           rows={data.branches.map((item) => ({
             id: item.id,
@@ -483,7 +497,7 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
               item.name,
               [item.city, item.province, item.region].filter(Boolean).join(", ") || item.country,
               item.phone ?? "-",
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           onEdit={handleEditBranch}
@@ -508,6 +522,7 @@ function EntityTableCard({
   className,
   title,
   description,
+  icon,
   headers,
   rows,
   onEdit,
@@ -516,24 +531,26 @@ function EntityTableCard({
   className?: string
   title: string
   description: string
+  icon: React.ReactNode
   headers: string[]
   rows: EntityTableRow[]
   onEdit: (id: string) => void
   dialog: React.ReactNode
 }) {
   return (
-    <Card className={cn(sectionClass, className)}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-          {dialog}
+    <section className={cn("border border-border/60 bg-background", className)}>
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+        <div>
+          <p className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
+            {icon}
+            <span>{title}</span>
+          </p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto rounded-md border border-border/60">
+        {dialog}
+      </div>
+      <div className="p-4">
+        <div className="overflow-x-auto border border-border/60">
           <table className={`w-full ${tableClass}`}>
             <thead className="bg-muted/50">
               <tr>
@@ -561,6 +578,7 @@ function EntityTableCard({
                     ))}
                     <td className="px-3 py-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => onEdit(row.id)}>
+                        <IconEdit className="size-3.5" />
                         Edit
                       </Button>
                     </td>
@@ -570,8 +588,8 @@ function EntityTableCard({
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -597,7 +615,7 @@ function DepartmentDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Department</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Department</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -661,7 +679,7 @@ function DivisionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Division</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Division</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -725,7 +743,7 @@ function RankDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Rank</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Rank</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -791,7 +809,7 @@ function BranchDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Branch</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Branch</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

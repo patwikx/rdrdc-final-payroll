@@ -2,11 +2,10 @@
 
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconCalendarEvent, IconCheck, IconInfoCircle, IconLock, IconRefresh } from "@tabler/icons-react"
+import { IconCalendarEvent, IconCheck, IconInfoCircle, IconLock, IconRefresh, IconSettings } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -242,12 +241,12 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconCalendarEvent className="size-5" /> {companyName} Payroll Policies</h1>
-            <p className="text-xs text-muted-foreground">One policy form with monthly pay-period rows for first and second half cutoffs.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconCalendarEvent className="size-5" /> {companyName} Payroll Policies</h1>
+            <p className="text-sm text-muted-foreground">One policy form with monthly pay-period rows for first and second half cutoffs.</p>
           </div>
           <div className="flex items-center gap-2">
             <Select value={String(yearValue)} onValueChange={(value) => {
@@ -282,6 +281,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
               Reset
             </Button>
             <Button type="button" variant="outline" onClick={handleGenerateYear} disabled={isTopControlsBusy || !canGenerateYear}>
+              <IconCalendarEvent className="size-4" />
               {isGeneratingYear ? "Generating..." : "Generate Year"}
             </Button>
             <Button type="button" onClick={handleSave} disabled={isTopControlsBusy}>
@@ -292,12 +292,13 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
         </div>
       </header>
 
-      <Card className="rounded-xl border border-border/70 bg-card/80">
-        <CardHeader>
-          <CardTitle>Pattern Identity</CardTitle>
-          <CardDescription>Define the main payroll policy profile for this company.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-4 py-6">
+      <section className="border-y border-border/60 px-4 py-4 sm:px-6">
+        <div className="mb-3">
+          <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconSettings className="size-4" /> Pattern Identity</h2>
+          <p className="text-sm text-muted-foreground">Define the main payroll policy profile for this company.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Pattern Code" required>
             <Input value={form.code} onChange={(event) => updateField("code", event.target.value)} />
           </Field>
@@ -448,8 +449,8 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
               <Textarea className="h-16" value={form.description ?? ""} onChange={(event) => updateField("description", event.target.value)} />
             </Field>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <PeriodTableRows
         rows={form.periodRows}
@@ -463,6 +464,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
         onArchiveYear={handleArchiveYear}
         onSaveRows={handleSaveRows}
       />
+      </div>
     </main>
   )
 }
@@ -495,15 +497,14 @@ function PeriodTableRows({
   onSaveRows: () => void
 }) {
   return (
-    <Card className="rounded-xl border border-border/70 bg-card/80">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="border-y border-border/60 px-4 py-4 sm:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>{`Pay Period Rows (${selectedYear})`}</CardTitle>
-            <CardDescription>
+            <p className="inline-flex items-center gap-2 text-base font-medium text-foreground"><IconCalendarEvent className="size-4" /> {`Pay Period Rows (${selectedYear})`}</p>
+            <p className="text-sm text-muted-foreground">
               Define per-period cutoff and payment dates. {rows.length} rows loaded.
               {isYearLocked ? " This year is archived and row editing is disabled." : ""}
-            </CardDescription>
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" onClick={onArchiveYear} disabled={isBusy || !canArchiveYear}>
@@ -515,10 +516,9 @@ function PeriodTableRows({
               {isSavingRows ? "Saving..." : "Save Period Rows"}
             </Button>
           </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto rounded-md border border-border/60">
+      </div>
+      <div className="mt-3">
+        <div className="overflow-x-auto border border-border/60">
           <table className="w-full text-xs">
             <thead className="bg-muted/50">
               <tr>
@@ -549,8 +549,8 @@ function PeriodTableRows({
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 

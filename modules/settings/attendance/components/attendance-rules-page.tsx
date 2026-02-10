@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { IconCalendarEvent, IconCheck, IconRefresh, IconTrash, IconTimelineEvent } from "@tabler/icons-react"
+import { IconCalendarEvent, IconCheck, IconFilter, IconPlus, IconRefresh, IconSearch, IconTrash, IconTimelineEvent } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -215,21 +215,17 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
     })
   }, [schedules, searchQuery, statusFilter])
 
-  const layoutClass = "grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]"
-  const listCardClass = "rounded-xl border border-border/70 bg-card/80 shadow-sm"
-  const editorWrapperClass = "flex flex-col gap-4"
-  const editorCardClass = "rounded-xl border border-border/70 bg-card/80 shadow-sm"
   const identityGridClass = "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
   const policyGridClass = "grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
   const matrixTableClass = "w-full text-xs"
 
   return (
-    <main suppressHydrationWarning className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main suppressHydrationWarning className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconTimelineEvent className="size-5" /> {companyName} Work Schedules</h1>
-            <p className="text-xs text-muted-foreground">Manage multiple schedules and configure per-day time in and time out rules.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconTimelineEvent className="size-5" /> {companyName} Work Schedules</h1>
+            <p className="text-sm text-muted-foreground">Manage multiple schedules and configure per-day time in and time out rules.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={handleReset} disabled={isPending}>
@@ -244,30 +240,34 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
         </div>
       </header>
 
-      <section className={layoutClass}>
+      <section className="grid border-y border-border/60 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside>
-          <Card className={listCardClass}>
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <CardTitle>Schedules</CardTitle>
-                  <CardDescription>Pick a schedule from the sidebar list.</CardDescription>
-                </div>
-                <Button type="button" size="sm" variant="outline" onClick={handleNewSchedule} disabled={isPending}>
-                  + New
-                </Button>
+          <section className="h-full border-r border-border/60 p-4 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+              <div>
+                <p className="text-base font-medium text-foreground">Schedules</p>
+                <p className="text-sm text-muted-foreground">Pick a schedule from the sidebar list.</p>
               </div>
-            </CardHeader>
-            <CardContent className="pr-1">
+              <Button type="button" size="sm" onClick={handleNewSchedule} disabled={isPending}>
+                <IconPlus className="size-3.5" /> New
+              </Button>
+            </div>
+            <div className="pr-1 pt-3">
               <div className="mb-2 grid gap-2">
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search schedules"
-                  className="h-8"
-                />
+                <div className="relative">
+                  <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search schedules"
+                    className="h-8 pl-8"
+                  />
+                </div>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "ALL" | "ACTIVE" | "INACTIVE")}>
-                  <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-8 w-full">
+                    <IconFilter className="size-3.5 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">All Status</SelectItem>
                     <SelectItem value="ACTIVE">Active</SelectItem>
@@ -339,11 +339,15 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
                               />
                               <p className="font-medium">{schedule.name}</p>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-muted-foreground">{schedule.isActive ? "Active" : "Inactive"}</span>
-                              <Button
-                                type="button"
-                                size="icon"
+                              <div className="flex items-center gap-1">
+                                {schedule.isActive ? (
+                                  <Badge className="border-emerald-700 bg-emerald-600 text-white">Active</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="border-border/70 text-muted-foreground">Inactive</Badge>
+                                )}
+                                <Button
+                                  type="button"
+                                  size="icon"
                                 variant="ghost"
                                 className="size-6"
                                 onClick={(event) => {
@@ -366,17 +370,17 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
                   )}
                 </div>
               </ScrollArea>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </aside>
 
-        <div className={editorWrapperClass}>
-          <Card className={editorCardClass}>
-        <CardHeader>
-          <CardTitle>Schedule Identity</CardTitle>
-          <CardDescription>Define the schedule profile metadata and company effectivity.</CardDescription>
-        </CardHeader>
-        <CardContent className={identityGridClass}>
+        <div className="flex flex-col gap-4 p-4 sm:p-6">
+          <section className="border border-border/60">
+        <div className="border-b border-border/60 px-4 py-3">
+          <p className="text-base font-medium text-foreground">Schedule Identity</p>
+          <p className="text-sm text-muted-foreground">Define the schedule profile metadata and company effectivity.</p>
+        </div>
+        <div className={`${identityGridClass} p-4`}>
           <Field label="Schedule Code" required>
             <Input value={form.code} onChange={(event) => updateField("code", event.target.value)} />
           </Field>
@@ -448,17 +452,17 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
               />
             </Field>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className={editorCardClass}>
-        <CardHeader>
-          <CardTitle>Per-Day Time Matrix</CardTitle>
-          <CardDescription>
+      <section className="border border-border/60">
+        <div className="border-b border-border/60 px-4 py-3">
+          <p className="text-base font-medium text-foreground">Per-Day Time Matrix</p>
+          <p className="text-sm text-muted-foreground">
             Configure each day directly. Global policy values are kept here for break, grace period, and required hours.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+          </p>
+        </div>
+        <div className="space-y-3 p-4">
           <div className={policyGridClass}>
           <Field label="Break Start">
             <Input type="time" value={form.breakStartTime ?? ""} onChange={(event) => updateField("breakStartTime", event.target.value || undefined)} />
@@ -493,7 +497,7 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
           </Field>
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-border/60">
+          <div className="overflow-x-auto border border-border/60">
             <table className={matrixTableClass}>
               <thead className="bg-muted/50">
                 <tr>
@@ -544,8 +548,8 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
               </tbody>
             </table>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
         </div>
       </section>

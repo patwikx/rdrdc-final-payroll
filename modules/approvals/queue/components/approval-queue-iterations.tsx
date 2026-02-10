@@ -2,7 +2,18 @@
 
 import { useMemo, useState, useTransition, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertCircle, IconCalendarEvent, IconClockHour4, IconListDetails, IconShieldCheck } from "@tabler/icons-react"
+import {
+  IconAlertCircle,
+  IconCalendarEvent,
+  IconCheck,
+  IconClockHour4,
+  IconDots,
+  IconEye,
+  IconListDetails,
+  IconSearch,
+  IconShieldCheck,
+  IconX,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Sheet,
@@ -152,31 +164,41 @@ export function ApprovalQueueIterations({ companyId, companyName, items, summary
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <section className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <h1 className="inline-flex items-center gap-2 text-xl text-foreground"><IconShieldCheck className="size-5" /> {companyName} Leave & Overtime Approval Queue</h1>
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <section className="border-b border-border/60 px-4 py-6 sm:px-6">
+        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconShieldCheck className="size-5" /> {companyName} Leave & Overtime Approval Queue</h1>
         <p className="text-sm text-muted-foreground">
           HR final validation queue. All items shown here are already supervisor-approved.
         </p>
       </section>
 
+      <div className="space-y-4 py-6">
+
       {pageError ? (
-        <section className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {pageError}
-        </section>
+        <div className="px-4 sm:px-6">
+          <section className="border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            {pageError}
+          </section>
+        </div>
       ) : null}
 
-      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricTile label="Total Pending HR" value={String(summary.total)} icon={<IconListDetails className="size-4" />} />
-        <MetricTile label="Leave Requests" value={String(summary.leave)} icon={<IconCalendarEvent className="size-4" />} />
-        <MetricTile label="Overtime Requests" value={String(summary.overtime)} icon={<IconClockHour4 className="size-4" />} />
-        <MetricTile label="High Priority" value={String(summary.highPriority)} icon={<IconAlertCircle className="size-4" />} />
+      <section className="overflow-hidden border border-border/60">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4 sm:divide-x sm:divide-border/60">
+          <MetricTile label="Total Pending HR" value={String(summary.total)} icon={<IconListDetails className="size-4" />} />
+          <MetricTile label="Leave Requests" value={String(summary.leave)} icon={<IconCalendarEvent className="size-4" />} />
+          <MetricTile label="Overtime Requests" value={String(summary.overtime)} icon={<IconClockHour4 className="size-4" />} />
+          <MetricTile label="High Priority" value={String(summary.highPriority)} icon={<IconAlertCircle className="size-4" />} />
+        </div>
       </section>
 
-      <section className="rounded-xl border border-border/60 bg-background p-3">
-        <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto]">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or request" />
+      <section className="border-y border-border/60 px-4 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-80">
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or request" className="pl-8" />
+          </div>
           <Button type="button" variant={selectedKind === "ALL" ? "default" : "outline"} onClick={() => setSelectedKind("ALL")}>
+            <IconListDetails className="size-3.5" />
             All
           </Button>
           <Button
@@ -184,6 +206,7 @@ export function ApprovalQueueIterations({ companyId, companyName, items, summary
             variant={selectedKind === "LEAVE" ? "default" : "outline"}
             onClick={() => setSelectedKind("LEAVE")}
           >
+            <IconCalendarEvent className="size-3.5" />
             Leave
           </Button>
           <Button
@@ -191,20 +214,21 @@ export function ApprovalQueueIterations({ companyId, companyName, items, summary
             variant={selectedKind === "OVERTIME" ? "default" : "outline"}
             onClick={() => setSelectedKind("OVERTIME")}
           >
+            <IconClockHour4 className="size-3.5" />
             Overtime
           </Button>
         </div>
       </section>
 
       {summary.total === 0 ? (
-        <section className="rounded-xl border border-border/60 bg-background px-4 py-10 text-center">
+        <section className="border-y border-border/60 bg-background px-4 py-10 text-center sm:px-6">
           <h2 className="text-base text-foreground">No requests pending for HR final validation.</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             New leave and overtime requests will appear here after supervisor approval.
           </p>
         </section>
       ) : (
-        <section className="overflow-hidden rounded-xl border border-border/60 bg-background">
+        <section className="overflow-hidden border-y border-border/60 bg-background">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-xs">
               <thead className="bg-muted/30">
@@ -255,13 +279,28 @@ export function ApprovalQueueIterations({ companyId, companyName, items, summary
                         <Badge variant={priorityBadge(item.priority)}>{item.priority}</Badge>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" variant="outline" onClick={() => setDetailItem(item)}>
-                            Details
-                          </Button>
-                          <Button type="button" onClick={() => openActionDialog(item, "APPROVE")}>Approve</Button>
-                          <Button type="button" variant="outline" onClick={() => openActionDialog(item, "REJECT")}>Reject</Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" size="icon-sm" variant="ghost">
+                              <IconDots className="size-4 rotate-90" />
+                              <span className="sr-only">Open actions</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem onSelect={() => setDetailItem(item)}>
+                              <IconEye className="mr-2 size-4" />
+                              Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openActionDialog(item, "APPROVE")}>
+                              <IconCheck className="mr-2 size-4" />
+                              Approve
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openActionDialog(item, "REJECT")}>
+                              <IconX className="mr-2 size-4" />
+                              Reject
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))
@@ -336,6 +375,7 @@ export function ApprovalQueueIterations({ companyId, companyName, items, summary
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </main>
   )
 }
@@ -351,12 +391,12 @@ function DetailRow({ label, value, multiline = false }: { label: string; value: 
 
 function MetricTile({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background px-3 py-2">
+    <div className="border-b border-border/60 p-3 sm:border-b-0">
+      <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">{icon}</div>
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg text-foreground">{value}</p>
+        <p className="text-lg font-semibold text-foreground">{value}</p>
       </div>
-      <div className="text-muted-foreground">{icon}</div>
     </div>
   )
 }

@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
-import { IconCalendarClock, IconCheck, IconX } from "@tabler/icons-react"
+import { IconCalendarClock, IconCheck, IconPlus, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -275,12 +274,12 @@ export function LeaveOtPoliciesPage({
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconCalendarClock className="size-5" /> {companyName} Leave / OT Policies</h1>
-            <p className="text-xs text-muted-foreground">Manage leave and overtime policies using live configuration records.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconCalendarClock className="size-5" /> {companyName} Leave / OT Policies</h1>
+            <p className="text-sm text-muted-foreground">Manage leave and overtime policies using live configuration records.</p>
           </div>
           <div className="inline-flex rounded-md border border-border/60 bg-background p-1">
             <Button type="button" size="sm" variant={tab === "leave" ? "default" : "ghost"} onClick={() => setTab("leave")}>Leave Policies</Button>
@@ -289,50 +288,50 @@ export function LeaveOtPoliciesPage({
         </div>
       </header>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Card className="rounded-xl border border-border/70 bg-card/80">
-          <CardHeader>
-            {tab === "leave" ? (
-              <div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-xs font-semibold text-foreground">Leave Balance Initialization</h3>
-                    <p className="text-xs text-muted-foreground">Initialize yearly leave balances based on active leave policies.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs">Year<Required /></Label>
-                    <Input
-                      type="number"
-                      value={initializationYear}
-                      min={2000}
-                      max={2100}
-                      onChange={(event) => setInitializationYear(Number(event.target.value) || 0)}
-                      className="h-7 w-28"
-                    />
-                    <Button type="button" onClick={handleInitializeLeaveBalances} disabled={isInitializing}>
-                      {isInitializing ? "Initializing..." : "Initialize"}
-                    </Button>
-                  </div>
+      <section className="grid border-y border-border/60 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="xl:border-r xl:border-border/60">
+          {tab === "leave" ? (
+            <div className="border-b border-border/60 px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-semibold text-foreground">Leave Balance Initialization</h3>
+                  <p className="text-xs text-muted-foreground">Initialize yearly leave balances based on active leave policies.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Year<Required /></Label>
+                  <Input
+                    type="number"
+                    value={initializationYear}
+                    min={2000}
+                    max={2100}
+                    onChange={(event) => setInitializationYear(Number(event.target.value) || 0)}
+                    className="h-7 w-28"
+                  />
+                  <Button type="button" onClick={handleInitializeLeaveBalances} disabled={isInitializing}>
+                    {isInitializing ? "Initializing..." : "Initialize"}
+                  </Button>
                 </div>
               </div>
-            ) : null}
+            </div>
+          ) : null}
 
+          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <CardTitle>{tab === "leave" ? "Leave Types" : "OT Policy Rules"}</CardTitle>
-                <CardDescription>
+                <h2 className="text-xs font-semibold text-foreground">{tab === "leave" ? "Leave Types" : "OT Policy Rules"}</h2>
+                <p className="text-xs text-muted-foreground">
                   {tab === "leave"
                     ? "Company leave types with primary entitlement policy."
                     : "Current overtime multipliers per overtime type."}
-                </CardDescription>
+                </p>
               </div>
-              <Button type="button" onClick={tab === "leave" ? handleCreateNewLeave : handleCreateNewOt}>+ Add New</Button>
+              <Button type="button" onClick={tab === "leave" ? handleCreateNewLeave : handleCreateNewOt}><IconPlus className="size-3.5" /> Add New</Button>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="px-4 py-3 sm:px-6">
             {tab === "leave" ? (
               <div className="space-y-3">
-                <div className="overflow-x-auto rounded-md border border-border/60">
+                <div className="overflow-x-auto border border-border/60">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/50">
                       <tr>
@@ -369,7 +368,7 @@ export function LeaveOtPoliciesPage({
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-md border border-border/60">
+              <div className="overflow-x-auto border border-border/60">
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50">
                     <tr>
@@ -399,12 +398,12 @@ export function LeaveOtPoliciesPage({
                 </table>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="rounded-xl border border-border/70 bg-card/80 xl:sticky xl:top-20 xl:h-fit">
-          <CardHeader>
-            <CardTitle>
+        <aside className="xl:sticky xl:top-20 xl:h-fit">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="text-base font-medium text-foreground">
               {tab === "leave"
                 ? selectedLeaveTypeId
                   ? "Edit Leave Policy"
@@ -412,14 +411,14 @@ export function LeaveOtPoliciesPage({
                 : selectedOvertimeRateId
                   ? "Edit OT Policy"
                   : "New OT Policy"}
-            </CardTitle>
-            <CardDescription>
+            </h2>
+            <p className="text-sm text-muted-foreground">
               {tab === "leave"
                 ? "Save leave type configuration with one primary entitlement policy."
                 : "Save overtime multiplier and effectivity."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+            </p>
+          </div>
+          <div className="grid gap-3 px-4 py-3">
             {tab === "leave" ? (
               <>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -597,8 +596,8 @@ export function LeaveOtPoliciesPage({
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </aside>
       </section>
     </main>
   )

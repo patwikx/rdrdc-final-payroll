@@ -4,6 +4,8 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
+  IconDots,
+  IconEdit,
   IconLink,
   IconMail,
   IconShieldCheck,
@@ -18,13 +20,13 @@ import {
   linkEmployeeToExistingUserAction,
   unlinkEmployeeUserAction,
   updateLinkedUserCredentialsAction,
-  updateEmployeeRequestApproverAction,
 } from "@/modules/employees/user-access/actions/manage-employee-user-access-action"
 import type {
   AvailableSystemUserOption,
   SystemUserAccountRow,
   UserAccessPreviewRow,
 } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -54,7 +57,6 @@ type ActionDialogState =
   | { type: "CREATE"; row: UserAccessPreviewRow }
   | { type: "LINK"; row: UserAccessPreviewRow }
   | { type: "EDIT"; row: UserAccessPreviewRow }
-  | { type: "ACCESS"; row: UserAccessPreviewRow }
 
 export function UserAccessIterations({ companyId, companyName, rows, availableUsers, systemUsers }: UserAccessIterationsProps) {
   const router = useRouter()
@@ -71,12 +73,12 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
 
   const [linkUserId, setLinkUserId] = useState("")
   const [linkRole, setLinkRole] = useState("EMPLOYEE")
-  const [linkApprover, setLinkApprover] = useState(false)
 
   const [editUsername, setEditUsername] = useState("")
   const [editEmail, setEditEmail] = useState("")
   const [editPassword, setEditPassword] = useState("")
   const [editRole, setEditRole] = useState("EMPLOYEE")
+  const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
 
   const filteredRows = useMemo(() => {
@@ -101,7 +103,6 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
   const openLink = (row: UserAccessPreviewRow) => {
     setLinkUserId("")
     setLinkRole("EMPLOYEE")
-    setLinkApprover(false)
     setDialogState({ type: "LINK", row })
   }
 
@@ -110,6 +111,7 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
     setEditEmail(row.linkedEmail ?? "")
     setEditPassword("")
     setEditRole(row.linkedCompanyRole ?? "EMPLOYEE")
+    setEditApprover(row.requestApprover)
     setEditIsActive(row.linkedUserActive)
     setDialogState({ type: "EDIT", row })
   }
@@ -157,7 +159,7 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
         employeeId: dialogState.row.employeeId,
         userId: linkUserId,
         companyRole: linkRole as "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE",
-        isRequestApprover: linkApprover,
+        isRequestApprover: false,
       })
 
       if (!result.ok) {
@@ -167,24 +169,6 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
 
       toast.success(result.message)
       setDialogState({ type: "NONE" })
-      router.refresh()
-    })
-  }
-
-  const submitApproverToggle = (row: UserAccessPreviewRow, value: boolean) => {
-    startTransition(async () => {
-      const result = await updateEmployeeRequestApproverAction({
-        companyId,
-        employeeId: row.employeeId,
-        isRequestApprover: value,
-      })
-
-      if (!result.ok) {
-        toast.error(result.error)
-        return
-      }
-
-      toast.success(result.message)
       router.refresh()
     })
   }
@@ -201,6 +185,7 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
         password: editPassword.trim().length > 0 ? editPassword : undefined,
         isActive: editIsActive,
         companyRole: editRole as "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE",
+        isRequestApprover: editApprover,
       })
 
       if (!result.ok) {
@@ -232,17 +217,15 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <section className="rounded-xl border border-border/70 bg-card/60 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <section className="flex flex-col gap-2 border-b border-border/60 px-4 pb-6 pt-6 sm:px-6">
         <p className="text-xs text-muted-foreground">HR System</p>
-        <h1 className="text-xl text-foreground">System User Creation and Employee Link</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">System User Creation and Employee Link</h1>
         <p className="text-sm text-muted-foreground">{companyName}</p>
       </section>
 
-      <section className="rounded-xl border border-border/70 bg-background p-3">
-        <div className="grid gap-2 md:grid-cols-[1fr]">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee" />
-        </div>
+      <section className="border-b border-border/60 px-4 py-3 sm:px-6">
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee" className="max-w-md" />
       </section>
 
       <IterationOne
@@ -250,7 +233,6 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
         systemUsers={systemUsers}
         onCreate={openCreate}
         onLink={openLink}
-        onToggleApprover={submitApproverToggle}
         onUnlink={submitUnlink}
         onEdit={openEdit}
         isPending={isPending}
@@ -334,10 +316,6 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
-              <Switch checked={linkApprover} onCheckedChange={setLinkApprover} disabled={isPending} />
-            </div>
           </div>
 
           <DialogFooter>
@@ -381,6 +359,10 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
               </Select>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+              <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
+              <Switch checked={editApprover} onCheckedChange={setEditApprover} disabled={isPending} />
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
               <span className="text-sm text-foreground">Active Account</span>
               <Switch checked={editIsActive} onCheckedChange={setEditIsActive} disabled={isPending} />
             </div>
@@ -396,19 +378,18 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
   )
 }
 
-function IterationOne({ rows, systemUsers, onCreate, onLink, onToggleApprover, onUnlink, onEdit, isPending }: {
+function IterationOne({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, isPending }: {
   rows: UserAccessPreviewRow[]
   systemUsers: SystemUserAccountRow[]
   onCreate: (row: UserAccessPreviewRow) => void
   onLink: (row: UserAccessPreviewRow) => void
-  onToggleApprover: (row: UserAccessPreviewRow, value: boolean) => void
   onUnlink: (row: UserAccessPreviewRow) => void
   onEdit: (row: UserAccessPreviewRow) => void
   isPending: boolean
 }) {
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_440px]">
-      <div className="overflow-hidden rounded-xl border border-border/70 bg-background">
+    <section className="grid border-b border-border/60 xl:grid-cols-[minmax(0,1fr)_440px]">
+      <div className="overflow-hidden xl:border-r xl:border-border/60">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-xs">
             <thead className="bg-muted/40">
@@ -424,18 +405,61 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onToggleApprover, o
             <tbody>
               {rows.map((row) => (
                 <tr key={row.employeeId} className="border-t border-border/60">
-                  <td className="px-3 py-2"><div>{row.fullName}</div><div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div></td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
+                        <AvatarImage src={row.photoUrl ?? undefined} alt={row.fullName} className="!rounded-md object-cover" />
+                        <AvatarFallback className="!rounded-md text-[11px]">
+                          {getEmployeeInitials(row.fullName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div>{row.fullName}</div>
+                        <div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">{row.department}</td>
                   <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.linkedEmail}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
                   <td className="px-3 py-2">{row.linkedCompanyRole ? <Badge variant="secondary">{row.linkedCompanyRole}</Badge> : <Badge variant="outline">-</Badge>}</td>
-                  <td className="px-3 py-2"><Switch checked={row.requestApprover} disabled={!row.hasLinkedUser || isPending} onCheckedChange={(value) => onToggleApprover(row, value)} /></td>
+                  <td className="px-3 py-2">
+                    <Badge variant={row.requestApprover ? "default" : "destructive"}>
+                      {row.requestApprover ? "Enabled" : "Disabled"}
+                    </Badge>
+                  </td>
                   <td className="px-3 py-2 text-right">
-                    <div className="flex justify-end gap-2">
-                      {!row.hasLinkedUser ? <Button size="sm" variant="outline" onClick={() => onCreate(row)} disabled={isPending}>Create & Link User</Button> : null}
-                      {!row.hasLinkedUser ? <Button size="sm" variant="outline" onClick={() => onLink(row)} disabled={isPending}>Link Existing User</Button> : null}
-                      {row.hasLinkedUser ? <Button size="sm" variant="outline" onClick={() => onEdit(row)} disabled={isPending}>Edit Credentials</Button> : null}
-                      {row.hasLinkedUser ? <Button size="sm" variant="outline" onClick={() => onUnlink(row)} disabled={isPending}>Unlink</Button> : null}
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" disabled={isPending}>
+                          <IconDots className="size-4 rotate-90" />
+                          <span className="sr-only">Open actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        {!row.hasLinkedUser ? (
+                          <DropdownMenuItem onSelect={() => onCreate(row)} disabled={isPending}>
+                            Create & Link User
+                          </DropdownMenuItem>
+                        ) : null}
+                        {!row.hasLinkedUser ? (
+                          <DropdownMenuItem onSelect={() => onLink(row)} disabled={isPending}>
+                            Link Existing User
+                          </DropdownMenuItem>
+                        ) : null}
+                        {row.hasLinkedUser ? (
+                          <DropdownMenuItem onSelect={() => onEdit(row)} disabled={isPending}>
+                            <IconEdit className="mr-2 size-4" />
+                            Edit
+                          </DropdownMenuItem>
+                        ) : null}
+                        {row.hasLinkedUser ? (
+                          <DropdownMenuItem onSelect={() => onUnlink(row)} disabled={isPending}>
+                            <IconUserX className="mr-2 size-4" />
+                            Unlink
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -444,18 +468,18 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onToggleApprover, o
         </div>
       </div>
 
-      <aside className="rounded-xl border border-border/70 bg-background">
+      <aside>
         <div className="border-b border-border/60 px-4 py-3">
           <h2 className="inline-flex items-center gap-2.5 text-sm text-foreground"><IconUser className="size-4" /> <span>System User Accounts</span></h2>
           <p className="text-xs text-muted-foreground">Linked status per account</p>
         </div>
         <ScrollArea className="h-[680px]">
-          <div className="space-y-2 p-3">
+          <div>
           {systemUsers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No user accounts found for this company.</p>
+            <p className="p-4 text-xs text-muted-foreground">No user accounts found for this company.</p>
           ) : (
             systemUsers.map((user) => (
-              <div key={user.id} className="rounded-lg border border-border/60 p-3">
+              <div key={user.id} className="border-b border-border/60 px-4 py-3 last:border-b-0">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-xs text-foreground">{user.displayName}</p>
@@ -483,4 +507,11 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onToggleApprover, o
       </aside>
     </section>
   )
+}
+
+function getEmployeeInitials(fullName: string): string {
+  const [lastNamePart = "", firstNamePart = ""] = fullName.split(",")
+  const first = firstNamePart.trim().charAt(0)
+  const last = lastNamePart.trim().charAt(0)
+  return `${first}${last}`.toUpperCase() || "NA"
 }

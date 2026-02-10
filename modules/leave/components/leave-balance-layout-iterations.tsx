@@ -22,8 +22,8 @@ import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type {
@@ -45,6 +45,18 @@ const monthLabel = new Intl.DateTimeFormat("en-PH", { month: "short", timeZone: 
 
 const toStatusLabel = (status: string): string => status.replace(/_/g, " ")
 const normalizeLeaveType = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, "")
+
+const leaveHistoryStatusBadgeClass = (status: string): string => {
+  if (status === "APPROVED" || status === "SUPERVISOR_APPROVED") {
+    return "border-emerald-700 bg-emerald-600 text-white"
+  }
+
+  if (status === "REJECTED") {
+    return "border-destructive/50 bg-destructive/10 text-destructive"
+  }
+
+  return "border-border bg-muted text-foreground"
+}
 
 export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, balanceRows, historyRows }: Props) {
   const [search, setSearch] = useState("")
@@ -192,12 +204,12 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconUsersGroup className="size-5" /> Leave Balance</h1>
-            <p className="text-xs text-muted-foreground">Employee directory with filters, timeline, and leave history drilldown.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconUsersGroup className="size-5" /> Leave Balance</h1>
+            <p className="text-sm text-muted-foreground">Employee directory with filters, timeline, and leave history drilldown.</p>
           </div>
           <div className="flex gap-2">
             {years.map((year) => (
@@ -214,12 +226,9 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
         </div>
       </header>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="inline-flex items-center gap-2 text-sm"><IconFilter className="size-4" /> Employee Directory</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      <div className="grid border-y border-border/60 xl:grid-cols-[320px_1fr]">
+        <aside className="space-y-3 border-r border-border/60 p-4 sm:p-6">
+          <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground"><IconFilter className="size-4" /> Employee Directory</p>
             <div className="relative">
               <IconSearch className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search employee" className="pl-8" />
@@ -252,67 +261,70 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
               </SelectContent>
             </Select>
 
-            <div className="max-h-[560px] space-y-1 overflow-auto rounded-lg border border-border/60 p-1">
-              {filteredEmployees.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs text-muted-foreground">No employees match current filters.</p>
-              ) : (
-                filteredEmployees.map((employee) => {
-                  const isActive = employee.employeeId === selectedEmployee?.employeeId
-                  return (
-                    <button
-                      key={employee.employeeId}
-                      type="button"
-                      className={cn(
-                        "w-full rounded-md border px-2 py-2 text-left transition-colors",
-                        isActive ? "border-primary bg-primary/10" : "border-border/50 hover:bg-muted/40"
-                      )}
-                      onClick={() => setSelectedEmployeeId(employee.employeeId)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-10 w-9 shrink-0 !rounded-md border border-border/60 after:!rounded-md">
-                          <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.employeeName} className="!aspect-auto h-full w-full !rounded-md object-cover" />
-                          <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                            {employee.employeeName
-                              .split(" ")
-                              .map((part) => part[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">{employee.employeeName}</p>
-                          <p className="truncate text-[11px] text-muted-foreground">{employee.employeeNumber} - {employee.departmentName}</p>
+            <ScrollArea className="h-[560px] pr-1">
+              <div className="space-y-2">
+                {filteredEmployees.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">No employees match current filters.</p>
+                ) : (
+                  filteredEmployees.map((employee) => {
+                    const isActive = employee.employeeId === selectedEmployee?.employeeId
+                    return (
+                      <button
+                        key={employee.employeeId}
+                        type="button"
+                        className={cn(
+                          "w-full border px-3 py-2 text-left text-xs",
+                          isActive
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border/60 bg-background hover:bg-muted/40"
+                        )}
+                        onClick={() => setSelectedEmployeeId(employee.employeeId)}
+                      >
+                        <div className="flex items-start gap-2">
+                          <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md [&_*]:rounded-md">
+                            <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.employeeName} className="!aspect-auto h-full w-full !rounded-md object-cover" />
+                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                              {employee.employeeName
+                                .split(" ")
+                                .map((part) => part[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{employee.employeeName}</p>
+                            <p className="truncate text-muted-foreground">{employee.employeeNumber}</p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </ScrollArea>
+        </aside>
 
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex min-h-[calc(100vh-220px)] flex-col gap-4"
+          className="flex min-h-[calc(100vh-220px)] flex-col gap-4 p-4 sm:p-6"
         >
           {!selectedEmployee ? (
-            <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Select an employee from the sidebar.</CardContent></Card>
+            <div className="border border-border/60 py-10 text-center text-sm text-muted-foreground">Select an employee from the sidebar.</div>
           ) : (
             <>
-              <Card>
-                <CardContent className="flex flex-wrap items-center justify-between gap-2 py-4">
+              <section className="border border-border/60 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.08em] text-muted-foreground"><IconUserCircle className="size-3.5" /> Selected Employee</p>
                     <p className="text-lg font-semibold text-foreground">{selectedEmployee.employeeName}</p>
                     <p className="text-xs text-muted-foreground">{selectedEmployee.employeeNumber} - {selectedEmployee.departmentName}</p>
                   </div>
                   <Badge variant="outline" className="text-xs">Timeline Drilldown</Badge>
-                </CardContent>
-              </Card>
+                </div>
+              </section>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard title="Vacation Leave" value={days.format(leaveTypeStatValues.vacationLeave)} icon={IconCalendarStats} />
@@ -321,9 +333,11 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
                 <StatCard title="Compensary Time Off" value={days.format(leaveTypeStatValues.compensaryTimeOff)} icon={IconClockHour4} />
               </div>
 
-              <Card>
-                <CardHeader><CardTitle className="inline-flex items-center gap-2 text-sm"><IconRoute className="size-4" /> Leave Journey Timeline</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
+              <section className="border border-border/60">
+                <div className="border-b border-border/60 px-4 py-3">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium"><IconRoute className="size-4" /> Leave Journey Timeline</p>
+                </div>
+                <div className="space-y-3 p-4">
                   <div className="overflow-hidden">
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                       {visibleTimelineMonths.map((item) => {
@@ -376,34 +390,52 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
                       <IconChevronRight className="ml-1 size-4" />
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </section>
 
-              <Card className="flex flex-1 flex-col">
-                <CardHeader><CardTitle className="inline-flex items-center gap-2 text-sm"><IconTimeline className="size-4" /> Employee Leave History</CardTitle></CardHeader>
-                <CardContent className="flex-1 space-y-2 overflow-y-auto">
+              <section className="flex flex-1 flex-col border border-border/60">
+                <div className="border-b border-border/60 px-4 py-3">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium"><IconTimeline className="size-4" /> Employee Leave History</p>
+                </div>
+                <div className="flex-1 space-y-2 overflow-y-auto p-4">
                   {selectedHistoryRows.length === 0 ? (
                     <p className="py-6 text-center text-sm text-muted-foreground">No leave history for current filters.</p>
                   ) : (
-                    selectedHistoryRows.map((row) => (
-                      <motion.div
-                        key={row.id}
-                        layout
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="rounded-md border border-border/60 px-3 py-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-foreground">{row.requestNumber} - {row.leaveTypeName}</p>
-                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "secondary"}>{toStatusLabel(row.statusCode)}</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{dateLabel.format(new Date(row.startDateIso))} to {dateLabel.format(new Date(row.endDateIso))} - {days.format(row.numberOfDays)} days</p>
-                      </motion.div>
-                    ))
+                    <div className="overflow-x-auto border border-border/60">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Request #</th>
+                            <th className="px-3 py-2 text-left">Leave Type</th>
+                            <th className="px-3 py-2 text-left">Start Date</th>
+                            <th className="px-3 py-2 text-left">End Date</th>
+                            <th className="px-3 py-2 text-left">Days</th>
+                            <th className="px-3 py-2 text-left">Filed Date</th>
+                            <th className="px-3 py-2 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedHistoryRows.map((row) => (
+                            <tr key={row.id} className="border-t border-border/50">
+                              <td className="px-3 py-2 font-medium text-foreground">{row.requestNumber}</td>
+                              <td className="px-3 py-2">{row.leaveTypeName}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.startDateIso))}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.endDateIso))}</td>
+                              <td className="px-3 py-2">{days.format(row.numberOfDays)}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.createdAtIso))}</td>
+                              <td className="px-3 py-2">
+                                <Badge variant="outline" className={leaveHistoryStatusBadgeClass(row.statusCode)}>
+                                  {toStatusLabel(row.statusCode)}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </section>
 
             </>
           )}
@@ -415,11 +447,9 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
 
 function StatCard({ title, value, icon: Icon }: { title: string; value: string; icon: typeof IconChartBar }) {
   return (
-    <Card>
-      <CardContent className="py-3">
+    <div className="border border-border/60 p-3">
         <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground"><Icon className="size-3.5" /> {title}</p>
         <p className="text-xl font-semibold text-foreground">{value}</p>
-      </CardContent>
-    </Card>
+    </div>
   )
 }

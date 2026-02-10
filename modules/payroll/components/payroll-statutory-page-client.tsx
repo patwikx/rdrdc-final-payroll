@@ -1,11 +1,22 @@
 "use client"
 
-import { Fragment, useMemo, useState } from "react"
-import { IconChevronDown, IconChevronUp, IconDownload, IconFileAnalytics, IconReceiptTax } from "@tabler/icons-react"
+import { Fragment, type ComponentType, useMemo, useState } from "react"
+import {
+  IconBuilding,
+  IconCalendarEvent,
+  IconChevronDown,
+  IconChevronUp,
+  IconFileAnalytics,
+  IconFileText,
+  IconHeartRateMonitor,
+  IconPrinter,
+  IconReceiptTax,
+  IconSearch,
+  IconShieldCheck,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -95,6 +106,14 @@ const REPORT_OPTIONS: Array<{ key: ReportKey; label: string; frequency: string }
   { key: "dole13th", label: "DOLE 13th Month Pay Report", frequency: "Annual" },
   { key: "bir-alphalist", label: "BIR Alphalist", frequency: "Annual" },
 ]
+
+const reportIconByKey: Record<ReportKey, ComponentType<{ className?: string }>> = {
+  sss: IconShieldCheck,
+  philhealth: IconHeartRateMonitor,
+  pagibig: IconBuilding,
+  dole13th: IconCalendarEvent,
+  "bir-alphalist": IconReceiptTax,
+}
 
 const parseAmount = (value: string): number => Number(value.replace(/[^0-9.-]/g, "")) || 0
 const numberFormatter = new Intl.NumberFormat("en-PH", {
@@ -513,69 +532,76 @@ export function PayrollStatutoryPageClient({
 
   return (
     <>
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4 print:hidden">
-        <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6 print:hidden">
+        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
           <IconFileAnalytics className="size-5" />
           {companyName} Statutory Reports
         </h1>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Select PhilHealth or Pag-IBIG to view the printable report.
         </p>
       </header>
 
-      <Card className="rounded-xl border border-border/70 bg-card/80 print:shadow-none print:border-0">
-        <CardHeader className="pb-2">
-          <CardTitle className="inline-flex items-center gap-2 text-base print:hidden">
+      <section className="grid border-y border-border/60 lg:grid-cols-[320px_1fr] print:block">
+        <aside className="space-y-3 border-r border-border/60 p-4 print:hidden sm:p-6">
+          <div className="space-y-2">
+            <h2 className="inline-flex items-center gap-2 text-base font-medium">
             <IconReceiptTax className="size-4 text-primary" />
             Agency Report Workspace
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[320px_1fr] print:block">
-          <aside className="space-y-3 rounded-md border border-border/60 p-3 print:hidden">
-            <div className="space-y-2">
+            </h2>
+            <div className="relative">
+              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
                 placeholder="Search report"
+                className="pl-8"
               />
-              <Select value={selectedMonthKey} onValueChange={setSelectedMonthKey}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select month" />
-                </SelectTrigger>
-                <SelectContent>
-                  {monthOptions.map((option) => (
-                    <SelectItem key={option.key} value={option.key}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
+            <Select value={selectedMonthKey} onValueChange={setSelectedMonthKey}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <ScrollArea className="h-[620px] pr-1">
-              <div className="space-y-2">
-                {filteredOptions.map((report) => (
+          <ScrollArea className="h-[620px] pr-1">
+            <div className="space-y-2">
+              {filteredOptions.map((report) => {
+                const ReportIcon = reportIconByKey[report.key]
+                return (
                   <button
                     key={report.key}
                     type="button"
                     onClick={() => setActiveReport(report.key)}
                     className={cn(
-                      "w-full rounded-md border px-3 py-2 text-left text-xs",
-                      resolvedReport.key === report.key
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border/60 bg-background hover:bg-muted/40"
-                    )}
-                  >
-                    <p className="font-medium">{report.label}</p>
+                      "w-full border px-3 py-2 text-left text-xs",
+                    resolvedReport.key === report.key
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border/60 bg-background hover:bg-muted/40"
+                  )}
+                >
+                  <p className="inline-flex items-center gap-1.5 font-medium">
+                    <ReportIcon className="size-3.5" />
+                    <span>{report.label}</span>
+                  </p>
                     <p className="text-[11px] text-muted-foreground">{report.frequency}</p>
                   </button>
-                ))}
-              </div>
-            </ScrollArea>
-          </aside>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        </aside>
 
-          <section className="space-y-3 rounded-md border border-border/60 p-3 print:border-0 print:p-0">
+          <section className="space-y-3 p-4 print:border-0 print:p-0 sm:p-6">
             <div className="flex items-center justify-between gap-2 print:hidden">
               <div>
                 <p className="text-sm font-semibold">{resolvedReport.label}</p>
@@ -584,11 +610,11 @@ export function PayrollStatutoryPageClient({
               {resolvedReport.key === "sss" || resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" || resolvedReport.key === "dole13th" ? (
                 <div className="flex items-center gap-2">
                   <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
-                    <IconDownload className="size-4" />
+                    <IconFileText className="size-4" />
                     Export CSV
                   </Button>
                   <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
-                    <IconDownload className="size-4" />
+                    <IconPrinter className="size-4" />
                     Print Report
                   </Button>
                 </div>
@@ -674,11 +700,11 @@ export function PayrollStatutoryPageClient({
                   />
                 </div>
 
-                <div className="rounded-md border border-border/60 bg-muted/10 p-3 print:hidden">
+                <div className="border border-border/60 bg-muted/10 p-3 print:hidden">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     BIR Calc Trace (Per Employee)
                   </p>
-                  <div className="overflow-x-auto rounded-md border border-border/60">
+                  <div className="overflow-x-auto border border-border/60">
                     <table className="w-full text-xs">
                       <thead className="bg-muted/50">
                         <tr>
@@ -762,8 +788,7 @@ export function PayrollStatutoryPageClient({
             ) : null}
 
           </section>
-        </CardContent>
-      </Card>
+      </section>
     </main>
     <style jsx global>{`
       @media print {

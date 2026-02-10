@@ -1,7 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { IconCalendarEvent, IconCheck, IconRefresh, IconScale } from "@tabler/icons-react"
+import {
+  IconBuilding,
+  IconCalendarEvent,
+  IconCheck,
+  IconHeartRateMonitor,
+  IconPlus,
+  IconReceiptTax,
+  IconRefresh,
+  IconScale,
+  IconShieldCheck,
+  IconTrash,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -251,12 +262,12 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconScale className="size-5" /> {companyName} Statutory Tables</h1>
-            <p className="text-xs text-muted-foreground">Simple bracket setup for SSS, PhilHealth, Pag-IBIG, and semi-monthly withholding tax.</p>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconScale className="size-5" /> {companyName} Statutory Tables</h1>
+            <p className="text-sm text-muted-foreground">Simple bracket setup for SSS, PhilHealth, Pag-IBIG, and semi-monthly withholding tax.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={handleReset} disabled={isPending}>
@@ -271,12 +282,17 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
         </div>
       </header>
 
-      <div className="inline-flex w-fit rounded-md border border-border/60 bg-background p-1">
-        <Button size="sm" type="button" variant={tab === "sss" ? "default" : "ghost"} onClick={() => setTab("sss")}>SSS</Button>
-        <Button size="sm" type="button" variant={tab === "philhealth" ? "default" : "ghost"} onClick={() => setTab("philhealth")}>PhilHealth</Button>
-        <Button size="sm" type="button" variant={tab === "pagibig" ? "default" : "ghost"} onClick={() => setTab("pagibig")}>Pag-IBIG</Button>
-        <Button size="sm" type="button" variant={tab === "wtax" ? "default" : "ghost"} onClick={() => setTab("wtax")}>WTAX (Semi-Monthly)</Button>
-      </div>
+      <div className="space-y-4 py-6">
+        <section className="border-y border-border/60 px-4 py-3 sm:px-6">
+          <div className="inline-flex w-fit rounded-md border border-border/60 bg-background p-1">
+            <Button size="sm" type="button" variant={tab === "sss" ? "default" : "ghost"} onClick={() => setTab("sss")}><IconShieldCheck className="size-3.5" /> SSS</Button>
+            <Button size="sm" type="button" variant={tab === "philhealth" ? "default" : "ghost"} onClick={() => setTab("philhealth")}><IconHeartRateMonitor className="size-3.5" /> PhilHealth</Button>
+            <Button size="sm" type="button" variant={tab === "pagibig" ? "default" : "ghost"} onClick={() => setTab("pagibig")}><IconBuilding className="size-3.5" /> Pag-IBIG</Button>
+            <Button size="sm" type="button" variant={tab === "wtax" ? "default" : "ghost"} onClick={() => setTab("wtax")}><IconReceiptTax className="size-3.5" /> WTAX (Semi-Monthly)</Button>
+          </div>
+        </section>
+
+        <div className="px-4 sm:px-6">
 
       {tab === "sss" ? (
         <SssSection
@@ -326,6 +342,8 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
           onEffectiveFromChange={(value) => setForm((prev) => ({ ...prev, effectiveFrom: value }))}
         />
       ) : null}
+        </div>
+      </div>
     </main>
   )
 }
@@ -351,6 +369,7 @@ function SssSection({
     <BracketCard
       title="SSS Contribution Brackets"
       description="Input salary ranges and contribution shares."
+      icon={<IconShieldCheck className="size-4" />}
       addDisabled={isPresetLocked}
       extraAction={
         <div className="flex flex-wrap items-center gap-2">
@@ -369,7 +388,7 @@ function SssSection({
         }))
       }
     >
-      <div className="overflow-x-auto rounded-md border border-border/60">
+      <div className="overflow-x-auto border border-border/60">
         <table className="w-full text-xs">
           <thead className="bg-muted/50">
             <tr>
@@ -417,6 +436,7 @@ function PhilHealthSection({
     <BracketCard
       title="PhilHealth Premium Rules"
       description="Keep one simple row unless you need category-specific rates."
+      icon={<IconHeartRateMonitor className="size-4" />}
       addDisabled={isPresetLocked}
       extraAction={
         <div className="flex flex-wrap items-center gap-2">
@@ -435,7 +455,7 @@ function PhilHealthSection({
         }))
       }
     >
-      <div className="overflow-x-auto rounded-md border border-border/60">
+      <div className="overflow-x-auto border border-border/60">
         <table className="w-full text-xs">
           <thead className="bg-muted/50">
             <tr>
@@ -485,6 +505,7 @@ function PagIbigSection({
     <BracketCard
       title="Pag-IBIG Contribution Brackets"
       description="Set rate percent and compensation cap brackets."
+      icon={<IconBuilding className="size-4" />}
       addDisabled={isPresetLocked}
       extraAction={
         <div className="flex flex-wrap items-center gap-2">
@@ -503,7 +524,7 @@ function PagIbigSection({
         }))
       }
     >
-      <div className="overflow-x-auto rounded-md border border-border/60">
+      <div className="overflow-x-auto border border-border/60">
         <table className="w-full text-xs">
           <thead className="bg-muted/50">
             <tr>
@@ -554,6 +575,7 @@ function WtaxSection({
     <BracketCard
       title="Withholding Tax Brackets (Semi-Monthly)"
       description="BIR 2023 semi-monthly flex rules style: base tax + excess * rate."
+      icon={<IconReceiptTax className="size-4" />}
       onAdd={() =>
         setForm((prev) => ({
           ...prev,
@@ -575,7 +597,7 @@ function WtaxSection({
       {isUsingSemiMonthlyPreset ? (
         <p className="text-xs text-emerald-700 dark:text-emerald-400">Using BIR 2023 semi-monthly flex rules brackets.</p>
       ) : null}
-      <div className="overflow-x-auto rounded-md border border-border/60">
+      <div className="overflow-x-auto border border-border/60">
         <table className="w-full text-xs">
           <thead className="bg-muted/50">
             <tr>
@@ -620,6 +642,7 @@ function EffectiveFromPicker({ value, onChange }: { value: string; onChange: (va
 function BracketCard({
   title,
   description,
+  icon,
   onAdd,
   children,
   extraAction,
@@ -627,21 +650,22 @@ function BracketCard({
 }: {
   title: string
   description: string
+  icon?: React.ReactNode
   onAdd: () => void
   children: React.ReactNode
   extraAction?: React.ReactNode
   addDisabled?: boolean
 }) {
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="space-y-3 border border-border/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
         <div>
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <h3 className="inline-flex items-center gap-1.5 text-base font-semibold text-foreground">{icon}<span>{title}</span></h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="flex items-center gap-2">
           {extraAction}
-          <Button type="button" variant="outline" onClick={onAdd} disabled={addDisabled}>+ Add Row</Button>
+          <Button type="button" variant="outline" onClick={onAdd} disabled={addDisabled}><IconPlus className="size-3.5" /> Add Row</Button>
         </div>
       </div>
       <div className="space-y-3">{children}</div>
@@ -664,6 +688,7 @@ function NumberInput({ value, onChange, step, disabled }: { value: number; onCha
 function RemoveRowButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   return (
     <Button type="button" variant="ghost" size="sm" onClick={onClick} disabled={disabled}>
+      <IconTrash className="size-3.5" />
       Remove
     </Button>
   )

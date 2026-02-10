@@ -4,6 +4,7 @@ export type UserAccessPreviewRow = {
   employeeId: string
   employeeNumber: string
   fullName: string
+  photoUrl: string | null
   department: string
   position: string
   hasLinkedUser: boolean
@@ -55,6 +56,7 @@ export async function getUserAccessPreviewData(companyId: string): Promise<UserA
         employeeNumber: true,
         firstName: true,
         lastName: true,
+        photoUrl: true,
         department: { select: { name: true } },
         position: { select: { name: true } },
         user: {
@@ -138,6 +140,7 @@ export async function getUserAccessPreviewData(companyId: string): Promise<UserA
     employeeId: employee.id,
     employeeNumber: employee.employeeNumber,
     fullName: `${employee.lastName}, ${employee.firstName}`,
+    photoUrl: employee.photoUrl,
     department: employee.department?.name ?? "Unassigned",
     position: employee.position?.name ?? "Unassigned",
     hasLinkedUser: Boolean(employee.user?.id),

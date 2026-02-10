@@ -2,12 +2,21 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconBriefcase, IconRefresh } from "@tabler/icons-react"
+import {
+  IconBriefcase,
+  IconChartBar,
+  IconEdit,
+  IconFilter,
+  IconPlus,
+  IconRefresh,
+  IconSearch,
+  IconTag,
+  IconUserCog,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -157,6 +166,18 @@ const matchesStatus = (isActive: boolean, filter: StatusFilter): boolean => {
   }
 
   return filter === "active" ? isActive : !isActive
+}
+
+const renderActiveBadge = (isActive: boolean): React.ReactNode => {
+  if (isActive) {
+    return <Badge className="border-emerald-700 bg-emerald-600 text-white">Active</Badge>
+  }
+
+  return (
+    <Badge variant="outline" className="border-border/70 text-muted-foreground">
+      Inactive
+    </Badge>
+  )
 }
 
 export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
@@ -330,15 +351,15 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
               <IconBriefcase className="size-5" />
               {data.companyName} Employment Setup
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Manage company positions and shared employment classifications used across employee records.
             </p>
           </div>
@@ -353,15 +374,16 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
         </div>
       </header>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 px-4 py-6 sm:px-6 lg:grid-cols-2">
         <EntityTableCard
           className="lg:col-span-2"
           title="Positions"
           description="Company-scoped job positions"
+          icon={<IconBriefcase className="size-4" />}
           headers={["Code", "Name", "Level", "Job Family", "Status", "Action"]}
           rows={filteredPositions.map((item) => ({
             id: item.id,
-            values: [item.code, item.name, String(item.level), item.jobFamily ?? "-", item.isActive ? "Active" : "Inactive"],
+            values: [item.code, item.name, String(item.level), item.jobFamily ?? "-", renderActiveBadge(item.isActive)],
           }))}
           controls={
             <TableFilters
@@ -408,6 +430,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
         <EntityTableCard
           title="Employment Status"
           description="Workforce lifecycle statuses"
+          icon={<IconUserCog className="size-4" />}
           headers={["Code", "Name", "Payroll", "Offboard", "Status", "Action"]}
           rows={filteredEmploymentStatuses.map((item) => ({
             id: item.id,
@@ -416,7 +439,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
               item.name,
               item.allowsPayroll ? "Yes" : "No",
               item.triggersOffboarding ? "Yes" : "No",
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           controls={
@@ -461,6 +484,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
         <EntityTableCard
           title="Employment Type"
           description="Contract/engagement categories"
+          icon={<IconTag className="size-4" />}
           headers={["Code", "Name", "Benefits", "13th Month", "Status", "Action"]}
           rows={filteredEmploymentTypes.map((item) => ({
             id: item.id,
@@ -469,7 +493,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
               item.name,
               item.hasBenefits ? "Yes" : "No",
               item.has13thMonth ? "Yes" : "No",
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           controls={
@@ -516,6 +540,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
           className="lg:col-span-2"
           title="Employment Class"
           description="Schedule and overtime eligibility classes"
+          icon={<IconChartBar className="size-4" />}
           headers={["Code", "Name", "Hours/Day", "Days/Week", "OT Eligible", "Status", "Action"]}
           rows={filteredEmploymentClasses.map((item) => ({
             id: item.id,
@@ -525,7 +550,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
               item.standardHoursPerDay.toFixed(2),
               String(item.standardDaysPerWeek),
               item.isOvertimeEligible ? "Yes" : "No",
-              item.isActive ? "Active" : "Inactive",
+              renderActiveBadge(item.isActive),
             ],
           }))}
           controls={
@@ -575,6 +600,7 @@ function EntityTableCard({
   className,
   title,
   description,
+  icon,
   headers,
   rows,
   controls,
@@ -584,28 +610,30 @@ function EntityTableCard({
   className?: string
   title: string
   description: string
+  icon: React.ReactNode
   headers: string[]
-  rows: Array<{ id: string; values: string[] }>
+  rows: Array<{ id: string; values: Array<string | React.ReactNode> }>
   controls?: React.ReactNode
   onEdit: (id: string) => void
   dialog: React.ReactNode
 }) {
   return (
-    <Card className={cn("rounded-xl border border-border/70 bg-card/80", className)}>
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {controls}
-            {dialog}
-          </div>
+    <section className={cn("border border-border/60 bg-background", className)}>
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-4 py-3">
+        <div>
+          <p className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
+            {icon}
+            <span>{title}</span>
+          </p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto rounded-md border border-border/60">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {controls}
+          {dialog}
+        </div>
+      </div>
+      <div className="p-4">
+        <div className="overflow-x-auto border border-border/60">
           <table className="w-full text-xs">
             <thead className="bg-muted/50">
               <tr>
@@ -633,6 +661,7 @@ function EntityTableCard({
                     ))}
                     <td className="px-3 py-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => onEdit(row.id)}>
+                        <IconEdit className="size-3.5" />
                         Edit
                       </Button>
                     </td>
@@ -642,8 +671,8 @@ function EntityTableCard({
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -662,14 +691,18 @@ function TableFilters({
 }) {
   return (
     <>
-      <Input
-        value={searchValue}
-        onChange={(event) => onSearchChange(event.target.value)}
-        placeholder={searchPlaceholder}
-        className="h-8 w-[180px]"
-      />
+      <div className="relative">
+        <IconSearch className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchValue}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder={searchPlaceholder}
+          className="h-8 w-[180px] pl-7"
+        />
+      </div>
       <Select value={statusValue} onValueChange={(value) => onStatusChange(value as StatusFilter)}>
         <SelectTrigger className="h-8 w-[120px]">
+          <IconFilter className="size-3.5 text-muted-foreground" />
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -702,7 +735,7 @@ function PositionDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Position</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Position</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -757,7 +790,7 @@ function EmploymentStatusDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Status</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Status</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -805,7 +838,7 @@ function EmploymentTypeDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Type</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Type</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -854,7 +887,7 @@ function EmploymentClassDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" size="sm" onClick={onCreate}>Add Class</Button>
+        <Button type="button" size="sm" onClick={onCreate}><IconPlus className="size-3.5" /> Add Class</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

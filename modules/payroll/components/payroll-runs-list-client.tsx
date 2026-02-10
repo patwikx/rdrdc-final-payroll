@@ -124,41 +124,43 @@ export function PayrollRunsListClient({ companyId, runs, createOptions }: Payrol
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-lg border border-border bg-card p-3">
+      <div className="overflow-hidden border border-border/60">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-5 sm:divide-x sm:divide-border/60">
+          <div className="border-b border-border/60 p-3 sm:border-b-0">
           <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
             <IconFolders className="h-4 w-4" />
           </div>
           <p className="text-xs text-muted-foreground">Total Runs</p>
           <p className="text-lg font-semibold text-foreground">{statCards.totalRuns}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-3">
+          </div>
+          <div className="border-b border-border/60 p-3 sm:border-b-0">
           <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
             <IconLoader className="h-4 w-4" />
           </div>
           <p className="text-xs text-muted-foreground">Active Runs</p>
           <p className="text-lg font-semibold text-foreground">{statCards.activeRuns}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-3">
+          </div>
+          <div className="border-b border-border/60 p-3 sm:border-b-0">
           <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
             <IconFileText className="h-4 w-4" />
           </div>
           <p className="text-xs text-muted-foreground">Draft Runs</p>
           <p className="text-lg font-semibold text-foreground">{statCards.draftRuns}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-3">
+          </div>
+          <div className="border-b border-border/60 p-3 sm:border-b-0">
           <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
             <IconLock className="h-4 w-4" />
           </div>
           <p className="text-xs text-muted-foreground">Locked Runs</p>
           <p className="text-lg font-semibold text-foreground">{statCards.lockedRuns}</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-3">
+          </div>
+          <div className="p-3">
           <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
             <IconWallet className="h-4 w-4" />
           </div>
           <p className="text-xs text-muted-foreground">Aggregate Net</p>
           <p className="text-lg font-semibold text-foreground">{amount.format(statCards.totalNet)}</p>
+          </div>
         </div>
       </div>
 
@@ -217,7 +219,7 @@ export function PayrollRunsListClient({ companyId, runs, createOptions }: Payrol
         </Dialog>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
+      <div className="overflow-hidden border border-border/60 bg-background">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/20">

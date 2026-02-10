@@ -1,12 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { IconDownload, IconEye, IconFileText, IconReceipt2, IconWallet } from "@tabler/icons-react"
+import { IconDotsVertical, IconDownload, IconEye, IconFileText, IconReceipt2, IconWallet } from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
@@ -162,14 +163,23 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
                         )}
                       </TableCell>
                       <TableCell className="py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" className="h-8 w-8 rounded-lg border-border/60 p-0" onClick={() => setSelectedPayslip(payslip)}>
-                            <IconEye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="outline" size="sm" className="h-8 w-8 rounded-lg border-border/60 p-0" onClick={() => handleDownload(payslip.id)}>
-                            <IconDownload className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg p-0" aria-label="Open payslip actions">
+                              <IconDotsVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem onClick={() => setSelectedPayslip(payslip)}>
+                              <IconEye className="mr-2 h-3.5 w-3.5" />
+                              View details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDownload(payslip.id)}>
+                              <IconDownload className="mr-2 h-3.5 w-3.5" />
+                              Download PDF
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}

@@ -107,6 +107,14 @@ const statusLabel = (status: string): string => {
 }
 
 const hiddenLeaveTypeCodes = new Set(["MATERNITY", "PATERNITY", "BEREAVEMENT", "SOLO_PARENT", "EMERGENCY"])
+const leaveBalanceCardNames = new Set([
+  "vacation leave",
+  "sick leave",
+  "mandatory leave",
+  "compensatory time off",
+  "compensary time off",
+  "cto",
+])
 const formatDays = (value: number): string => (Number.isInteger(value) ? `${value}` : value.toFixed(1))
 const isSameCalendarDay = (left: Date, right: Date): boolean => left.toDateString() === right.toDateString()
 
@@ -134,7 +142,10 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
 
   const leaveBalanceMap = useMemo(() => new Map(leaveBalances.map((item) => [item.leaveTypeId, item])), [leaveBalances])
   const leaveTypeCards = useMemo(
-    () => leaveTypes.filter((type) => !hiddenLeaveTypeCodes.has(type.code)),
+    () =>
+      leaveTypes.filter(
+        (type) => !hiddenLeaveTypeCodes.has(type.code) && leaveBalanceCardNames.has(type.name.trim().toLowerCase())
+      ),
     [leaveTypes]
   )
 

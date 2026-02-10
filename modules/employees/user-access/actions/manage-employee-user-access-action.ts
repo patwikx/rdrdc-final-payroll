@@ -526,6 +526,7 @@ export async function updateLinkedUserCredentialsAction(
           username: true,
           email: true,
           isActive: true,
+          isRequestApprover: true,
         },
       },
     },
@@ -564,6 +565,7 @@ export async function updateLinkedUserCredentialsAction(
       username: string
       email: string
       isActive: boolean
+      isRequestApprover?: boolean
       isAdmin?: boolean
       passwordHash?: string
     } = {
@@ -572,13 +574,17 @@ export async function updateLinkedUserCredentialsAction(
       isActive: payload.isActive,
     }
 
+    if (typeof payload.isRequestApprover === "boolean") {
+      data.isRequestApprover = payload.isRequestApprover
+    }
+
     if (payload.companyRole) {
       data.isAdmin = payload.companyRole === "COMPANY_ADMIN"
       await applyApproverRoleFallback(tx, {
         userId: linkedUser.id,
         companyId: context.companyId,
         companyRole: payload.companyRole,
-        isRequestApprover: false,
+        isRequestApprover: payload.isRequestApprover ?? linkedUser.isRequestApprover,
       })
     }
 
@@ -591,6 +597,21 @@ export async function updateLinkedUserCredentialsAction(
       data,
     })
 
+    const changes: Array<{ fieldName: string; oldValue?: unknown; newValue?: unknown }> = [
+      { fieldName: "username", oldValue: linkedUser.username, newValue: payload.username },
+      { fieldName: "email", oldValue: linkedUser.email, newValue: payload.email },
+      { fieldName: "isActive", oldValue: linkedUser.isActive, newValue: payload.isActive },
+      { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
+    ]
+
+    if (typeof payload.isRequestApprover === "boolean") {
+      changes.push({
+        fieldName: "isRequestApprover",
+        oldValue: linkedUser.isRequestApprover,
+        newValue: payload.isRequestApprover,
+      })
+    }
+
     await createAuditLog(
       {
         tableName: "User",
@@ -598,12 +619,7 @@ export async function updateLinkedUserCredentialsAction(
         action: "UPDATE",
         userId: context.userId,
         reason: "UPDATE_LINKED_USER_CREDENTIALS",
-        changes: [
-          { fieldName: "username", oldValue: linkedUser.username, newValue: payload.username },
-          { fieldName: "email", oldValue: linkedUser.email, newValue: payload.email },
-          { fieldName: "isActive", oldValue: linkedUser.isActive, newValue: payload.isActive },
-          { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
-        ],
+        changes,
       },
       tx
     )

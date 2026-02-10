@@ -23,6 +23,45 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
 
 ## What Is Implemented So Far
 
+### Session Updates (2026-02-09)
+
+- Payslips hardening:
+  - Excluded `TRIAL_RUN` records from admin payslip list/detail/download flows.
+  - Excluded `TRIAL_RUN` records from employee-portal payslip list/dashboard/download flows.
+- Employee portal approvals UX:
+  - Added table headers for leave/overtime approval request/history sections.
+  - Reordered `Request #` as first column where applicable.
+  - Added supervisor reject support for leave/overtime (not HR-only) and replaced tiny icon-only actions with labeled `Approve`/`Reject` buttons.
+  - Updated reject action styling to destructive variant.
+- Payroll run review/calculate UX:
+  - Calculate step currency display standardized to `PHP` code format.
+  - Added Review Guide panel explaining `CHECK` badge triggers and operator actions.
+- Leave & overtime admin navigation:
+  - Added Leave Balance route under `Leave & Overtime`.
+  - Removed Leave Reports route for now (intentionally deferred).
+- Leave Balance workspace (active):
+  - Implemented selected design with employee directory sidebar, filters, rectangular employee avatars, timeline control, and expanded employee history panel.
+  - Added Leave Balance Summary printable report route (`/[companyId]/leave/balances/report`) with employee-row matrix format and leave-type columns (with exclusions and mandatory leave inclusion rules).
+- Dashboard wiring:
+  - Wired quick-action and critical-action buttons to live module routes.
+  - Wired refresh button to `router.refresh()`.
+  - Wired cycle selector (`current` / `previous` / `month`) to URL query state and server-side data loader.
+  - Added semantic colored action buttons (no orange usage).
+- User nav/profile:
+  - `NavUser` now resolves avatar from active employee `photoUrl` (fallback to `session.user.image`) and uses dynamic initials fallback.
+  - Removed `Upgrade to Pro` and `Billing` menu items.
+  - Dropdown positioning changed to open below trigger.
+  - Logout action styled in red.
+- Domain module refactor (non-breaking):
+  - Established shared `modules/leave/{actions,schemas,types,utils}` domain layer and migrated leave balance/report + employee-portal leave read-model usage.
+  - Added dedicated `modules/overtime/{actions,schemas,types,utils}` domain layer and migrated employee-portal overtime read-model/actions.
+  - Split approval logic by domain (`leave` and `overtime`) while preserving current UI behavior.
+
+#### Deferred / Paused
+
+- Leave Reports route/module is intentionally removed for now and deferred to a later sprint.
+- Expanded automated test coverage remains a backlog item.
+
 ### 1) Authentication and Session
 
 - Credentials login with next-auth
@@ -510,7 +549,6 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - DTR policy note: manual DTR auto-approval is intentional for the HR-operated workflow.
 - Approval direction: continue using `User.isRequestApprover` for approver assignment and access in current portal flows.
 - Approval workflow engine expansion is currently out of scope.
-- Final Pay / Separation Pay calculation policy is pending HR process confirmation before implementation in payroll run logic.
 
 ## Recent Changes
 
@@ -520,7 +558,6 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - 2026-02-09: Enhanced employee profile edit flow to auto-create salary/position/status/rank history records on change and updated `Edit Record` primary action styling to blue.
 - 2026-02-09: Enhanced onboarding Step 2 with computed payroll rates and dynamic select creation dialogs (with blue `+ Add` option) for employment/organization references.
 - 2026-02-09: Implemented payroll run-type bonus calculations for `THIRTEENTH_MONTH` (with prorated fallback support) and `MID_YEAR_BONUS` (`baseSalary / 2`), while keeping bonus runs non-locking for pay periods.
-- 2026-02-09: Added in-code TODO marker for `FINAL_PAY`/separation-pay calculation flow pending HR-approved business process and formula definition.
 - 2026-02-09: Reworked statutory reports page to locked Iteration 3 design and added full printable report templates for PhilHealth, Pag-IBIG, and BIR Alphalist with print-only metadata footer and report-scoped print mode.
 - 2026-02-09: Added styled CSV export output for PhilHealth, Pag-IBIG, and BIR reports to mirror report headings/column structure.
 - 2026-02-09: Added statutory safeguard so monthly contribution reports only source rows from `REGULAR` payroll runs.

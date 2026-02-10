@@ -266,7 +266,6 @@ enum PayrollRunType {
   THIRTEENTH_MONTH
   MID_YEAR_BONUS
   TRIAL_RUN
-  FINAL_PAY
   SPECIAL
 }
 

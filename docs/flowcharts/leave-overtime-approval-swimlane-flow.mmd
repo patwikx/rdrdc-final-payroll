@@ -1,0 +1,51 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "11px"}, "flowchart": {"htmlLabels": true, "nodeSpacing": 40, "rankSpacing": 55}}}%%
+flowchart LR
+  subgraph EMP[Employee]
+    EMP1[Submit Request<br/>Leave or Overtime]
+    EMP2[Receive Final Notification]
+  end
+
+  subgraph SYS[System]
+    SYS1[Validate Input and Access]
+    SYS2{Request Type}
+    SYS3[Leave: Reserve Credits on Submit]
+    SYS4[Overtime: Validate Duration and Rules]
+    SYS5[Queue for Supervisor Approval]
+    SYS11{Approved Request Type}
+    SYS6{Is Leave Request?}
+    SYS7[Release Reserved Leave Credits]
+    SYS8[Leave Finalization<br/>Consume Credits and Update Ledger]
+    SYS9[Overtime Finalization<br/>Apply OT Pay or Convert to CTO]
+    SYS10[Write Audit Log and Notify]
+  end
+
+  subgraph SUP[Supervisor]
+    SUP1[Review Request]
+    SUPD{Supervisor Decision}
+    SUP2[Reject Request]
+    SUP3[Approve Request]
+  end
+
+  subgraph HR[HR Final Approver]
+    HR1[Review Supervisor-Approved Request]
+    HRD{HR Decision}
+    HR2[Reject Request]
+    HR3[Approve Request]
+  end
+
+  EMP1 --> SYS1 --> SYS2
+  SYS2 -- Leave --> SYS3 --> SYS5
+  SYS2 -- Overtime --> SYS4 --> SYS5
+
+  SYS5 --> SUP1 --> SUPD
+  SUPD -- Reject --> SUP2 --> SYS6
+  SYS6 -- Yes --> SYS7 --> SYS10 --> EMP2
+  SYS6 -- No --> SYS10 --> EMP2
+
+  SUPD -- Approve --> SUP3 --> HR1 --> HRD
+  HRD -- Reject --> HR2 --> SYS6
+  HRD -- Approve --> HR3 --> SYS11
+  SYS11 -- Leave --> SYS8 --> SYS10 --> EMP2
+  SYS11 -- Overtime --> SYS9 --> SYS10 --> EMP2
+
+  classDef default fill:#ffffff,stroke:#000000,color:#000000;

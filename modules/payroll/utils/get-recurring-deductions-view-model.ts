@@ -40,6 +40,7 @@ export type RecurringDeductionsViewModel = {
     employeeId: string
     employeeName: string
     employeeNumber: string
+    employeePhotoUrl: string | null
     deductionTypeId: string
     deductionTypeName: string
     statusCode: RecurringDeductionStatus
@@ -97,6 +98,7 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
             employeeNumber: true,
             firstName: true,
             lastName: true,
+            photoUrl: true,
           },
         },
         deductionType: {
@@ -126,6 +128,7 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
       employeeId: record.employeeId,
       employeeName: `${record.employee.lastName}, ${record.employee.firstName}`,
       employeeNumber: record.employee.employeeNumber,
+      employeePhotoUrl: record.employee.photoUrl,
       deductionTypeId: record.deductionTypeId,
       deductionTypeName: record.deductionType.name,
       statusCode: record.statusCode,

@@ -32,7 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -414,21 +414,28 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconUserPlus className="size-5" /> {companyName} Employee Onboarding</h1>
-            <p className="text-xs text-muted-foreground">2-step employee creation with profile image and scanned documents upload.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">Completion {completion.score}%</Badge>
-            <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={isPending}>
-              <IconCheck className="size-4" /> {isPending ? "Creating..." : "Create Employee"}
-            </Button>
+    <main className="min-h-screen w-full bg-background">
+      {/* ── Header band ─────────────────────────────────────────── */}
+      <div className="flex flex-col justify-between gap-6 border-b border-border/60 px-8 pb-8 pt-8 md:flex-row md:items-end">
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">2-step employee creation with profile image and scanned documents upload.</p>
+          <div className="flex items-center gap-4">
+            <h1 className="inline-flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
+              <IconUserPlus className="h-7 w-7" />
+              Employee Onboarding
+            </h1>
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">
+              {companyName}
+            </div>
           </div>
         </div>
-      </header>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary">Completion {completion.score}%</Badge>
+          <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={isPending}>
+            <IconCheck className="size-4" /> {isPending ? "Creating..." : "Create Employee"}
+          </Button>
+        </div>
+      </div>
 
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <AlertDialogContent>
@@ -463,27 +470,49 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
         </DialogContent>
       </Dialog>
 
-      <StepSwitcher step={step} onChange={setStep} />
+      {/* ── Step tabs ───────────────────────────────────────────── */}
+      <div className="flex gap-0 border-b border-border/60 px-8">
+        <button
+          type="button"
+          onClick={() => setStep("stepOne")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors ${
+            step === "stepOne"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+          }`}
+        >
+          <IconId className="size-3.5" /> Step 1: Identity & Contact
+        </button>
+        <button
+          type="button"
+          onClick={() => setStep("stepTwo")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors ${
+            step === "stepTwo"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+          }`}
+        >
+          <IconBriefcase className="size-3.5" /> Step 2: Employment, Payroll & Tax
+        </button>
+      </div>
 
       <AnimatePresence mode="wait">
         {step === "stepOne" ? (
-          <motion.section
+          <motion.div
             key="step-one"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 12 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="rounded-xl border border-border/70 bg-card/80 min-h-[72vh] p-4"
           >
-            <Card className="rounded-xl border border-border/60 bg-background/70">
-              <CardHeader>
-                <CardTitle>Step 1 Form</CardTitle>
-                <CardDescription>Identity, contact, profile image, and scanned document uploads.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-medium text-foreground">Identity</h3>
-                    <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+            {/* ── Identity section ──────────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <IconId className="h-3.5 w-3.5" /> Identity
+                </h2>
+              </div>
+              <div className="grid gap-4 px-8 pb-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
                       <div className="space-y-2">
                         <button
                           type="button"
@@ -533,13 +562,18 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                         <SelectWithNone label="Civil Status" value={form.identity.civilStatusId} options={options.civilStatuses} onChange={(value) => updateSection("identity", "civilStatusId", value as EmployeeOnboardingInput["identity"]["civilStatusId"])} />
                         <Field label="Nationality"><Input value={form.identity.nationality ?? ""} onChange={(event) => updateSection("identity", "nationality", event.target.value || undefined)} /></Field>
                         <Field label="Citizenship"><Input value={form.identity.citizenship ?? ""} onChange={(event) => updateSection("identity", "citizenship", event.target.value || undefined)} /></Field>
-                      </div>
-                    </div>
-                  </div>
+                </div>
+              </div>
+            </div>
 
-                  <div className="space-y-3 border-t border-border/60 pt-4">
-                    <h3 className="text-sm font-medium text-foreground">Contact</h3>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* ── Contact section ─────────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Contact Information
+                </h2>
+              </div>
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                       <Field label="Mobile Number" required><Input value={form.contact.mobileNumber} onChange={(event) => updateSection("contact", "mobileNumber", event.target.value)} /></Field>
                       <Field label="Personal Email" required><Input type="email" value={form.contact.personalEmail} onChange={(event) => updateSection("contact", "personalEmail", event.target.value)} /></Field>
                       <Field label="Work Email"><Input type="email" value={form.contact.workEmail ?? ""} onChange={(event) => updateSection("contact", "workEmail", event.target.value || undefined)} /></Field>
@@ -551,12 +585,17 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                       <Field label="Emergency Contact Name"><Input value={form.contact.emergencyContactName ?? ""} onChange={(event) => updateSection("contact", "emergencyContactName", event.target.value || undefined)} /></Field>
                       <Field label="Emergency Contact Number"><Input value={form.contact.emergencyContactNumber ?? ""} onChange={(event) => updateSection("contact", "emergencyContactNumber", event.target.value || undefined)} /></Field>
                       <SelectWithNone label="Emergency Relationship" value={form.contact.emergencyRelationshipId} options={options.relationships} onChange={(value) => updateSection("contact", "emergencyRelationshipId", value as EmployeeOnboardingInput["contact"]["emergencyRelationshipId"])} />
-                    </div>
-                  </div>
+              </div>
+            </div>
 
-                  <div className="space-y-3 border-t border-border/60 pt-4">
-                    <h3 className="text-sm font-medium text-foreground">Scanned Documents</h3>
-                    <div className="rounded-xl border border-border/70 bg-background p-3">
+            {/* ── Documents section ──────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <IconFile className="h-3.5 w-3.5" /> Scanned Documents
+                </h2>
+              </div>
+              <div className="px-8 pb-6">
                         <button
                           type="button"
                           onClick={() => documentsInputRef.current?.click()}
@@ -576,9 +615,9 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                           }}
                         />
                         <p className="mt-2 text-[11px] text-muted-foreground">Up to 10 files. PDF and image files are recommended.</p>
-                    </div>
+              </div>
 
-                    <div className="space-y-2">
+              <div className="space-y-2 px-8 pb-6">
                       {form.uploads.scannedDocuments.length === 0 ? (
                         <p className="rounded-md border border-dashed border-border/70 p-3 text-xs text-muted-foreground">No scanned documents attached.</p>
                       ) : (
@@ -626,29 +665,25 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                           </div>
                         ))
                       )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-          </motion.section>
+              </div>
+            </div>
+          </motion.div>
         ) : (
-          <motion.section
+          <motion.div
             key="step-two"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 12 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="rounded-xl border border-border/70 bg-card/80 min-h-[72vh] p-4"
           >
-            <Card className="rounded-xl border border-border/60 bg-background/70">
-              <CardHeader>
-                <CardTitle>Step 2 Form</CardTitle>
-                <CardDescription>Employment, payroll, and tax sections in one container.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-foreground">Employment</h3>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* ── Employment section ──────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <IconBriefcase className="h-3.5 w-3.5" /> Employment
+                </h2>
+              </div>
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <DateField label="Hire Date" required value={form.employment.hireDate} onChange={(value) => updateSection("employment", "hireDate", value)} />
                     <OptionSelect label="Employment Status" required value={form.employment.employmentStatusId} options={dynamicOptions.employmentStatuses} onChange={(value) => updateSection("employment", "employmentStatusId", value)} allowCreate createLabel="Add status" onCreateRequested={() => openCreateDialog("employmentStatuses")} />
                     <OptionSelect label="Employment Type" required value={form.employment.employmentTypeId} options={dynamicOptions.employmentTypes} onChange={(value) => updateSection("employment", "employmentTypeId", value)} allowCreate createLabel="Add type" onCreateRequested={() => openCreateDialog("employmentTypes")} />
@@ -661,12 +696,17 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                     <OptionSelect label="Reporting Manager" value={form.employment.reportingManagerId ?? ""} options={options.managers} onChange={(value) => updateSection("employment", "reportingManagerId", value || undefined)} allowEmpty />
                     <DateField label="Probation End" value={form.employment.probationEndDate ?? ""} onChange={(value) => updateSection("employment", "probationEndDate", value || undefined)} />
                     <DateField label="Regularization Date" value={form.employment.regularizationDate ?? ""} onChange={(value) => updateSection("employment", "regularizationDate", value || undefined)} />
-                  </div>
-                </div>
+              </div>
+            </div>
 
-                <div className="space-y-3 border-t border-border/60 pt-4">
-                  <h3 className="text-sm font-medium text-foreground">Payroll</h3>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* ── Payroll section ────────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Payroll
+                </h2>
+              </div>
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Monthly Rate" required><Input type="number" value={form.payroll.monthlyRate} onChange={(event) => updateSection("payroll", "monthlyRate", Number(event.target.value) || 0)} /></Field>
                     <Field label="Daily Rate"><Input type="number" value={dailyRatePreview} disabled /></Field>
                     <Field label="Hourly Rate"><Input type="number" value={hourlyRatePreview} disabled /></Field>
@@ -679,12 +719,17 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                     <SwitchField label="Overtime Eligible" checked={form.payroll.isOvertimeEligible} onCheckedChange={(checked) => updateSection("payroll", "isOvertimeEligible", checked)} />
                     <SwitchField label="WFH Eligible" checked={form.payroll.isWfhEligible} onCheckedChange={(checked) => updateSection("payroll", "isWfhEligible", checked)} />
                     <Field label="WFH Schedule"><Input value={form.payroll.wfhSchedule ?? ""} onChange={(event) => updateSection("payroll", "wfhSchedule", event.target.value || undefined)} /></Field>
-                  </div>
-                </div>
+              </div>
+            </div>
 
-                <div className="space-y-3 border-t border-border/60 pt-4">
-                  <h3 className="text-sm font-medium text-foreground">Tax & Government IDs</h3>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* ── Tax section ────────────────────────────────── */}
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
+                <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Tax & Government IDs
+                </h2>
+              </div>
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Tax Status" required>
                       <Select value={form.tax.taxStatusId} onValueChange={(value) => updateSection("tax", "taxStatusId", value as EmployeeOnboardingInput["tax"]["taxStatusId"])}>
                         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
@@ -700,19 +745,18 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                     <Field label="Previous Employer Income"><Input type="number" value={form.tax.previousEmployerIncome ?? ""} onChange={(event) => updateSection("tax", "previousEmployerIncome", event.target.value === "" ? undefined : Number(event.target.value) || 0)} /></Field>
                     <Field label="Previous Tax Withheld"><Input type="number" value={form.tax.previousEmployerTaxWithheld ?? ""} onChange={(event) => updateSection("tax", "previousEmployerTaxWithheld", event.target.value === "" ? undefined : Number(event.target.value) || 0)} /></Field>
                     <div className="sm:col-span-2 lg:col-span-4"><Field label="Notes"><Textarea className="h-20" value={form.tax.notes ?? ""} onChange={(event) => updateSection("tax", "notes", event.target.value || undefined)} /></Field></div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.section>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
-        <Button type="button" variant="outline" disabled={step === "stepOne" || isPending} onClick={() => setStep("stepOne")}>
+      {/* ── Step navigation footer ──────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between border-t border-border/60 px-8 py-4">
+        <Button type="button" variant="outline" size="sm" className="border-border/60" disabled={step === "stepOne" || isPending} onClick={() => setStep("stepOne")}>
           <IconChevronLeft className="size-4" /> Previous
         </Button>
-        <Button type="button" variant="outline" disabled={step === "stepTwo" || isPending} onClick={() => setStep("stepTwo")}>
+        <Button type="button" variant="outline" size="sm" className="border-border/60" disabled={step === "stepTwo" || isPending} onClick={() => setStep("stepTwo")}>
           Next <IconChevronRight className="size-4" />
         </Button>
       </div>
@@ -818,24 +862,7 @@ function SelectWithNone<T extends string | undefined>({
   )
 }
 
-function StepSwitcher({
-  step,
-  onChange,
-}: {
-  step: StepKey
-  onChange: (step: StepKey) => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" variant={step === "stepOne" ? "default" : "outline"} onClick={() => onChange("stepOne")}>
-        <IconId className="size-4" /> Step 1: Identity & Contact
-      </Button>
-      <Button type="button" variant={step === "stepTwo" ? "default" : "outline"} onClick={() => onChange("stepTwo")}>
-        <IconBriefcase className="size-4" /> Step 2: Employment, Payroll & Tax
-      </Button>
-    </div>
-  )
-}
+
 
 function SwitchField({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (

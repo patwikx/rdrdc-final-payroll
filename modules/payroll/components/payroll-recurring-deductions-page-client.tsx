@@ -2,14 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconCalendarClock, IconCalendarEvent, IconFilter, IconSearch } from "@tabler/icons-react"
+import { IconCalendarClock, IconCalendarEvent, IconDots, IconFilter, IconPlayerPause, IconSearch, IconX } from "@tabler/icons-react"
 import { RecurringDeductionStatus } from "@prisma/client"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -19,10 +18,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import {
   createDeductionTypeAction,
@@ -40,6 +41,7 @@ type RecurringDeductionsPageClientProps = {
     employeeId: string
     employeeName: string
     employeeNumber: string
+    employeePhotoUrl: string | null
     deductionTypeId: string
     deductionTypeName: string
     statusCode: RecurringDeductionStatus
@@ -120,7 +122,7 @@ export function PayrollRecurringDeductionsPageClient({
   const [isPending, startTransition] = useTransition()
 
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "SUSPENDED" | "CANCELLED">("ALL")
+  const [statusFilter, setStatusFilter] = useState<RecurringDeductionStatus | null>(null)
   const [form, setForm] = useState<RecurringDeductionForm>(getDefaultRecurringDeductionForm())
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
 
@@ -143,9 +145,14 @@ export function PayrollRecurringDeductionsPageClient({
   }, [records, searchTerm])
 
   const visibleRecords = useMemo(() => {
-    if (statusFilter === "ALL") return filteredRecords
+    if (statusFilter === null) return filteredRecords
     return filteredRecords.filter((record) => record.statusCode === statusFilter)
   }, [filteredRecords, statusFilter])
+
+  const statusValues = useMemo(
+    () => Array.from(new Set(records.map((record) => record.statusCode))),
+    [records]
+  )
 
   const handleCreateNew = () => {
     setSelectedRecordId(null)
@@ -260,52 +267,51 @@ export function PayrollRecurringDeductionsPageClient({
     return ""
   }
 
-  const actionButtonClass = (isSelected: boolean): string => {
-    return isSelected
-      ? "border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10"
-      : ""
-  }
-
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground"><IconCalendarClock className="size-5" /> {companyName} Recurring Deductions</h1>
-        <p className="text-xs text-muted-foreground">Manage recurring deductions using active deduction type configuration records.</p>
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
+        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconCalendarClock className="size-5" /> {companyName} Recurring Deductions</h1>
+        <p className="text-sm text-muted-foreground">Manage recurring deductions using active deduction type configuration records.</p>
       </header>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <Card className="rounded-xl border border-border/70 bg-card/80">
-          <CardHeader>
+      <section className="grid border-b border-border/60 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="xl:border-r xl:border-border/60">
+          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <CardTitle>Recurring Deduction Records</CardTitle>
-                <CardDescription>Employee recurring deductions with active status controls.</CardDescription>
+                <h2 className="text-base font-medium text-foreground">Recurring Deduction Records</h2>
+                <p className="text-sm text-muted-foreground">Employee recurring deductions with active status controls.</p>
               </div>
               <Button type="button" onClick={handleCreateNew}>+ Add New</Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
+          </div>
+          <div className="space-y-3 px-4 py-3 sm:px-6">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-full sm:w-96">
                 <IconSearch className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search employee or deduction" className="h-9 pl-9" />
+                <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search employee or deduction" className="pl-9" />
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9"
-                onClick={() =>
-                  setStatusFilter((prev) =>
-                    prev === "ALL" ? "ACTIVE" : prev === "ACTIVE" ? "SUSPENDED" : prev === "SUSPENDED" ? "CANCELLED" : "ALL"
-                  )
-                }
-              >
-                <IconFilter className="mr-1.5 h-4 w-4" /> Filter: {statusFilter}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline">
+                    <IconFilter className="h-4 w-4" />
+                    Filter
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuCheckboxItem checked={statusFilter === null} onCheckedChange={() => setStatusFilter(null)}>
+                    All statuses
+                  </DropdownMenuCheckboxItem>
+                  {statusValues.map((status) => (
+                    <DropdownMenuCheckboxItem key={status} checked={statusFilter === status} onCheckedChange={() => setStatusFilter(status)}>
+                      {status}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
-            <div className="overflow-x-auto rounded-md border border-border/60">
+            <div className="overflow-x-auto border border-border/60">
               <table className="w-full text-xs">
                 <thead className="bg-muted/50">
                   <tr>
@@ -336,8 +342,16 @@ export function PayrollRecurringDeductionsPageClient({
                         onClick={() => handleRecordSelect(record)}
                       >
                         <td className="px-3 py-2">
-                          <p>{record.employeeName}</p>
-                          <p className={cn("text-[11px]", selectedRecordId === record.id ? "text-primary-foreground/80" : "text-muted-foreground")}>{record.employeeNumber}</p>
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="h-8 w-8 rounded-md border border-border/60 after:rounded-md">
+                              <AvatarImage src={record.employeePhotoUrl ?? undefined} alt={record.employeeName} className="!rounded-md object-cover" />
+                              <AvatarFallback className="!rounded-md text-[10px]">{getEmployeeInitials(record.employeeName)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p>{record.employeeName}</p>
+                              <p className={cn("text-[11px]", selectedRecordId === record.id ? "text-primary-foreground/80" : "text-muted-foreground")}>{record.employeeNumber}</p>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-3 py-2">{record.deductionTypeName}</td>
                         <td className="px-3 py-2">
@@ -353,15 +367,31 @@ export function PayrollRecurringDeductionsPageClient({
                         </td>
                         <td className="px-3 py-2"><Badge className={statusBadgeClass(record.statusCode)}>{record.statusCode}</Badge></td>
                         <td className="px-3 py-2">
-                          <div className="flex gap-2" onClick={(event) => event.stopPropagation()}>
-                            {record.statusCode === RecurringDeductionStatus.ACTIVE ? (
-                              <Button type="button" size="sm" variant="outline" className={actionButtonClass(selectedRecordId === record.id)} disabled={isPending} onClick={() => handleStatusChange(record.id, RecurringDeductionStatus.SUSPENDED)}>Suspend</Button>
-                            ) : (
-                              <Button type="button" size="sm" variant="outline" className={actionButtonClass(selectedRecordId === record.id)} disabled={isPending} onClick={() => handleStatusChange(record.id, RecurringDeductionStatus.ACTIVE)}>
-                                {record.statusCode === RecurringDeductionStatus.CANCELLED ? "Reactivate" : "Activate"}
-                              </Button>
-                            )}
-                            <Button type="button" size="sm" variant="outline" className={actionButtonClass(selectedRecordId === record.id)} disabled={isPending || record.statusCode === RecurringDeductionStatus.CANCELLED} onClick={() => handleStatusChange(record.id, RecurringDeductionStatus.CANCELLED)}>Cancel</Button>
+                          <div className="flex justify-start" onClick={(event) => event.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button type="button" size="icon-sm" variant="ghost" disabled={isPending}>
+                                  <IconDots className="size-4 rotate-90" />
+                                  <span className="sr-only">Open actions</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-44">
+                                {record.statusCode === RecurringDeductionStatus.ACTIVE ? (
+                                  <DropdownMenuItem onSelect={() => handleStatusChange(record.id, RecurringDeductionStatus.SUSPENDED)} disabled={isPending}>
+                                    <IconPlayerPause className="mr-2 size-4" />
+                                    Suspend
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onSelect={() => handleStatusChange(record.id, RecurringDeductionStatus.ACTIVE)} disabled={isPending}>
+                                    {record.statusCode === RecurringDeductionStatus.CANCELLED ? "Reactivate" : "Activate"}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onSelect={() => handleStatusChange(record.id, RecurringDeductionStatus.CANCELLED)} disabled={isPending || record.statusCode === RecurringDeductionStatus.CANCELLED}>
+                                  <IconX className="mr-2 size-4" />
+                                  Cancel
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
@@ -370,15 +400,15 @@ export function PayrollRecurringDeductionsPageClient({
                 </tbody>
               </table>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="rounded-xl border border-border/70 bg-card/80 xl:sticky xl:top-20 xl:h-fit">
-          <CardHeader>
-            <CardTitle>{selectedRecordId ? "Edit Recurring Deduction" : "New Recurring Deduction"}</CardTitle>
-            <CardDescription>{selectedRecordId ? "Update selected recurring deduction record." : "Save recurring deduction configuration for payroll calculation."}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+        <aside className="xl:sticky xl:top-20 xl:h-fit">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="text-base font-medium text-foreground">{selectedRecordId ? "Edit Recurring Deduction" : "New Recurring Deduction"}</h2>
+            <p className="text-sm text-muted-foreground">{selectedRecordId ? "Update selected recurring deduction record." : "Save recurring deduction configuration for payroll calculation."}</p>
+          </div>
+          <div className="grid gap-3 px-4 py-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Employee<Required /></Label>
               <Select value={form.employeeId} onValueChange={(value) => setForm((prev) => ({ ...prev, employeeId: value }))}>
@@ -478,8 +508,8 @@ export function PayrollRecurringDeductionsPageClient({
               <Button type="button" size="sm" onClick={handleCreateRecurringDeduction} disabled={isPending}>{isPending ? "Saving..." : selectedRecordId ? "Update" : "Save"}</Button>
               <Button type="button" size="sm" variant="outline" onClick={handleCreateNew}>Clear</Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </aside>
       </section>
 
       <Dialog open={deductionTypeDialogOpen} onOpenChange={setDeductionTypeDialogOpen}>
@@ -532,4 +562,11 @@ export function PayrollRecurringDeductionsPageClient({
       </Dialog>
     </main>
   )
+}
+
+function getEmployeeInitials(fullName: string): string {
+  const [lastNamePart = "", firstNamePart = ""] = fullName.split(",")
+  const first = firstNamePart.trim().charAt(0)
+  const last = lastNamePart.trim().charAt(0)
+  return `${first}${last}`.toUpperCase() || "NA"
 }

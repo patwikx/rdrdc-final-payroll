@@ -17,7 +17,6 @@ import { IconCalendarEvent } from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { LeaveCalendarEntry } from "@/modules/attendance/leaves/utils/get-leave-calendar-view-model"
 
 type LeaveCalendarPageProps = {
@@ -96,15 +95,15 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
   }
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-xl border border-border/70 bg-card/70 p-4">
-        <h1 className="inline-flex items-center gap-2 text-xl text-foreground"><IconCalendarEvent className="size-5" /> {companyName} Leave Calendar</h1>
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
+        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconCalendarEvent className="size-5" /> {companyName} Leave Calendar</h1>
         <p className="text-sm text-muted-foreground">Shows all submitted leave requests, including pending submissions.</p>
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <Card className="rounded-xl border border-border/70 bg-card/80 shadow-sm overflow-hidden">
-          <CardHeader className="space-y-3 border-b border-border/60 bg-muted/10">
+      <div className="grid border-b border-border/60 lg:grid-cols-[1fr_360px]">
+        <section className="overflow-hidden lg:border-r lg:border-border/60">
+          <div className="space-y-3 border-b border-border/60 bg-muted/10 px-4 py-3 sm:px-6">
             <div className="flex items-center justify-between">
               <Button
                 type="button"
@@ -131,8 +130,8 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
               <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-primary" /> With Leaves</div>
               <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-muted-foreground/50" /> No Leaves</div>
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
+          </div>
+          <div className="p-0">
             <div className="grid grid-cols-7 border-b border-border/60 bg-muted/10">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                 <div key={day} className="px-2 py-2 text-center text-xs text-muted-foreground border-r border-border/60 last:border-r-0">
@@ -196,28 +195,28 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
                 )
               })}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="rounded-xl border border-border/70 bg-card/80 shadow-sm">
-          <CardHeader>
-            <CardTitle>Submitted Leaves</CardTitle>
-            <CardDescription>
+        <aside>
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="text-base text-foreground">Submitted Leaves</h2>
+            <p className="text-sm text-muted-foreground">
               {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "Select a date to see submitted leaves."}
-            </CardDescription>
+            </p>
             {loadError ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                 {loadError}
               </div>
             ) : null}
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="px-4 py-3">
             {selectedDateLeaves.length === 0 ? (
               <p className="text-sm text-muted-foreground">No submitted leaves for this date.</p>
             ) : (
-              <div className="space-y-2">
+              <div>
                 {selectedDateLeaves.map((leave) => (
-                  <div key={`${leave.id}-${selectedDateKey}`} className="rounded-md border border-border/60 p-3">
+                  <div key={`${leave.id}-${selectedDateKey}`} className="border-b border-border/60 py-3 last:border-b-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm text-foreground">{leave.employeeName}</p>
                       <Badge variant={badgeVariant(leave.status)}>{leave.status}</Badge>
@@ -231,8 +230,8 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </aside>
       </div>
     </main>
   )

@@ -37,27 +37,27 @@ export default async function PayrollRunsPage({ params }: PayrollRunsPageProps) 
   ])
 
   return (
-    <main className="flex w-full flex-col gap-4 px-4 py-6 sm:px-6">
-      <header className="rounded-lg border border-border/60 bg-card">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">{viewModel.companyName} Payroll Runs</h1>
-            <p className="text-xs text-muted-foreground">Cycle history and payroll workflow progress.</p>
-          </div>
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{viewModel.companyName} Payroll Runs</h1>
+          <p className="text-sm text-muted-foreground">Cycle history and payroll workflow progress.</p>
         </div>
       </header>
 
-      <PayrollRunsListClient
-        companyId={viewModel.companyId}
-        runs={viewModel.runs}
-        createOptions={{
-          payPeriods: createViewModel.payPeriods,
-          defaultPayPeriodId: createViewModel.defaultPayPeriodId,
-          runTypes: createViewModel.runTypes,
-          departments: createViewModel.departments,
-          branches: createViewModel.branches,
-        }}
-      />
+      <div className="px-4 py-6 sm:px-6">
+        <PayrollRunsListClient
+          companyId={viewModel.companyId}
+          runs={viewModel.runs}
+          createOptions={{
+            payPeriods: createViewModel.payPeriods,
+            defaultPayPeriodId: createViewModel.defaultPayPeriodId,
+            runTypes: createViewModel.runTypes,
+            departments: createViewModel.departments,
+            branches: createViewModel.branches,
+          }}
+        />
+      </div>
     </main>
   )
 }

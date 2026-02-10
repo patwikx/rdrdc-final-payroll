@@ -18,6 +18,7 @@ type CriticalActionItem = {
 }
 
 export type DashboardActionCenterData = {
+  cycleMode: "current" | "previous" | "month"
   stats: {
     employeesValue: string
     employeesDelta: string
@@ -97,7 +98,10 @@ const formatPeriodLabel = (start: Date, end: Date): string => {
   return `${format(start)} - ${format(end)}`
 }
 
-export async function getDashboardActionCenterData(companyId: string): Promise<DashboardActionCenterData> {
+export async function getDashboardActionCenterData(
+  companyId: string,
+  cycleMode: "current" | "previous" | "month" = "current"
+): Promise<DashboardActionCenterData> {
   const todayPh = toPhDateOnlyUtc()
 
   const companyScopedPayPeriod = await db.payPeriod.findFirst({
@@ -118,8 +122,38 @@ export async function getDashboardActionCenterData(companyId: string): Promise<D
 
   const activePayPeriod = companyScopedPayPeriod ?? fallbackPayPeriod
 
-  const periodStart = activePayPeriod?.cutoffStartDate ?? todayPh
-  const periodEnd = activePayPeriod?.cutoffEndDate ?? todayPh
+  let periodStart = activePayPeriod?.cutoffStartDate ?? todayPh
+  let periodEnd = activePayPeriod?.cutoffEndDate ?? todayPh
+
+  if (cycleMode === "previous") {
+    const previousPayPeriod = await db.payPeriod.findFirst({
+      where: {
+        pattern: { companyId },
+        cutoffEndDate: { lt: periodStart },
+      },
+      orderBy: { cutoffEndDate: "desc" },
+    })
+
+    if (previousPayPeriod) {
+      periodStart = previousPayPeriod.cutoffStartDate
+      periodEnd = previousPayPeriod.cutoffEndDate
+    }
+  }
+
+  if (cycleMode === "month") {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(todayPh)
+
+    const year = Number(parts.find((part) => part.type === "year")?.value ?? "1970")
+    const month = Number(parts.find((part) => part.type === "month")?.value ?? "01")
+    periodStart = new Date(Date.UTC(year, month - 1, 1))
+    periodEnd = new Date(Date.UTC(year, month, 0))
+  }
+
   const periodEffectiveEnd = periodEnd.getTime() < todayPh.getTime() ? periodEnd : todayPh
   const periodLabel = formatPeriodLabel(periodStart, periodEnd)
   const previousPeriodEnd = new Date(periodStart.getTime() - 24 * 60 * 60 * 1000)
@@ -276,6 +310,7 @@ export async function getDashboardActionCenterData(companyId: string): Promise<D
   ]
 
   return {
+    cycleMode,
     stats: {
       employeesValue: String(activeEmployees),
       employeesDelta: `${newHires >= 0 ? "+" : ""}${newHires}`,

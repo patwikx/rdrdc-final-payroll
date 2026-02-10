@@ -917,8 +917,6 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const isThirteenthMonthRun = run.runTypeCode === "THIRTEENTH_MONTH"
   const isMidYearBonusRun = run.runTypeCode === "MID_YEAR_BONUS"
   const isBonusOnlyRun = isThirteenthMonthRun || isMidYearBonusRun
-  // TODO(payroll-final-pay): Confirm HR-approved Final Pay/Separation Pay computation workflow and formulas before implementing FINAL_PAY run logic.
-  const isFinalPayRun = run.runTypeCode === "FINAL_PAY"
   const yearStartDate = new Date(Date.UTC(run.payPeriod.year, 0, 1))
   const yearEndDate = new Date(Date.UTC(run.payPeriod.year, 11, 31))
   const employeeWhere: Prisma.EmployeeWhereInput = {
@@ -2218,7 +2216,6 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               runTypeCode: run.runTypeCode,
               thirteenthMonthFormula: isThirteenthMonthRun ? "(ytdRegularBasicOrProratedFallback) / 12" : undefined,
               midYearBonusFormula: isMidYearBonusRun ? "baseSalary / 2" : undefined,
-              finalPayFormula: isFinalPayRun ? "TODO: pending HR process confirmation" : undefined,
             },
             processedEmployeeCount,
             skippedEmployeeCount,

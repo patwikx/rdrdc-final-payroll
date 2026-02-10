@@ -27,7 +27,6 @@ const runTypeOptions: Array<{ code: PayrollRunType; label: string }> = [
   { code: PayrollRunType.THIRTEENTH_MONTH, label: "13th Month" },
   { code: PayrollRunType.MID_YEAR_BONUS, label: "Mid-Year Bonus" },
   { code: PayrollRunType.SPECIAL, label: "Special" },
-  { code: PayrollRunType.FINAL_PAY, label: "Final Pay" },
   { code: PayrollRunType.TRIAL_RUN, label: "Trial Run" },
 ]
 

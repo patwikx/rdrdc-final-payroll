@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { AppSidebar } from "@/components/app-sidebar"
 import { NavUser } from "@/components/nav-user"
+import { db } from "@/lib/db"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -50,6 +51,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
     session.user.name ?? (`${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || "User")
 
   const userEmail = session.user.email ?? ""
+  const activeEmployee = await db.employee.findFirst({
+    where: {
+      userId: session.user.id,
+      companyId: activeCompanyId,
+      deletedAt: null,
+    },
+    select: {
+      photoUrl: true,
+    },
+  })
+
+  const userAvatar = activeEmployee?.photoUrl ?? session.user.image ?? null
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -82,7 +95,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   user={{
                     name: userName,
                     email: userEmail,
-                    avatar: "/avatars/shadcn.jpg",
+                    avatar: userAvatar,
                   }}
                   inSidebar={false}
                 />

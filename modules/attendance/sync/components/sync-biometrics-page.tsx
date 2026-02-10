@@ -129,7 +129,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
       </div>
 
       <div className="p-6">
-        <div className="rounded-xl border border-border/60 bg-background">
+        <div className="border border-border/60 bg-background">
           <div className="p-6">
             {!syncResult && !isProcessing ? (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -258,7 +258,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
               </div>
             ) : (
               <div className="space-y-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 rounded-md border border-primary/20 divide-y md:divide-y-0 md:divide-x divide-border/60">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-primary/20 divide-y md:divide-y-0 md:divide-x divide-border/60">
                   <div className="p-8 bg-emerald-500/[0.03]">
                     <p className="text-xs text-muted-foreground">Import Status</p>
                     <div className="flex items-center gap-2 mt-2">
@@ -272,7 +272,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                   </div>
                 </div>
 
-                <div className="p-8 rounded-md bg-primary/[0.03] border border-primary/10 flex items-center justify-between">
+                <div className="p-8 bg-primary/[0.03] border border-primary/10 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <IconShieldCheck className="h-6 w-6 text-primary" />
                     <p className="text-foreground text-sm">Attendance Records Successfully Imported</p>
@@ -292,7 +292,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
             )}
           </div>
 
-          <div className="p-6 bg-muted/30 border-t border-border/60 space-y-2 rounded-b-xl">
+          <div className="p-6 bg-muted/30 border-t border-border/60 space-y-2">
             <p className="text-xs text-primary">Data Integrity Notice</p>
             <p className="text-sm text-muted-foreground italic">
               Imported attendance records will update existing Daily Time Records (DTR) for matched employees. Ensure

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { IconBuilding, IconCheck, IconPlus, IconSelector } from "@tabler/icons-react"
 
 import {
   DropdownMenu,
@@ -8,7 +9,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -18,17 +18,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { IconPlus, IconSelector } from "@tabler/icons-react"
 
 type TeamOption = {
   id: string
   name: string
-  logo: React.ReactNode
+  code: string
   plan: string
 }
-
-const triggerClass = "h-9 rounded-sm border border-sidebar-border/55 bg-sidebar-background/60 px-1.5"
-const logoClass = "size-6 rounded-sm bg-sidebar-primary/20"
 
 export function TeamSwitcher({
   teams,
@@ -40,78 +36,74 @@ export function TeamSwitcher({
   onTeamChange?: (teamId: string) => void | Promise<void>
 }) {
   const { isMobile } = useSidebar()
-  const [activeTeam, setActiveTeam] = React.useState<TeamOption | undefined>(() => {
-    if (!activeTeamId) {
-      return teams[0]
-    }
 
-    return teams.find((team) => team.id === activeTeamId) ?? teams[0]
-  })
-
-  React.useEffect(() => {
-    if (!activeTeamId) {
-      return
-    }
-
-    const selectedTeam = teams.find((team) => team.id === activeTeamId)
-    if (selectedTeam) {
-      setActiveTeam(selectedTeam)
-    }
+  const activeTeam = React.useMemo(() => {
+    if (!activeTeamId) return teams[0]
+    return teams.find((t) => t.id === activeTeamId) ?? teams[0]
   }, [activeTeamId, teams])
 
-  if (!activeTeam) {
-    return null
-  }
+  if (!activeTeam) return null
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton size="lg" className={triggerClass}>
-              <div className={cn("inline-flex items-center justify-center text-sidebar-primary", logoClass)}>{activeTeam.logo}</div>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                <IconBuilding className="size-4" />
+              </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{activeTeam.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{activeTeam.plan}</span>
+                <span className="truncate font-semibold">{activeTeam.name}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {activeTeam.code} · {activeTeam.plan}
+                </span>
               </div>
               <IconSelector className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
+
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
             align="start"
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Companies</DropdownMenuLabel>
-            {teams.map((team, index) => (
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Companies
+            </DropdownMenuLabel>
+
+            {teams.map((team) => (
               <DropdownMenuItem
                 key={team.id}
-                onClick={() => {
-                  setActiveTeam(team)
-                  void onTeamChange?.(team.id)
-                }}
-                className="relative gap-2 p-2 pl-8"
+                onClick={() => void onTeamChange?.(team.id)}
+                className="gap-2 p-2"
               >
-                <span
-                  className={cn(
-                    "pointer-events-none absolute left-3 w-px bg-border/70",
-                    index === 0 ? "top-1/2 bottom-0" : "top-0 bottom-0",
-                    index === teams.length - 1 ? "bottom-1/2" : ""
-                  )}
-                />
-                <span className="pointer-events-none absolute left-3 top-1/2 h-px w-3 bg-border/70" />
-                <div className="flex size-6 items-center justify-center rounded-md border border-border/70">{team.logo}</div>
-                <span className="truncate">{team.name}</span>
-                <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
+                <div className="flex size-6 items-center justify-center rounded-md border bg-background">
+                  <IconBuilding className="size-3.5" />
+                </div>
+                <div className="grid flex-1 leading-tight">
+                  <span className="truncate text-sm font-medium">{team.name}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {team.code}
+                  </span>
+                </div>
+                {team.id === activeTeamId && (
+                  <IconCheck className="ml-auto size-4 text-sidebar-primary" />
+                )}
               </DropdownMenuItem>
             ))}
+
             <DropdownMenuSeparator />
+
             <DropdownMenuItem className="gap-2 p-2" disabled>
-              <div className="flex size-6 items-center justify-center rounded-md border border-border/70">
+              <div className="flex size-6 items-center justify-center rounded-md border bg-background">
                 <IconPlus className="size-4" />
               </div>
-              <span className="text-muted-foreground">Add company (soon)</span>
+              <span className="text-muted-foreground">Add company</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

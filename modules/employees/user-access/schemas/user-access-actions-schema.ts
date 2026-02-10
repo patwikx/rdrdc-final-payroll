@@ -35,6 +35,7 @@ export const updateLinkedUserCredentialsInputSchema = actionBaseSchema.extend({
   password: z.string().min(8).max(128).optional(),
   isActive: z.boolean(),
   companyRole: companyRoleSchema.optional(),
+  isRequestApprover: z.boolean().optional(),
 })
 
 export type CreateEmployeeSystemUserInput = z.infer<typeof createEmployeeSystemUserInputSchema>

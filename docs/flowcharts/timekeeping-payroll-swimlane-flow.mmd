@@ -1,0 +1,38 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "11px"}, "flowchart": {"htmlLabels": true, "nodeSpacing": 40, "rankSpacing": 55}}}%%
+flowchart LR
+  subgraph TK[Timekeeping and HR]
+    TK1[Capture Attendance<br/>Biometric Sync and DTR Corrections]
+    TK2[Validate Timekeeping Data]
+    TKD{Timekeeping Ready?}
+    TK3[Resolve Attendance Issues<br/>Correct and Revalidate]
+  end
+
+  subgraph PA[Payroll Admin]
+    PA1[Create Payroll Run]
+    PA2[Review Payroll Register]
+    PAD{Adjustments Needed?}
+    PA3[Apply Manual Adjustments]
+    PA4[Close Run and Lock Period]
+  end
+
+  subgraph SYS[System]
+    SYS1[Validate Run<br/>Readiness and Policy Checks]
+    SYSD{Validation Passed?}
+    SYS2[Calculate Payroll<br/>Earnings, Deductions, Net Pay]
+    SYS3[Generate Payslips<br/>Preview, Download, Email]
+    SYS4[Generate Statutory Reports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
+  end
+
+  subgraph EMP[Employee]
+    EMP1[Receive Payslip]
+  end
+
+  TK1 --> TK2 --> TKD
+  TKD -- No --> TK3 --> TK2
+  TKD -- Yes --> PA1 --> SYS1 --> SYSD
+  SYSD -- No --> PA1
+  SYSD -- Yes --> SYS2 --> PA2 --> PAD
+  PAD -- Yes --> PA3 --> PA2
+  PAD -- No --> SYS3 --> EMP1 --> PA4 --> SYS4
+
+  classDef default fill:#ffffff,stroke:#000000,color:#000000;

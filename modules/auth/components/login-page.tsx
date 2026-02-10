@@ -84,7 +84,7 @@ export function LoginPage() {
       <section className="relative flex flex-col justify-between border-b border-border/70 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-6 sm:p-10 lg:border-b-0 lg:border-r lg:p-14">
         <div className="space-y-3">
           <h1 className="max-w-md text-2xl font-semibold text-foreground sm:text-3xl">
-            RD REALTY GROUP <br /> HRIS SYSTEM
+            RD REALTY GROUP <br /> HR Information System
           </h1>
           <p className="max-w-md text-sm text-muted-foreground">
             A MEMBER OF RD GROUP OF COMPANIES

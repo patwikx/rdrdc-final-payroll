@@ -188,7 +188,7 @@ export async function getPayrollStatutoryViewModel(
     where: {
       payrollRun: {
         companyId: context.companyId,
-        runTypeCode: { in: ["REGULAR", "THIRTEENTH_MONTH", "MID_YEAR_BONUS", "FINAL_PAY"] },
+        runTypeCode: { in: ["REGULAR", "THIRTEENTH_MONTH", "MID_YEAR_BONUS"] },
       },
     },
     include: {

@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { IconSelector, IconSparkles, IconRosetteDiscountCheck, IconCreditCard, IconBell, IconLogout } from "@tabler/icons-react"
+import { IconSelector, IconRosetteDiscountCheck, IconBell, IconLogout } from "@tabler/icons-react"
 import { signOut } from "next-auth/react"
 import { useTransition } from "react"
 
@@ -32,11 +32,11 @@ export function NavUser({
   user: {
     name: string
     email: string
-    avatar: string
+    avatar?: string | null
   }
   inSidebar?: boolean
 }) {
-  const { isMobile } = useSidebar()
+  useSidebar()
   const [isLoggingOut, startLogoutTransition] = useTransition()
 
   const handleLogout = () => {
@@ -45,11 +45,18 @@ export function NavUser({
     })
   }
 
+  const initials = user.name
+    .split(" ")
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "U"
+
   const triggerContent = (
     <>
       <Avatar className="h-8 w-8 rounded-lg">
-        <AvatarImage src={user.avatar} alt={user.name} />
-        <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+        <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
+        <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
       </Avatar>
       <div className={inSidebar ? "grid flex-1 text-left text-sm leading-tight" : "grid w-[170px] text-left text-sm leading-tight"}>
         <span className="truncate font-medium">{user.name}</span>
@@ -62,15 +69,15 @@ export function NavUser({
   const dropdownContent = (
     <DropdownMenuContent
       className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-      side={isMobile ? "bottom" : "right"}
+      side="bottom"
       align="end"
       sideOffset={4}
     >
       <DropdownMenuLabel className="p-0 font-normal">
         <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
           <Avatar className="h-8 w-8 rounded-lg">
-            <AvatarImage src={user.avatar} alt={user.name} />
-            <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+            <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
+            <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium">{user.name}</span>
@@ -81,22 +88,9 @@ export function NavUser({
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <DropdownMenuItem>
-          <IconSparkles
-          />
-          Upgrade to Pro
-        </DropdownMenuItem>
-      </DropdownMenuGroup>
-      <DropdownMenuSeparator />
-      <DropdownMenuGroup>
-        <DropdownMenuItem>
           <IconRosetteDiscountCheck
           />
           Account
-        </DropdownMenuItem>
-        <DropdownMenuItem>
-          <IconCreditCard
-          />
-          Billing
         </DropdownMenuItem>
         <DropdownMenuItem>
           <IconBell
@@ -105,9 +99,12 @@ export function NavUser({
         </DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuItem onSelect={handleLogout} disabled={isLoggingOut}>
-        <IconLogout
-        />
+      <DropdownMenuItem
+        onSelect={handleLogout}
+        disabled={isLoggingOut}
+        className="text-destructive focus:text-destructive"
+      >
+        <IconLogout className="text-destructive" />
         {isLoggingOut ? "Logging out..." : "Log out"}
       </DropdownMenuItem>
     </DropdownMenuContent>

@@ -1,0 +1,30 @@
+flowchart TD
+  A[Capture Attendance Data<br/>Biometric Sync and Manual DTR Corrections]
+  B[Validate Timekeeping Completeness<br/>Present, Absent, Tardiness, Undertime, OT]
+  C{Timekeeping Ready?}
+  D[Resolve Attendance Issues<br/>Corrections and Revalidation]
+  E[Create Payroll Run<br/>Regular or Bonus Type]
+  F[Validate Payroll Run<br/>Employee Readiness and Policy Checks]
+  G{Validation Passed?}
+  H[Fix Validation Findings<br/>Then Re-run Validation]
+  I[Calculate Payroll]
+  J[Compute Earnings<br/>Basic Pay, Leave Pay, OT, Night Differential]
+  K[Compute Deductions<br/>Statutory, Recurring, Loans, Attendance-Based]
+  L[Compute Net Pay and Persist Payslip Line Items]
+  M[Review Payroll Register and Employee Results]
+  N{Adjustments Needed?}
+  O[Apply Manual Adjustments<br/>Earnings or Deductions]
+  P[Generate Payslips<br/>Preview, Download, Email]
+  Q[Close Payroll Run and Lock Pay Period]
+  R[Generate Statutory Reports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
+  S[End Payroll Cycle]
+
+  A --> B --> C
+  C -- No --> D --> B
+  C -- Yes --> E --> F --> G
+  G -- No --> H --> F
+  G -- Yes --> I --> J --> K --> L --> M --> N
+  N -- Yes --> O --> M
+  N -- No --> P --> Q --> R --> S
+
+  classDef default fill:#ffffff,stroke:#000000,color:#000000;

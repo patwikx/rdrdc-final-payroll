@@ -28,6 +28,7 @@ type QuickCardProps = {
   title: string
   desc: string
   icon: ComponentType<{ className?: string }>
+  disabled?: boolean
 }
 
 const dateLabel = new Intl.DateTimeFormat("en-PH", {
@@ -43,11 +44,32 @@ const shortDay = new Intl.DateTimeFormat("en-PH", {
 })
 
 const money = new Intl.NumberFormat("en-PH", {
-  style: "currency",
-  currency: "PHP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 })
 
-function QuickActionCard({ href, title, desc, icon: Icon }: QuickCardProps) {
+const LEAVE_BALANCE_CARD_TYPES = new Set([
+  "vacation leave",
+  "sick leave",
+  "compensatory time off",
+  "compensary time off",
+  "cto",
+])
+
+function QuickActionCard({ href, title, desc, icon: Icon, disabled = false }: QuickCardProps) {
+  if (disabled) {
+    return (
+      <div aria-disabled="true" className="relative overflow-hidden rounded-xl border border-border/60 bg-background/70 p-4 opacity-60">
+        <div className="mb-3 w-fit rounded-lg border border-border/60 bg-muted/40 p-2">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        <h3 className="mb-1 text-sm font-semibold text-foreground">{title}</h3>
+        <p className="text-xs text-muted-foreground">{desc}</p>
+      </div>
+    )
+  }
+
   return (
     <Link href={href} className="group relative overflow-hidden rounded-xl border border-border/60 bg-background p-4 transition-all duration-300 hover:bg-muted/40">
       <div className="absolute right-0 top-0 p-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -158,6 +180,8 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     }),
   ])
 
+  const filteredLeaveBalances = leaveBalances.filter((balance) => LEAVE_BALANCE_CARD_TYPES.has(balance.leaveType.name.trim().toLowerCase()))
+
   return (
     <div className="min-h-screen w-full animate-in fade-in bg-background pb-8 duration-500">
       <div className="flex flex-col justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6 md:flex-row md:items-end">
@@ -183,7 +207,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
               <QuickActionCard href={`/${context.companyId}/employee-portal/payslips`} title="My Payslips" desc="Salary records" icon={IconWallet} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/leaves`} title="Leave" desc="Time off requests" icon={IconCalendarEvent} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/overtime`} title="Overtime" desc="Extra hours" icon={IconClockHour4} />
-              <QuickActionCard href={`/${context.companyId}/employee-portal/loans`} title="Loans" desc="Financial aid" icon={IconCoins} />
+              <QuickActionCard href={`/${context.companyId}/employee-portal/loans`} title="Loans" desc="Currently unavailable" icon={IconCoins} disabled />
             </div>
           </div>
 
@@ -194,8 +218,8 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
                 <IconBeach className="h-4 w-4 text-primary" />
               </div>
               <div className="space-y-2.5 p-4">
-                {leaveBalances.length > 0 ? (
-                  leaveBalances.slice(0, 3).map((balance) => (
+                {filteredLeaveBalances.length > 0 ? (
+                  filteredLeaveBalances.map((balance) => (
                     <div key={balance.id} className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">{balance.leaveType.name}</span>
                       <span className="text-sm font-semibold text-foreground">{Number(balance.availableBalance)} days</span>
@@ -281,7 +305,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">Net Pay</span>
-                        <span className="text-lg font-semibold text-foreground">{money.format(Number(payslip.netPay))}</span>
+                        <span className="text-lg font-semibold text-foreground">PHP {money.format(Number(payslip.netPay))}</span>
                       </div>
                     </Link>
                   ))}

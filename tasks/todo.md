@@ -246,9 +246,6 @@ Last updated: 2026-02-09
     - Added prorated fallback for 13th month when no regular-run basic-pay history is available for the employee.
     - Added `MID_YEAR_BONUS` calculation using fixed policy formula (`baseSalary / 2`).
     - Confirmed bonus run types do not lock pay periods (pay period is context-only).
-  - [ ] Implement FINAL_PAY / separation pay payroll calculations.
-    - Pending HR process confirmation for business flow, eligibility, and formula policy.
-    - Added in-code TODO marker in payroll calculation action to track this dependency.
   - [x] Implemented statutory report suite with locked Iteration 3 UX.
     - Added report selector workspace and print-friendly report templates for SSS, PhilHealth, Pag-IBIG, DOLE 13th Month, and BIR Alphalist.
     - Added styled CSV exports that mirror report headings/column structures for all implemented statutory reports.
@@ -285,8 +282,6 @@ Last updated: 2026-02-09
   - Add unit tests for schemas, formatters, and pure domain utilities.
   - Add integration tests for server actions and DB-backed workflows (payroll, leave, attendance).
   - Add E2E tests for critical business paths and role-restricted flows.
-- [ ] Implement `FINAL_PAY` / separation-pay payroll calculations.
-  - Pending HR-approved process and formula policy.
 - [ ] Re-introduce Leave Reports module for payroll-source reporting when prioritized.
   - Current pay period auto-resolve.
   - Filed leave + overtime with supervisor-approved source rows.

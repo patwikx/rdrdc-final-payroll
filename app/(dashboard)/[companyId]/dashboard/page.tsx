@@ -10,6 +10,7 @@ import { getDashboardActionCenterData } from "@/modules/dashboard/utils/get-dash
 
 type CompanyDashboardPageProps = {
   params: Promise<{ companyId: string }>
+  searchParams?: Promise<{ cycle?: string }>
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,8 +29,10 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function CompanyDashboardPage({ params }: CompanyDashboardPageProps) {
+export default async function CompanyDashboardPage({ params, searchParams }: CompanyDashboardPageProps) {
   const { companyId } = await params
+  const parsedSearch = (await searchParams) ?? {}
+  const cycleMode = parsedSearch.cycle === "previous" || parsedSearch.cycle === "month" ? parsedSearch.cycle : "current"
 
   let company: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
   let hasCompanyAccessError = false
@@ -62,10 +65,11 @@ export default async function CompanyDashboardPage({ params }: CompanyDashboardP
 
   return (
     <DashboardActionCenter
+      companyId={company.companyId}
       companyName={company.companyName}
       companyCode={company.companyCode}
       companyRole={company.companyRole}
-      data={await getDashboardActionCenterData(company.companyId)}
+      data={await getDashboardActionCenterData(company.companyId, cycleMode)}
     />
   )
 }

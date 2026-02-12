@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import { dtrDateRangeInputSchema, type DtrDateRangeInput } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
+import { formatWallClockTime } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type ExportDtrCsvActionResult =
   | { ok: true; fileName: string; content: string }
@@ -24,14 +25,7 @@ const formatDate = (value: Date): string => {
 }
 
 const formatTime = (value: Date | null): string => {
-  if (!value) return ""
-
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Manila",
-  }).format(value)
+  return formatWallClockTime(value)
 }
 
 const toNumber = (value: { toString(): string } | null): string => {

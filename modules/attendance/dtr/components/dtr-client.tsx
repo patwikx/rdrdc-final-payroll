@@ -42,6 +42,7 @@ import { exportDtrCsvAction } from "@/modules/attendance/dtr/actions/export-dtr-
 import { EmployeeDtrCalendar } from "@/modules/attendance/dtr/components/employee-dtr-calendar"
 import { ModifyDtrSheet } from "@/modules/attendance/dtr/components/modify-dtr-sheet"
 import type { DtrLogItem, LeaveOverlayItem, WorkbenchItem, WorkbenchStats } from "@/modules/attendance/dtr/types"
+import { formatWallClockLabel } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type DtrClientPageProps = {
   companyId: string
@@ -75,17 +76,6 @@ const formatDatePh = (value: string): string => {
   }).format(new Date(value))
 
   return formatted.replaceAll("-", ".")
-}
-
-const formatTimeUtc = (value: string | null): string => {
-  if (!value) return "--:--"
-
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(new Date(value))
 }
 
 const getStatusColor = (status: string): string => {
@@ -449,8 +439,8 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                         </div>
                       </div>
                       <div className="col-span-2 text-sm text-foreground/90">{formatDatePh(log.attendanceDate)}</div>
-                      <div className="col-span-2 text-center text-sm">{formatTimeUtc(log.actualTimeIn)}</div>
-                      <div className="col-span-2 text-center text-sm">{formatTimeUtc(log.actualTimeOut)}</div>
+                      <div className="col-span-2 text-center text-sm">{formatWallClockLabel(log.actualTimeIn)}</div>
+                      <div className="col-span-2 text-center text-sm">{formatWallClockLabel(log.actualTimeOut)}</div>
                       <div className="col-span-2 text-center text-sm text-foreground/80">{Number(log.hoursWorked).toFixed(2)}</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.tardinessMins}m</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.undertimeMins}m</div>

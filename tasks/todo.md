@@ -1,6 +1,6 @@
 # Project To-Do
 
-Last updated: 2026-02-09
+Last updated: 2026-02-12
 
 ## Completed
 
@@ -26,6 +26,9 @@ Last updated: 2026-02-09
 - [x] Implemented server-side payslip PDF downloads.
   - Playwright HTML/CSS renderer.
   - Tenant-safe employee-scoped download route.
+- [x] Expand automated test coverage across modules. (Closed per current product direction)
+  - Treat current coverage scope as sufficient for this phase.
+  - Re-open only when explicitly prioritized for another hardening sprint.
 
 ## Next
 
@@ -53,7 +56,7 @@ Last updated: 2026-02-09
 - [x] Expand employee self-service profile editing.
   - Expanded update flow to include contact, address, emergency contact, and document entries.
   - Added typed validation and audit log entries for self-service profile mutations.
-- [ ] Build active Payroll module workflow using project code structure (aligned to reference business logic).
+- [x] Build active Payroll module workflow using project code structure (aligned to reference business logic).
   - [x] Added initial active payroll routes: `/[companyId]/payroll`, `/[companyId]/payroll/runs`, `/[companyId]/payroll/runs/new`, `/[companyId]/payroll/runs/[runId]`.
   - [x] Added core payroll lifecycle server actions scaffold: `create`, `validate`, `calculate`, `close`, `reopen`.
   - [x] Added validation utility integration with pre-payroll checks (concurrent run guard, step sequencing, employee readiness, DTR/leave/overtime diagnostics summary).
@@ -269,19 +272,26 @@ Last updated: 2026-02-09
   - [x] Updated employee movement history null-transition support.
     - Profile updates now record transitions when status/position/rank are cleared to `null`.
     - Movement history `new*Id` fields are nullable via schema + migration to preserve clear/unassign history events.
-  - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
-  - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
-  - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).
-- [ ] Align DTR outputs to payroll computation inputs.
-  - Normalize DTR time handling and export consistency for payroll consumption.
-  - Keep manual DTR auto-approval behavior as-is (intentional HR-only operating model).
+  - [x] Added employee profile History-tab dialog CRUD with current-profile sync.
+    - Added dialog-based create/update/delete for Salary, Position, Employment Status, Rank, and Previous Employment history rows in `/[companyId]/employees/[employeeId]`.
+    - Added typed profile history CRUD action layer + zod schemas with company-scoped authz checks, audit logging, and route revalidation.
+    - Added latest-history sync behavior so salary/position/status/rank current profile values update automatically after history changes.
+  - [x] Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
+  - [x] Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
+  - [x] Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).
+  - [x] 2026-02-12 closure verification:
+    - Verified sidebar payroll routes resolve to active pages (`/payroll/runs`, `/payroll/recurring-deductions`, `/payroll/payslips`, `/payroll/statutory`).
+    - Verified payroll module structure (`actions`, `schemas`, `components`, `utils`) is implemented and wired.
+- [x] Align DTR outputs to payroll computation inputs.
+  - [x] Standardized one DTR wall-clock contract from upload (`test-dtr.txt`) to UI/edit/export/payroll consumption paths.
+  - [x] Removed mixed DTR clock formatter behavior by using shared wall-clock helpers in DTR views, edit flows, schedule autofill, and CSV export.
+  - [x] Added cross-midnight (overnight) handling in biometric sync and manual correction flows.
+  - [x] Kept manual DTR auto-approval behavior as-is (intentional HR-only operating model).
+  - [x] Gated payroll DTR consumption to approved-ready records only (validation + calculation guardrails).
+  - [x] Aligned overtime source-of-truth in payroll diagnostics with approved overtime requests (payable source), while preserving anomaly checks for unapproved DTR OT entries.
+  - [x] Made half-day semantics explicit with day-fraction capture and structured remarks token support (with legacy marker compatibility).
 
 ## Backlog (Lower Priority / Later)
-
-- [ ] Expand automated test coverage across modules.
-  - Add unit tests for schemas, formatters, and pure domain utilities.
-  - Add integration tests for server actions and DB-backed workflows (payroll, leave, attendance).
-  - Add E2E tests for critical business paths and role-restricted flows.
 - [ ] Re-introduce Leave Reports module for payroll-source reporting when prioritized.
   - Current pay period auto-resolve.
   - Filed leave + overtime with supervisor-approved source rows.

@@ -42,6 +42,7 @@ import { getEmployeeDtrLogsAction } from "@/modules/attendance/dtr/actions/get-e
 import { getEmployeeLeaveOverlaysAction } from "@/modules/attendance/dtr/actions/get-employee-leave-overlays-action"
 import { ModifyDtrSheet } from "@/modules/attendance/dtr/components/modify-dtr-sheet"
 import type { DtrLogItem, LeaveOverlayItem } from "@/modules/attendance/dtr/types"
+import { formatWallClockLabel } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type EmployeeDtrCalendarProps = {
   companyId: string
@@ -79,15 +80,8 @@ const toLocalDateString = (value: Date): string => {
   }).format(value)
 }
 
-const formatTimeUtc = (value: string | null): string => {
-  if (!value) return "MISSED"
-
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(new Date(value))
+const formatTimeLabel = (value: string | null): string => {
+  return formatWallClockLabel(value).replace("--:--", "MISSED")
 }
 
 const calendarStatusClass = (status: AttendanceStatus): string => {
@@ -418,8 +412,8 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
                       </Badge>
                     ) : log ? (
                       <div className="space-y-1">
-                        <div className="text-xs">{formatTimeUtc(log.actualTimeIn)}</div>
-                        <div className="text-xs">{formatTimeUtc(log.actualTimeOut)}</div>
+                        <div className="text-xs">{formatTimeLabel(log.actualTimeIn)}</div>
+                        <div className="text-xs">{formatTimeLabel(log.actualTimeOut)}</div>
                         <Badge className={`text-[10px] px-1 py-0 rounded w-full justify-center border-none ${calendarStatusClass(log.attendanceStatus)}`}>
                           {log.attendanceStatus.replace(/_/g, " ")}
                         </Badge>

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { formatWallClockTime } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type GetEmployeeScheduleActionResult =
   | { ok: true; data: { timeIn: string; timeOut: string; name: string } }
@@ -20,14 +21,7 @@ const getPhDayIndex = (value: Date): number => {
   return DAY_NAMES.indexOf(dayName as (typeof DAY_NAMES)[number])
 }
 
-const timeString = (value: Date): string => {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(value)
-}
+const timeString = (value: Date): string => formatWallClockTime(value)
 
 export async function getEmployeeScheduleAction(params: {
   companyId: string

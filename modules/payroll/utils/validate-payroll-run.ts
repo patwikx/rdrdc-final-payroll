@@ -1,4 +1,4 @@
-import { RequestStatus, type Prisma } from "@prisma/client"
+import { DtrApprovalStatus, RequestStatus, type Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
 
@@ -210,7 +210,7 @@ export async function validatePayrollRun(
   }
 
   const employeeIds = employees.map((employee) => employee.id)
-  const [holidays, approvedLeaves, unresolvedLeaves, overtimeRequests, dtrRows] = await Promise.all([
+  const [holidays, approvedLeaves, unresolvedLeaves, overtimeRequests, dtrRows, nonApprovedDtrCount] = await Promise.all([
     db.holiday.findMany({
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
@@ -259,6 +259,7 @@ export async function validatePayrollRun(
       where: {
         employeeId: { in: employeeIds },
         attendanceDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
+        approvalStatusCode: DtrApprovalStatus.APPROVED,
       },
       select: {
         employeeId: true,
@@ -269,6 +270,13 @@ export async function validatePayrollRun(
         overtimeHours: true,
         tardinessMins: true,
         undertimeMins: true,
+      },
+    }),
+    db.dailyTimeRecord.count({
+      where: {
+        employeeId: { in: employeeIds },
+        attendanceDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
+        approvalStatusCode: { not: DtrApprovalStatus.APPROVED },
       },
     }),
   ])
@@ -286,6 +294,7 @@ export async function validatePayrollRun(
   }
 
   const approvedOvertimeByEmployeeDate = new Set<string>()
+  const approvedOvertimeHoursByEmployeeDate = new Map<string, number>()
   const approvedOvertimeHoursByEmployee = new Map<string, number>()
   const approvedOvertimeEntriesByEmployee = new Map<string, number>()
   const employeeById = new Map(employees.map((employee) => [employee.id, employee]))
@@ -294,6 +303,10 @@ export async function validatePayrollRun(
     const key = `${overtime.employeeId}:${toDateKey(overtime.overtimeDate)}`
     if (overtime.statusCode === RequestStatus.APPROVED) {
       approvedOvertimeByEmployeeDate.add(key)
+      approvedOvertimeHoursByEmployeeDate.set(
+        key,
+        Math.round(((approvedOvertimeHoursByEmployeeDate.get(key) ?? 0) + toNumber(overtime.hours)) * 100) / 100
+      )
 
       const employee = employeeById.get(overtime.employeeId)
       if (employee && !employee.isOvertimeEligible) {
@@ -310,6 +323,12 @@ export async function validatePayrollRun(
     if (pendingOvertimeStatuses.includes(overtime.statusCode)) {
       pendingOvertimeRequestCount += 1
     }
+  }
+
+  if (nonApprovedDtrCount > 0) {
+    errors.push(
+      `${nonApprovedDtrCount} DTR entr${nonApprovedDtrCount === 1 ? "y is" : "ies are"} pending/rejected. Approve all DTR records before payroll validation.`
+    )
   }
 
   const dtrsByEmployeeId = new Map<string, typeof dtrRows>()
@@ -377,7 +396,8 @@ export async function validatePayrollRun(
       if (dtr.attendanceStatus === "ABSENT") absentDays += 1
       if (dtr.attendanceStatus === "PRESENT" || dtr.attendanceStatus === "HOLIDAY") presentDays += 1
 
-      overtimeHours += toNumber(dtr.overtimeHours)
+      const approvedOvertimeHours = approvedOvertimeHoursByEmployeeDate.get(`${employee.id}:${key}`) ?? 0
+      overtimeHours += approvedOvertimeHours
       tardinessMins += dtr.tardinessMins
       undertimeMins += dtr.undertimeMins
 

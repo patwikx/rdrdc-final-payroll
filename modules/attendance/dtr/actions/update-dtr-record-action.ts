@@ -13,6 +13,14 @@ import {
   updateDtrRecordInputSchema,
   type UpdateDtrRecordInput,
 } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
+import {
+  createWallClockDateTime,
+  ensureEndAfterStart,
+  formatWallClockTime,
+  isHalfDayRemarks,
+  normalizeHalfDayToken,
+  parsePhDateInput,
+} from "@/modules/attendance/dtr/utils/wall-clock"
 
 type UpdateDtrRecordActionResult =
   | { ok: true; message: string }
@@ -26,45 +34,25 @@ type DayOverride = {
 
 const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const
 
-const parseDateInput = (value: string): Date => {
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const parsePhDateParts = (value: Date): { year: number; month: number; day: number } => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).formatToParts(value)
-
-  return {
-    year: Number(parts.find((part) => part.type === "year")?.value ?? "1970"),
-    month: Number(parts.find((part) => part.type === "month")?.value ?? "01"),
-    day: Number(parts.find((part) => part.type === "day")?.value ?? "01"),
-  }
-}
-
 const toDateTimeOnAttendanceDate = (attendanceDate: Date, value: string | undefined): Date | null => {
   if (!value) return null
-
-  const [hour, minute] = value.split(":").map((part) => Number(part))
-  const date = parsePhDateParts(attendanceDate)
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  return createWallClockDateTime(attendanceDate, value)
 }
 
 const parseTimeOnAttendanceDate = (attendanceDate: Date, value: Date): Date => {
-  const date = parsePhDateParts(attendanceDate)
-  const hour = value.getUTCHours()
-  const minute = value.getUTCMinutes()
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  const parsed = createWallClockDateTime(attendanceDate, formatWallClockTime(value))
+  if (!parsed) {
+    throw new Error("Invalid work schedule time.")
+  }
+  return parsed
 }
 
 const parseTimeStringOnAttendanceDate = (attendanceDate: Date, value: string): Date => {
-  const [hour, minute] = value.split(":").map((part) => Number(part))
-  const date = parsePhDateParts(attendanceDate)
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  const parsed = createWallClockDateTime(attendanceDate, value)
+  if (!parsed) {
+    throw new Error("Invalid work schedule override time.")
+  }
+  return parsed
 }
 
 const toNumber = (value: { toString(): string } | null | undefined): number => {
@@ -129,16 +117,17 @@ const getScheduleTimes = (
   }
 
   if (dayOverride?.timeIn && dayOverride?.timeOut) {
+    const scheduledIn = parseTimeStringOnAttendanceDate(attendanceDate, dayOverride.timeIn)
+    const scheduledOut = parseTimeStringOnAttendanceDate(attendanceDate, dayOverride.timeOut)
     return {
-      scheduledIn: parseTimeStringOnAttendanceDate(attendanceDate, dayOverride.timeIn),
-      scheduledOut: parseTimeStringOnAttendanceDate(attendanceDate, dayOverride.timeOut),
+      scheduledIn,
+      scheduledOut: ensureEndAfterStart(scheduledIn, scheduledOut),
     }
   }
 
-  return {
-    scheduledIn: parseTimeOnAttendanceDate(attendanceDate, workSchedule.workStartTime),
-    scheduledOut: parseTimeOnAttendanceDate(attendanceDate, workSchedule.workEndTime),
-  }
+  const scheduledIn = parseTimeOnAttendanceDate(attendanceDate, workSchedule.workStartTime)
+  const scheduledOut = parseTimeOnAttendanceDate(attendanceDate, workSchedule.workEndTime)
+  return { scheduledIn, scheduledOut: ensureEndAfterStart(scheduledIn, scheduledOut) }
 }
 
 export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promise<UpdateDtrRecordActionResult> {
@@ -164,7 +153,10 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
     return { ok: false, error: "Only Company Admin, HR Admin, Payroll Admin, or Super Admin can manually modify DTR records." }
   }
 
-  const attendanceDate = parseDateInput(payload.attendanceDate)
+  const attendanceDate = parsePhDateInput(payload.attendanceDate)
+  if (!attendanceDate) {
+    return { ok: false, error: "Invalid attendance date." }
+  }
 
   const employee = await db.employee.findFirst({
     where: {
@@ -250,15 +242,13 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
   }
 
   const actualTimeIn = toDateTimeOnAttendanceDate(attendanceDate, payload.actualTimeIn || undefined)
-  const actualTimeOut = toDateTimeOnAttendanceDate(attendanceDate, payload.actualTimeOut || undefined)
+  const rawActualTimeOut = toDateTimeOnAttendanceDate(attendanceDate, payload.actualTimeOut || undefined)
 
-  if ((actualTimeIn && !actualTimeOut) || (!actualTimeIn && actualTimeOut)) {
+  if ((actualTimeIn && !rawActualTimeOut) || (!actualTimeIn && rawActualTimeOut)) {
     return { ok: false, error: "Both time in and time out are required when providing attendance time." }
   }
 
-  if (actualTimeIn && actualTimeOut && actualTimeOut <= actualTimeIn) {
-    return { ok: false, error: "Time out must be later than time in." }
-  }
+  const actualTimeOut = actualTimeIn && rawActualTimeOut ? ensureEndAfterStart(actualTimeIn, rawActualTimeOut) : rawActualTimeOut
 
   if (payload.attendanceStatus === "PRESENT" && (!actualTimeIn || !actualTimeOut)) {
     return { ok: false, error: "Present status requires both time in and time out." }
@@ -297,7 +287,10 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
     }
   }
 
-  const remarks = payload.remarks?.trim() || null
+  const resolvedDayFraction: "FULL" | "HALF" =
+    payload.dayFraction ??
+    (isHalfDayRemarks(payload.remarks) || isHalfDayRemarks(record?.remarks) ? "HALF" : "FULL")
+  const remarks = normalizeHalfDayToken(payload.remarks?.trim() || null, resolvedDayFraction)
 
   const updated = record
     ? await db.dailyTimeRecord.update({

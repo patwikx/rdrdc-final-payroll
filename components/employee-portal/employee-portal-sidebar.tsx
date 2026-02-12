@@ -118,7 +118,8 @@ export function EmployeePortalSidebar({ companies, activeCompanyId, companyRole,
         const CompanyLogo = companyLogos[index % companyLogos.length]
         return {
           id: company.companyId,
-          name: `${company.companyCode} - ${company.companyName}`,
+          name: company.companyName,
+          code: company.companyCode,
           logo: <CompanyLogo className="size-4" />,
           plan: company.role,
         }

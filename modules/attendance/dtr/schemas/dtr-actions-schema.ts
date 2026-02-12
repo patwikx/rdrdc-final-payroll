@@ -25,6 +25,7 @@ export const updateDtrRecordInputSchema = z.object({
   employeeId: z.string().uuid(),
   attendanceDate: z.string().regex(datePattern),
   attendanceStatus: z.enum(["PRESENT", "ABSENT", "ON_LEAVE", "HOLIDAY", "REST_DAY", "SUSPENDED", "AWOL"]),
+  dayFraction: z.enum(["FULL", "HALF"]).optional(),
   actualTimeIn: z.string().regex(timePattern).optional().or(z.literal("")),
   actualTimeOut: z.string().regex(timePattern).optional().or(z.literal("")),
   remarks: z.string().max(2000).optional(),

@@ -364,6 +364,10 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
     - position (`EmployeePositionHistory`)
     - employment status (`EmployeeStatusHistory`)
     - rank (`EmployeeRankHistory`)
+  - History tab now supports dialog-based CRUD for Salary, Position, Employment Status, Rank, and Previous Employment rows.
+    - Uses typed server actions + zod validation and per-row Edit/Delete actions.
+    - Uses PH-local calendar date entry (`Asia/Manila`) for history date fields.
+    - Syncs current profile fields from latest history records for salary, position, status, and rank after create/update/delete.
   - Employment tab layout updated so Employment Details uses a 5-column row layout on large screens.
 
 - Onboarding step 2 enhancements:
@@ -552,6 +556,7 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 
 ## Recent Changes
 
+- 2026-02-11: Added History-tab dialog CRUD on employee profile (`/[companyId]/employees/[employeeId]`) for salary, position, employment status, rank, and previous employment records; added typed CRUD actions/schemas with company-scoped authz/audit/revalidation and current-profile sync from latest history rows.
 - 2026-02-09: Added Employment Setup module at `/[companyId]/settings/employment` with CRUD management for positions, employment status/type/class, table search/filter controls, and server-side deactivation guardrails for active employee assignments.
 - 2026-02-09: Migrated `EmploymentStatus`, `EmploymentType`, and `EmploymentClass` to company-scoped models (`companyId`-scoped) with migration-based cloning/remapping, app query/action updates, and tenant-safety enforcement (`companyId + code` uniqueness).
 - 2026-02-09: Added verification script `npm run verify:employment:scope` to validate company-scoping consistency (null-company checks, cross-company assignment mismatches, and per-company coverage counts).

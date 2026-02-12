@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { updateDtrRecordAction } from "@/modules/attendance/dtr/actions/update-dtr-record-action"
 import { getEmployeeScheduleAction } from "@/modules/attendance/dtr/actions/get-employee-schedule-action"
 import type { DtrLogItem } from "@/modules/attendance/dtr/types"
+import { formatWallClockTime, isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type ModifyDtrSheetProps = {
   companyId: string
@@ -46,16 +47,10 @@ const STATUS_OPTIONS = [
   AttendanceStatus.AWOL,
 ] as const
 
-const toTimeInputValueUtc = (value: string | null): string => {
-  if (!value) return ""
-
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(new Date(value))
-}
+const DAY_FRACTION_OPTIONS = [
+  { value: "FULL", label: "Full Day" },
+  { value: "HALF", label: "Half Day" },
+] as const
 
 export function ModifyDtrSheet({ companyId, record, isOpen, onClose }: ModifyDtrSheetProps) {
   if (!record) return null
@@ -84,9 +79,10 @@ function ModifyDtrSheetForm({
 }) {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<AttendanceStatus>(record.attendanceStatus)
+  const [dayFraction, setDayFraction] = useState<"FULL" | "HALF">(isHalfDayRemarks(record.remarks) ? "HALF" : "FULL")
   const [remarks, setRemarks] = useState(record.remarks ?? "")
-  const [timeIn, setTimeIn] = useState(toTimeInputValueUtc(record.actualTimeIn))
-  const [timeOut, setTimeOut] = useState(toTimeInputValueUtc(record.actualTimeOut))
+  const [timeIn, setTimeIn] = useState(formatWallClockTime(record.actualTimeIn))
+  const [timeOut, setTimeOut] = useState(formatWallClockTime(record.actualTimeOut))
   const [pickedDate, setPickedDate] = useState<Date | undefined>(new Date(record.attendanceDate))
 
   const handleAutofill = async () => {
@@ -121,6 +117,7 @@ function ModifyDtrSheetForm({
       employeeId: record.employee.id,
       attendanceDate: format(pickedDate ?? new Date(record.attendanceDate), "yyyy-MM-dd"),
       attendanceStatus: status,
+      dayFraction,
       actualTimeIn: timeIn,
       actualTimeOut: timeOut,
       remarks,
@@ -207,6 +204,22 @@ function ModifyDtrSheetForm({
                 />
               </PopoverContent>
             </Popover>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-muted-foreground">Day Fraction</label>
+            <Select value={dayFraction} onValueChange={(value) => setDayFraction(value as "FULL" | "HALF")}>
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DAY_FRACTION_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-1 gap-4">

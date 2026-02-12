@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { BloodType, Religion } from "@prisma/client"
+import { BloodType, EducationLevel, RelationshipType, Religion } from "@prisma/client"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import {
   civilStatusOptions,
@@ -123,6 +123,8 @@ export type EmployeeProfileViewModel = {
     religions: Array<{ id: string; name: string }>
     bloodTypes: Array<{ id: string; name: string }>
     taxStatuses: Array<{ id: string; name: string }>
+    relationshipTypes: Array<{ id: string; name: string }>
+    educationLevels: Array<{ id: string; name: string }>
   }
   employee: {
     id: string
@@ -239,15 +241,140 @@ export type EmployeeProfileViewModel = {
     emails: Array<{ type: string; value: string; isPrimary: boolean }>
     addresses: Array<{ type: string; line: string; isPrimary: boolean }>
     emergencyContacts: Array<{ name: string; relationship: string; mobile: string; email: string; priority: string }>
-    dependents: Array<{ name: string; relationship: string; birthDate: string; taxDependent: string }>
-    beneficiaries: Array<{ name: string; relationship: string; percentage: string; contact: string }>
-    educations: Array<{ level: string; school: string; course: string; yearGraduated: string }>
+    dependents: Array<{
+      id: string
+      name: string
+      firstName: string
+      middleName: string
+      lastName: string
+      relationship: string
+      relationshipId: string
+      birthDate: string
+      birthDateValue: string
+      taxDependent: string
+      isTaxDependent: boolean
+    }>
+    beneficiaries: Array<{
+      id: string
+      name: string
+      relationship: string
+      relationshipId: string
+      percentage: string
+      percentageValue: number
+      contact: string
+    }>
+    educations: Array<{
+      id: string
+      level: string
+      educationLevelId: string
+      school: string
+      course: string
+      yearGraduated: string
+      yearGraduatedValue: number | null
+    }>
+    trainings: Array<{
+      id: string
+      trainingName: string
+      provider: string
+      providerValue: string
+      trainingDate: string
+      trainingDateValue: string
+      trainingEndDate: string
+      trainingEndDateValue: string
+      durationHours: string
+      durationHoursValue: number | null
+      location: string
+      locationValue: string
+    }>
+    medicalRecords: Array<{
+      id: string
+      examYear: string
+      examYearValue: number
+      examDate: string
+      examDateValue: string
+      examType: string
+      clinicName: string
+      clinicNameValue: string
+      physician: string
+      physicianValue: string
+      findings: string
+      findingsValue: string
+      remarks: string
+      remarksValue: string
+      result: string
+      resultValue: string
+      attachments: Array<{
+        id: string
+        fileName: string
+        fileType: string
+        fileSize: string
+        fileSizeValue: number
+        description: string
+        descriptionValue: string
+        uploadedAt: string
+      }>
+    }>
     qualifications: Array<{ category: string; name: string; details: string; dateLabel: string }>
-    salaryHistory: Array<{ effectiveDate: string; previous: string; current: string; adjustment: string; reason: string }>
-    positionHistory: Array<{ effectiveDate: string; previous: string; current: string; movement: string; reason: string }>
-    statusHistory: Array<{ effectiveDate: string; previous: string; current: string; reason: string }>
-    rankHistory: Array<{ effectiveDate: string; previous: string; current: string; movement: string; reason: string }>
-    previousEmployments: Array<{ company: string; position: string; startDate: string; endDate: string; salary: string }>
+    salaryHistory: Array<{
+      id: string
+      effectiveDate: string
+      effectiveDateValue: string
+      previous: string
+      current: string
+      adjustment: string
+      reason: string
+      reasonValue: string
+      newSalaryValue: number
+      adjustmentTypeCode: string
+    }>
+    positionHistory: Array<{
+      id: string
+      effectiveDate: string
+      effectiveDateValue: string
+      previous: string
+      current: string
+      movement: string
+      reason: string
+      reasonValue: string
+      newPositionId: string
+      newDepartmentId: string
+      newBranchId: string
+      movementType: string
+    }>
+    statusHistory: Array<{
+      id: string
+      effectiveDate: string
+      effectiveDateValue: string
+      previous: string
+      current: string
+      reason: string
+      reasonValue: string
+      newStatusId: string
+    }>
+    rankHistory: Array<{
+      id: string
+      effectiveDate: string
+      effectiveDateValue: string
+      previous: string
+      current: string
+      movement: string
+      reason: string
+      reasonValue: string
+      newRankId: string
+      movementType: string
+    }>
+    previousEmployments: Array<{
+      id: string
+      company: string
+      position: string
+      positionValue: string
+      startDate: string
+      startDateValue: string
+      endDate: string
+      endDateValue: string
+      salary: string
+      salaryValue: number | null
+    }>
     documents: Array<{ id: string; title: string; type: string; fileName: string; fileUrl: string; fileSize: string; uploadedAt: string }>
   }
 }
@@ -396,17 +523,17 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       dependents: {
         where: { isActive: true },
         orderBy: [{ createdAt: "desc" }],
-        select: { firstName: true, middleName: true, lastName: true, relationshipId: true, birthDate: true, isTaxDependent: true },
+        select: { id: true, firstName: true, middleName: true, lastName: true, relationshipId: true, birthDate: true, isTaxDependent: true },
       },
       beneficiaries: {
         where: { isActive: true },
         orderBy: [{ createdAt: "desc" }],
-        select: { name: true, relationshipId: true, percentage: true, contactNumber: true },
+        select: { id: true, name: true, relationshipId: true, percentage: true, contactNumber: true },
       },
       educations: {
         where: { isActive: true },
         orderBy: [{ yearGraduated: "desc" }],
-        select: { educationLevelId: true, schoolName: true, course: true, yearGraduated: true },
+        select: { id: true, educationLevelId: true, schoolName: true, course: true, yearGraduated: true },
       },
       licenses: {
         where: { isActive: true },
@@ -421,7 +548,33 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       trainings: {
         where: { isActive: true },
         orderBy: [{ createdAt: "desc" }],
-        select: { trainingName: true, provider: true, trainingDate: true, trainingEndDate: true },
+        select: { id: true, trainingName: true, provider: true, trainingDate: true, trainingEndDate: true, durationHours: true, location: true },
+      },
+      medicalRecords: {
+        where: { isActive: true },
+        orderBy: [{ examDate: "desc" }, { createdAt: "desc" }],
+        select: {
+          id: true,
+          examYear: true,
+          examDate: true,
+          examType: true,
+          clinicName: true,
+          physician: true,
+          findings: true,
+          remarks: true,
+          result: true,
+          attachments: {
+            orderBy: [{ uploadedAt: "desc" }],
+            select: {
+              id: true,
+              fileName: true,
+              fileType: true,
+              fileSize: true,
+              description: true,
+              uploadedAt: true,
+            },
+          },
+        },
       },
       skills: {
         where: { isActive: true },
@@ -431,15 +584,28 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       salaryHistory: {
         orderBy: [{ effectiveDate: "desc" }],
         take: 20,
-        select: { effectiveDate: true, previousSalary: true, newSalary: true, adjustmentPercent: true, adjustmentAmount: true, reason: true },
+        select: {
+          id: true,
+          effectiveDate: true,
+          previousSalary: true,
+          newSalary: true,
+          adjustmentTypeCode: true,
+          adjustmentPercent: true,
+          adjustmentAmount: true,
+          reason: true,
+        },
       },
       positionHistory: {
         orderBy: [{ effectiveDate: "desc" }],
         take: 20,
         select: {
+          id: true,
           effectiveDate: true,
           previousPosition: { select: { name: true } },
           newPosition: { select: { name: true } },
+          newPositionId: true,
+          newDepartmentId: true,
+          newBranchId: true,
           movementType: true,
           reason: true,
         },
@@ -448,9 +614,11 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
         orderBy: [{ effectiveDate: "desc" }],
         take: 20,
         select: {
+          id: true,
           effectiveDate: true,
           previousStatus: { select: { name: true } },
           newStatus: { select: { name: true } },
+          newStatusId: true,
           reason: true,
         },
       },
@@ -458,9 +626,11 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
         orderBy: [{ effectiveDate: "desc" }],
         take: 20,
         select: {
+          id: true,
           effectiveDate: true,
           previousRank: { select: { name: true } },
           newRank: { select: { name: true } },
+          newRankId: true,
           movementType: true,
           reason: true,
         },
@@ -468,7 +638,7 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       previousEmployments: {
         where: { isActive: true },
         orderBy: [{ endDate: "desc" }],
-        select: { companyName: true, position: true, startDate: true, endDate: true, lastSalary: true },
+        select: { id: true, companyName: true, position: true, startDate: true, endDate: true, lastSalary: true },
       },
       documents: {
         where: { isActive: true },
@@ -513,6 +683,8 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       religions: Object.values(Religion).map((id) => ({ id, name: humanizeCode(id) })),
       bloodTypes: Object.values(BloodType).map((id) => ({ id, name: humanizeCode(id) })),
       taxStatuses: taxStatusOptions.map((id) => ({ id, name: formatTaxStatusLabel(id) })),
+      relationshipTypes: Object.values(RelationshipType).map((id) => ({ id, name: humanizeCode(id) })),
+      educationLevels: Object.values(EducationLevel).map((id) => ({ id, name: humanizeCode(id) })),
     },
     employee: {
       id: employee.id,
@@ -644,22 +816,77 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
         priority: String(record.priority),
       })),
       dependents: employee.dependents.map((dep) => ({
+        id: dep.id,
         name: `${dep.lastName}, ${dep.firstName}${dep.middleName ? ` ${dep.middleName.charAt(0)}.` : ""}`,
+        firstName: dep.firstName,
+        middleName: dep.middleName ?? "",
+        lastName: dep.lastName,
         relationship: humanizeCode(dep.relationshipId),
+        relationshipId: dep.relationshipId,
         birthDate: formatDate(dep.birthDate),
+        birthDateValue: toDateInputValue(dep.birthDate),
         taxDependent: dep.isTaxDependent ? "Yes" : "No",
+        isTaxDependent: dep.isTaxDependent,
       })),
       beneficiaries: employee.beneficiaries.map((item) => ({
+        id: item.id,
         name: item.name,
         relationship: humanizeCode(item.relationshipId),
+        relationshipId: item.relationshipId,
         percentage: `${Number(item.percentage).toFixed(2)}%`,
+        percentageValue: Number(item.percentage),
         contact: item.contactNumber ?? "-",
       })),
       educations: employee.educations.map((edu) => ({
+        id: edu.id,
         level: humanizeCode(edu.educationLevelId),
+        educationLevelId: edu.educationLevelId,
         school: edu.schoolName,
         course: edu.course ?? "-",
         yearGraduated: edu.yearGraduated ? String(edu.yearGraduated) : "-",
+        yearGraduatedValue: edu.yearGraduated ?? null,
+      })),
+      trainings: employee.trainings.map((item) => ({
+        id: item.id,
+        trainingName: item.trainingName,
+        provider: item.provider ?? "-",
+        providerValue: item.provider ?? "",
+        trainingDate: formatDate(item.trainingDate),
+        trainingDateValue: toDateInputValue(item.trainingDate),
+        trainingEndDate: formatDate(item.trainingEndDate),
+        trainingEndDateValue: toDateInputValue(item.trainingEndDate),
+        durationHours: item.durationHours !== null && item.durationHours !== undefined ? Number(item.durationHours).toString() : "-",
+        durationHoursValue: item.durationHours !== null && item.durationHours !== undefined ? Number(item.durationHours) : null,
+        location: item.location ?? "-",
+        locationValue: item.location ?? "",
+      })),
+      medicalRecords: employee.medicalRecords.map((record) => ({
+        id: record.id,
+        examYear: String(record.examYear),
+        examYearValue: record.examYear,
+        examDate: formatDate(record.examDate),
+        examDateValue: toDateInputValue(record.examDate),
+        examType: record.examType,
+        clinicName: record.clinicName ?? "-",
+        clinicNameValue: record.clinicName ?? "",
+        physician: record.physician ?? "-",
+        physicianValue: record.physician ?? "",
+        findings: record.findings ?? "-",
+        findingsValue: record.findings ?? "",
+        remarks: record.remarks ?? "-",
+        remarksValue: record.remarks ?? "",
+        result: record.result ?? "-",
+        resultValue: record.result ?? "",
+        attachments: record.attachments.map((attachment) => ({
+          id: attachment.id,
+          fileName: attachment.fileName,
+          fileType: attachment.fileType,
+          fileSize: bytesToSize(attachment.fileSize),
+          fileSizeValue: attachment.fileSize,
+          description: attachment.description ?? "-",
+          descriptionValue: attachment.description ?? "",
+          uploadedAt: formatDate(attachment.uploadedAt),
+        })),
       })),
       qualifications: [
         ...employee.licenses.map((item) => ({ category: "License", name: humanizeCode(item.licenseTypeCode), details: `${item.licenseNumber}${item.issuingBody ? ` • ${item.issuingBody}` : ""}`, dateLabel: item.expiryDate ? `Expires ${formatDate(item.expiryDate)}` : "-" })),
@@ -668,7 +895,9 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
         ...employee.skills.map((item) => ({ category: "Skill", name: item.skillName, details: item.proficiencyLevel ?? "-", dateLabel: item.yearsExperience ? `${Number(item.yearsExperience)} years` : "-" })),
       ],
       salaryHistory: employee.salaryHistory.map((item) => ({
+        id: item.id,
         effectiveDate: formatDate(item.effectiveDate),
+        effectiveDateValue: toDateInputValue(item.effectiveDate),
         previous: item.previousSalary ? formatCurrency(Number(item.previousSalary)) : "-",
         current: formatCurrency(Number(item.newSalary)),
         adjustment:
@@ -678,33 +907,57 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
               ? `${Number(item.adjustmentPercent).toFixed(2)}%`
               : "-",
         reason: item.reason ?? "-",
+        reasonValue: item.reason ?? "",
+        newSalaryValue: Number(item.newSalary),
+        adjustmentTypeCode: item.adjustmentTypeCode ?? "OTHER",
       })),
       positionHistory: employee.positionHistory.map((item) => ({
+        id: item.id,
         effectiveDate: formatDate(item.effectiveDate),
+        effectiveDateValue: toDateInputValue(item.effectiveDate),
         previous: item.previousPosition?.name ?? "-",
         current: item.newPosition?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
+        reasonValue: item.reason ?? "",
+        newPositionId: item.newPositionId ?? "",
+        newDepartmentId: item.newDepartmentId ?? "",
+        newBranchId: item.newBranchId ?? "",
+        movementType: item.movementType,
       })),
       statusHistory: employee.statusHistory.map((item) => ({
+        id: item.id,
         effectiveDate: formatDate(item.effectiveDate),
+        effectiveDateValue: toDateInputValue(item.effectiveDate),
         previous: item.previousStatus?.name ?? "-",
         current: item.newStatus?.name ?? "Unassigned",
         reason: item.reason ?? "-",
+        reasonValue: item.reason ?? "",
+        newStatusId: item.newStatusId ?? "",
       })),
       rankHistory: employee.rankHistory.map((item) => ({
+        id: item.id,
         effectiveDate: formatDate(item.effectiveDate),
+        effectiveDateValue: toDateInputValue(item.effectiveDate),
         previous: item.previousRank?.name ?? "-",
         current: item.newRank?.name ?? "Unassigned",
         movement: humanizeCode(item.movementType),
         reason: item.reason ?? "-",
+        reasonValue: item.reason ?? "",
+        newRankId: item.newRankId ?? "",
+        movementType: item.movementType,
       })),
       previousEmployments: employee.previousEmployments.map((item) => ({
+        id: item.id,
         company: item.companyName,
         position: item.position ?? "-",
+        positionValue: item.position ?? "",
         startDate: formatDate(item.startDate),
+        startDateValue: toDateInputValue(item.startDate),
         endDate: formatDate(item.endDate),
+        endDateValue: toDateInputValue(item.endDate),
         salary: item.lastSalary ? formatCurrency(Number(item.lastSalary)) : "-",
+        salaryValue: item.lastSalary ? Number(item.lastSalary) : null,
       })),
       documents: employee.documents.map((item) => ({
         id: item.id,

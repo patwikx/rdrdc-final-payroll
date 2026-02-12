@@ -254,7 +254,11 @@ Last updated: 2026-02-12
     - Added styled CSV exports that mirror report headings/column structures for all implemented statutory reports.
     - Added print metadata footer handling (date/time/page/user) in report print output.
     - Added report-scoped print behavior so print action renders report HTML only (not full app page).
-    - Added monthly report safeguard so statutory monthly reports only use `REGULAR` payroll-run rows.
+    - Updated statutory reports source behavior:
+      - Default source is `REGULAR` payroll runs.
+      - Added UI switch to optionally show `TRIAL_RUN` records.
+      - Trial mode is constrained to the latest trial run per pay period.
+      - Monthly remittance tables consolidate to one row per employee per selected month.
   - [x] Upgraded BIR annual tax logic to align with annual WTAX-table computation flow.
     - Added annual alphalist computation (gross compensation, mandatory contributions, non-taxable benefits cap, taxable compensation, annual tax due, withheld variance).
     - Added BIR report columns for SSS/PH/PG employee share and aligned value rendering.
@@ -296,8 +300,9 @@ Last updated: 2026-02-12
   - Current pay period auto-resolve.
   - Filed leave + overtime with supervisor-approved source rows.
   - Rich filtering + export-ready output.
-- [ ] Remove remaining Employee Portal loan entry points to match current scope policy.
-  - Employee Portal should not expose Loans or Loan Calculator in sidebar/quick actions.
+- [x] Remove remaining Employee Portal loan entry points to match current scope policy.
+  - Removed Employee Portal loan quick-action and pending loan widget from portal dashboard.
+  - Removed Employee Portal `/loans` and `/loan-calculator` routes from employee scope.
 - [ ] Formalize `modules/leave` as a full domain module (not UI-only).
   - Add `actions`, `schemas`, `utils`, and `types` under `modules/leave`.
   - Move leave domain queries/transforms from route files/components into module-level loaders/services.

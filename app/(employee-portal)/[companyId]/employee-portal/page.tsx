@@ -9,7 +9,6 @@ import {
   IconBriefcase,
   IconCalendarEvent,
   IconClockHour4,
-  IconCoins,
   IconFileText,
   IconGift,
   IconWallet,
@@ -104,7 +103,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     )
   }
 
-  const [leaveBalances, pendingLeaveRequests, pendingOvertimeRequests, pendingLoanApplications, recentPayslips, upcomingHolidays] = await Promise.all([
+  const [leaveBalances, pendingLeaveRequests, pendingOvertimeRequests, recentPayslips, upcomingHolidays] = await Promise.all([
     db.leaveBalance.findMany({
       where: {
         employeeId: context.employee.id,
@@ -127,12 +126,6 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
       where: {
         employeeId: context.employee.id,
         statusCode: "PENDING",
-      },
-    }),
-    db.loan.count({
-      where: {
-        employeeId: context.employee.id,
-        applicationStatusCode: "PENDING",
       },
     }),
     db.payslip.findMany({
@@ -207,7 +200,6 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
               <QuickActionCard href={`/${context.companyId}/employee-portal/payslips`} title="My Payslips" desc="Salary records" icon={IconWallet} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/leaves`} title="Leave" desc="Time off requests" icon={IconCalendarEvent} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/overtime`} title="Overtime" desc="Extra hours" icon={IconClockHour4} />
-              <QuickActionCard href={`/${context.companyId}/employee-portal/loans`} title="Loans" desc="Currently unavailable" icon={IconCoins} disabled />
             </div>
           </div>
 
@@ -244,10 +236,6 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Overtime Requests</span>
                   <span className="text-sm font-semibold text-foreground">{pendingOvertimeRequests}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Loan Applications</span>
-                  <span className="text-sm font-semibold text-foreground">{pendingLoanApplications}</span>
                 </div>
               </div>
             </div>

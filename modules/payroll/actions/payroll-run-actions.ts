@@ -541,6 +541,7 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
     companyId: context.companyId,
     isActive: true,
     deletedAt: null,
+    employeeNumber: { not: "admin" },
     payPeriodPatternId: period.patternId,
   }
 
@@ -920,6 +921,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const employeeWhere: Prisma.EmployeeWhereInput = {
     companyId: run.companyId,
     deletedAt: null,
+    employeeNumber: { not: "admin" },
     payPeriodPatternId: run.payPeriod.patternId,
     ...(isThirteenthMonthRun
       ? {

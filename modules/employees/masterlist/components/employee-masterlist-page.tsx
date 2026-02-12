@@ -53,7 +53,7 @@ type EmployeeMasterlistPageProps = {
 type SortColumn = "name" | "employeeNumber" | "department" | "status"
 type SortDirection = "asc" | "desc"
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 10
 
 export function EmployeeMasterlistPage({
   companyId,
@@ -356,13 +356,13 @@ export function EmployeeMasterlistPage({
 
         <main className="flex flex-1 flex-col bg-background p-0">
           <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/10">
-            <div className="grid h-10 grid-cols-12 items-center px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <SortHeader label="Employee ID" active={sortColumn === "employeeNumber"} direction={sortDirection} onClick={() => toggleSort("employeeNumber")} className="col-span-2" />
-              <SortHeader label="Employee Name" active={sortColumn === "name"} direction={sortDirection} onClick={() => toggleSort("name")} className="col-span-3" />
-              <div className="col-span-2">Position</div>
-              <SortHeader label="Department" active={sortColumn === "department"} direction={sortDirection} onClick={() => toggleSort("department")} className="col-span-2" />
-              <SortHeader label="Status" active={sortColumn === "status"} direction={sortDirection} onClick={() => toggleSort("status")} className="col-span-1" />
-              <div className="col-span-2 text-right">Actions</div>
+            <div className="grid h-10 grid-cols-[88px_minmax(240px,_2fr)_minmax(170px,_1.2fr)_minmax(150px,_1fr)_minmax(120px,_0.8fr)_minmax(190px,_1fr)] items-center gap-4 px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <SortHeader label="Employee ID" active={sortColumn === "employeeNumber"} direction={sortDirection} onClick={() => toggleSort("employeeNumber")} className="" />
+              <SortHeader label="Employee Name" active={sortColumn === "name"} direction={sortDirection} onClick={() => toggleSort("name")} className="" />
+              <div>Position</div>
+              <SortHeader label="Department" active={sortColumn === "department"} direction={sortDirection} onClick={() => toggleSort("department")} className="" />
+              <SortHeader label="Status" active={sortColumn === "status"} direction={sortDirection} onClick={() => toggleSort("status")} className="" />
+              <div className="text-right">Actions</div>
             </div>
           </div>
 
@@ -379,12 +379,12 @@ export function EmployeeMasterlistPage({
               </div>
             ) : (
               paginatedEmployees.map((employee) => (
-                <div key={employee.id} className="group grid grid-cols-12 items-center px-8 py-4 transition-colors hover:bg-muted/5">
-                  <div className="col-span-2">
-                    <Badge variant="secondary" className="font-medium">{employee.employeeNumber}</Badge>
+                <div key={employee.id} className="group grid grid-cols-[88px_minmax(240px,_2fr)_minmax(170px,_1.2fr)_minmax(150px,_1fr)_minmax(120px,_0.8fr)_minmax(190px,_1fr)] items-center gap-4 px-8 py-4 transition-colors hover:bg-muted/5">
+                  <div>
+                    <Badge variant="secondary" className="px-2 py-0 text-[11px] font-semibold">{employee.employeeNumber}</Badge>
                   </div>
 
-                  <div className="col-span-3 flex items-center gap-3">
+                  <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9 shrink-0 border border-border/60">
                       <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="object-cover" />
                       <AvatarFallback className="bg-primary/5 text-[13px] font-semibold text-primary">
@@ -400,22 +400,22 @@ export function EmployeeMasterlistPage({
                     </div>
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
                     <p className="truncate text-sm font-medium text-foreground/80">{employee.position}</p>
                     <p className="truncate text-xs text-muted-foreground">{employee.branch}</p>
                   </div>
 
-                  <div className="col-span-2">
+                  <div>
                     <p className="truncate text-xs text-muted-foreground">{employee.department}</p>
                   </div>
 
-                  <div className="col-span-1">
+                  <div>
                     <Badge variant={employee.isActive ? "default" : "secondary"}>
                       {employee.isActive ? employee.employmentStatus : "INACTIVE"}
                     </Badge>
                   </div>
 
-                  <div className="col-span-2 flex justify-end">
+                  <div className="flex justify-end">
                     <div className="flex items-center gap-2">
                       <Link href={`/${companyId}/employees/${employee.id}`}>
                         <Button variant="outline" size="sm" className="gap-1 border-border/60">
@@ -426,8 +426,7 @@ export function EmployeeMasterlistPage({
                       {canDeleteEmployees ? (
                         <Button
                           variant="destructive"
-                          size="sm"
-                          className="gap-1"
+                          size="icon"
                           onClick={() =>
                             setDeleteTarget({
                               id: employee.id,
@@ -436,9 +435,10 @@ export function EmployeeMasterlistPage({
                               isActive: employee.isActive,
                             })
                           }
+                          aria-label={`Delete ${employee.fullName}`}
+                          title={`Delete ${employee.fullName}`}
                         >
                           <IconTrash className="h-3.5 w-3.5" />
-                          Delete
                         </Button>
                       ) : null}
                     </div>

@@ -14,6 +14,7 @@ import {
   IconFingerprint,
   IconHeart,
   IconHistory,
+  IconPlus,
   IconUser,
   IconLayoutGrid,
   IconUsers,
@@ -42,6 +43,7 @@ import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
+import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
 import { EmployeeMedicalTab } from "@/modules/employees/profile/components/employee-medical-tab"
 import { EmployeeQualificationsTab } from "@/modules/employees/profile/components/employee-qualifications-tab"
@@ -149,6 +151,94 @@ type EmployeeLifecycleDraft = {
   remarks: string
 }
 
+type DynamicOptionKey =
+  | "employmentStatuses"
+  | "employmentTypes"
+  | "employmentClasses"
+  | "departments"
+  | "divisions"
+  | "positions"
+  | "ranks"
+  | "branches"
+
+type DynamicCreateEntity =
+  | "employmentStatus"
+  | "employmentType"
+  | "employmentClass"
+  | "department"
+  | "division"
+  | "position"
+  | "rank"
+  | "branch"
+
+type EmploymentFieldKey =
+  | "employmentStatusId"
+  | "employmentTypeId"
+  | "employmentClassId"
+  | "departmentId"
+  | "divisionId"
+  | "positionId"
+  | "rankId"
+  | "branchId"
+
+type DynamicCreateTarget = {
+  key: DynamicOptionKey
+  entity: DynamicCreateEntity
+  label: string
+  employmentField: EmploymentFieldKey
+}
+
+const dynamicSelectTargets: Record<DynamicOptionKey, DynamicCreateTarget> = {
+  employmentStatuses: {
+    key: "employmentStatuses",
+    entity: "employmentStatus",
+    label: "Employment Status",
+    employmentField: "employmentStatusId",
+  },
+  employmentTypes: {
+    key: "employmentTypes",
+    entity: "employmentType",
+    label: "Employment Type",
+    employmentField: "employmentTypeId",
+  },
+  employmentClasses: {
+    key: "employmentClasses",
+    entity: "employmentClass",
+    label: "Employment Class",
+    employmentField: "employmentClassId",
+  },
+  departments: {
+    key: "departments",
+    entity: "department",
+    label: "Department",
+    employmentField: "departmentId",
+  },
+  divisions: {
+    key: "divisions",
+    entity: "division",
+    label: "Division",
+    employmentField: "divisionId",
+  },
+  positions: {
+    key: "positions",
+    entity: "position",
+    label: "Position",
+    employmentField: "positionId",
+  },
+  ranks: {
+    key: "ranks",
+    entity: "rank",
+    label: "Rank",
+    employmentField: "rankId",
+  },
+  branches: {
+    key: "branches",
+    entity: "branch",
+    label: "Branch",
+    employmentField: "branchId",
+  },
+}
+
 const getTodayPhDateInput = (): string => {
   return new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
@@ -223,10 +313,14 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const router = useRouter()
   const [isSaving, startSaving] = useTransition()
   const [isLifecyclePending, startLifecycleTransition] = useTransition()
+  const [isCreatingOption, startCreateOption] = useTransition()
   const [activeTab, setActiveTab] = useState<TabKey>("overview")
   const [isEditing, setIsEditing] = useState(false)
   const [lifecycleActionType, setLifecycleActionType] = useState<EmployeeLifecycleActionType | null>(null)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+  const [profileOptions, setProfileOptions] = useState(data.options)
+  const [createTarget, setCreateTarget] = useState<DynamicCreateTarget | null>(null)
+  const [createName, setCreateName] = useState("")
 
   const initialDraft = useMemo(() => buildInitialDraft(employee), [employee])
   const [draft, setDraft] = useState<EmployeeProfileDraft>(initialDraft)
@@ -249,6 +343,56 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
     if (isLifecyclePending) return
     setLifecycleActionType(null)
     setLifecycleError(null)
+  }
+
+  const openCreateDialog = (key: DynamicOptionKey) => {
+    setCreateTarget(dynamicSelectTargets[key])
+    setCreateName("")
+  }
+
+  const closeCreateDialog = () => {
+    if (isCreatingOption) return
+    setCreateTarget(null)
+    setCreateName("")
+  }
+
+  const handleCreateOption = () => {
+    if (!createTarget) {
+      return
+    }
+
+    const trimmedName = createName.trim()
+    if (trimmedName.length < 2) {
+      toast.error(`${createTarget.label} name must be at least 2 characters.`)
+      return
+    }
+
+    startCreateOption(async () => {
+      const result = await createOnboardingSelectEntityAction({
+        companyId: data.companyId,
+        entity: createTarget.entity,
+        name: trimmedName,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setProfileOptions((prev) => ({
+        ...prev,
+        [createTarget.key]: [...prev[createTarget.key], result.option].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        ),
+      }))
+      setDraft((prev) => ({
+        ...prev,
+        [createTarget.employmentField]: result.option.id,
+      }))
+      setCreateTarget(null)
+      setCreateName("")
+      toast.success(`${createTarget.label} added.`)
+    })
   }
 
   const onSaveEdit = () => {
@@ -528,16 +672,55 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
               onTerminate={() => openLifecycleDialog("TERMINATE")}
             />
           ) : null}
-          {activeTab === "personal" ? <PersonalTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
-          {activeTab === "education" ? <EmployeeFamilyTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
-          {activeTab === "employment" ? <EmploymentTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
-          {activeTab === "payroll" ? <PayrollTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
+          {activeTab === "personal" ? <PersonalTab employee={employee} options={profileOptions} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
+          {activeTab === "education" ? <EmployeeFamilyTab companyId={data.companyId} employee={employee} options={profileOptions} /> : null}
+          {activeTab === "employment" ? (
+            <EmploymentTab
+              employee={employee}
+              options={profileOptions}
+              isEditing={isEditing}
+              draft={draft}
+              setDraft={setDraft}
+              onCreateRequested={openCreateDialog}
+            />
+          ) : null}
+          {activeTab === "payroll" ? <PayrollTab employee={employee} options={profileOptions} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
           {activeTab === "medical" ? <EmployeeMedicalTab companyId={data.companyId} employee={employee} /> : null}
-          {activeTab === "qualifications" ? <EmployeeQualificationsTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
-          {activeTab === "history" ? <EmployeeHistoryTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
+          {activeTab === "qualifications" ? <EmployeeQualificationsTab companyId={data.companyId} employee={employee} options={profileOptions} /> : null}
+          {activeTab === "history" ? <EmployeeHistoryTab companyId={data.companyId} employee={employee} options={profileOptions} /> : null}
           {activeTab === "documents" ? <DocumentsTab employee={employee} /> : null}
         </section>
       </div>
+
+      <Dialog open={Boolean(createTarget)} onOpenChange={(open) => (!open ? closeCreateDialog() : null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add {createTarget?.label}</DialogTitle>
+            <DialogDescription>
+              Create a new {createTarget?.label?.toLowerCase()} without leaving this record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>
+              {createTarget?.label ?? "Record"} Name
+              <span className="ml-1 text-destructive">*</span>
+            </Label>
+            <Input
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
+              placeholder={`Enter ${createTarget?.label?.toLowerCase() ?? "record"} name`}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeCreateDialog} disabled={isCreatingOption}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleCreateOption} disabled={isCreatingOption}>
+              {isCreatingOption ? "Adding..." : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(lifecycleActionType)} onOpenChange={(open) => (!open ? closeLifecycleDialog() : null)}>
         <DialogContent>
@@ -810,26 +993,116 @@ function EmploymentTab({
   isEditing,
   draft,
   setDraft,
+  onCreateRequested,
 }: {
   employee: EmployeeProfileViewModel["employee"]
   options: EmployeeProfileViewModel["options"]
   isEditing: boolean
   draft: EmployeeProfileDraft
   setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
+  onCreateRequested: (key: DynamicOptionKey) => void
 }) {
   return (
     <div className="space-y-8">
       <SectionHeader title="Employment Details" number="01" icon={IconBriefcase} />
       <FieldGrid className="md:grid-cols-3 xl:grid-cols-5">
         <Field label="Employee Number" value={employee.employeeNumber} />
-        <SelectField label="Employment Status" value={employee.employmentStatus} editable={isEditing} selectedValue={draft.employmentStatusId} options={options.employmentStatuses} placeholder="Select status" onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentStatusId: value }))} />
-        <SelectField label="Employment Class" value={employee.employmentClass} editable={isEditing} selectedValue={draft.employmentClassId} options={options.employmentClasses} placeholder="Select class" onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentClassId: value }))} />
-        <SelectField label="Employment Type" value={employee.employmentType} editable={isEditing} selectedValue={draft.employmentTypeId} options={options.employmentTypes} placeholder="Select type" onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentTypeId: value }))} />
-        <SelectField label="Department" value={employee.department} editable={isEditing} selectedValue={draft.departmentId} options={options.departments} placeholder="Select department" onValueChange={(value) => setDraft((prev) => ({ ...prev, departmentId: value }))} />
-        <SelectField label="Division" value={employee.division} editable={isEditing} selectedValue={draft.divisionId} options={options.divisions} placeholder="Select division" onValueChange={(value) => setDraft((prev) => ({ ...prev, divisionId: value }))} />
-        <SelectField label="Position" value={employee.position} editable={isEditing} selectedValue={draft.positionId} options={options.positions} placeholder="Select position" onValueChange={(value) => setDraft((prev) => ({ ...prev, positionId: value }))} />
-        <SelectField label="Branch" value={employee.branch} editable={isEditing} selectedValue={draft.branchId} options={options.branches} placeholder="Select branch" onValueChange={(value) => setDraft((prev) => ({ ...prev, branchId: value }))} />
-        <SelectField label="Rank" value={employee.rank} editable={isEditing} selectedValue={draft.rankId} options={options.ranks} placeholder="Select rank" onValueChange={(value) => setDraft((prev) => ({ ...prev, rankId: value }))} />
+        <SelectField
+          label="Employment Status"
+          value={employee.employmentStatus}
+          editable={isEditing}
+          selectedValue={draft.employmentStatusId}
+          options={options.employmentStatuses}
+          placeholder="Select status"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentStatusId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add status"
+          onCreateRequested={() => onCreateRequested("employmentStatuses")}
+        />
+        <SelectField
+          label="Employment Class"
+          value={employee.employmentClass}
+          editable={isEditing}
+          selectedValue={draft.employmentClassId}
+          options={options.employmentClasses}
+          placeholder="Select class"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentClassId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add class"
+          onCreateRequested={() => onCreateRequested("employmentClasses")}
+        />
+        <SelectField
+          label="Employment Type"
+          value={employee.employmentType}
+          editable={isEditing}
+          selectedValue={draft.employmentTypeId}
+          options={options.employmentTypes}
+          placeholder="Select type"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, employmentTypeId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add type"
+          onCreateRequested={() => onCreateRequested("employmentTypes")}
+        />
+        <SelectField
+          label="Department"
+          value={employee.department}
+          editable={isEditing}
+          selectedValue={draft.departmentId}
+          options={options.departments}
+          placeholder="Select department"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, departmentId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add department"
+          onCreateRequested={() => onCreateRequested("departments")}
+        />
+        <SelectField
+          label="Division"
+          value={employee.division}
+          editable={isEditing}
+          selectedValue={draft.divisionId}
+          options={options.divisions}
+          placeholder="Select division"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, divisionId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add division"
+          onCreateRequested={() => onCreateRequested("divisions")}
+        />
+        <SelectField
+          label="Position"
+          value={employee.position}
+          editable={isEditing}
+          selectedValue={draft.positionId}
+          options={options.positions}
+          placeholder="Select position"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, positionId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add position"
+          onCreateRequested={() => onCreateRequested("positions")}
+        />
+        <SelectField
+          label="Branch"
+          value={employee.branch}
+          editable={isEditing}
+          selectedValue={draft.branchId}
+          options={options.branches}
+          placeholder="Select branch"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, branchId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add branch"
+          onCreateRequested={() => onCreateRequested("branches")}
+        />
+        <SelectField
+          label="Rank"
+          value={employee.rank}
+          editable={isEditing}
+          selectedValue={draft.rankId}
+          options={options.ranks}
+          placeholder="Select rank"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, rankId: value }))}
+          allowCreate={isEditing}
+          createLabel="Add rank"
+          onCreateRequested={() => onCreateRequested("ranks")}
+        />
         <SelectField label="Reporting Manager" value={employee.reportingManager} editable={isEditing} selectedValue={draft.reportingManagerId} options={options.managers} placeholder="Select manager" onValueChange={(value) => setDraft((prev) => ({ ...prev, reportingManagerId: value }))} />
       </FieldGrid>
 
@@ -1067,6 +1340,10 @@ function SelectField({
   options,
   onValueChange,
   placeholder,
+  allowCreate = false,
+  createLabel,
+  onCreateRequested,
+  allowEmpty = true,
 }: {
   label: string
   value: string
@@ -1075,17 +1352,42 @@ function SelectField({
   options: Array<{ id: string; name: string }>
   onValueChange: (value: string) => void
   placeholder: string
+  allowCreate?: boolean
+  createLabel?: string
+  onCreateRequested?: () => void
+  allowEmpty?: boolean
 }) {
+  const noneValue = "__none__"
+  const createValue = "__create__"
+
   return (
     <div className="space-y-1.5">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       {editable ? (
-        <Select value={selectedValue || "__none__"} onValueChange={(value) => onValueChange(value === "__none__" ? "" : value)}>
+        <Select
+          value={allowEmpty && !selectedValue ? noneValue : (selectedValue || undefined)}
+          onValueChange={(nextValue) => {
+            if (allowCreate && nextValue === createValue) {
+              onCreateRequested?.()
+              return
+            }
+
+            onValueChange(allowEmpty && nextValue === noneValue ? "" : nextValue)
+          }}
+        >
           <SelectTrigger>
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">None</SelectItem>
+            {allowCreate ? (
+              <SelectItem value={createValue} className="font-medium text-blue-600 focus:text-blue-700">
+                <span className="inline-flex items-center gap-2">
+                  <IconPlus className="size-3.5" />
+                  {createLabel ?? `Add ${label}`}
+                </span>
+              </SelectItem>
+            ) : null}
+            {allowEmpty ? <SelectItem value={noneValue}>None</SelectItem> : null}
             {options.map((option) => (
               <SelectItem key={option.id} value={option.id}>
                 {option.name}

@@ -44,6 +44,7 @@ export async function getEmployeeMasterlistViewModel(companyId: string): Promise
     where: {
       companyId: context.companyId,
       deletedAt: null,
+      employeeNumber: { not: "admin" },
     },
     orderBy: [{ isActive: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
     select: {

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 
-const DEFAULT_EMPLOYEE_PAGE_SIZE = 25
-const DEFAULT_SYSTEM_USER_PAGE_SIZE = 20
+const DEFAULT_EMPLOYEE_PAGE_SIZE = 10
+const DEFAULT_SYSTEM_USER_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 100
 
 export type UserAccessLinkFilter = "ALL" | "LINKED" | "UNLINKED"

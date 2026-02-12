@@ -1,9 +1,8 @@
 "use client"
 
 import {
-  DashboardIteration1,
-  type DashboardIterationProps,
-} from "@/modules/dashboard/components/dashboard-iterations"
+  DashboardActionCenterLayout,
+} from "@/modules/dashboard/components/dashboard-action-center-layout"
 import type { DashboardActionCenterData } from "@/modules/dashboard/utils/get-dashboard-action-center-data"
 
 type DashboardActionCenterProps = {
@@ -15,5 +14,5 @@ type DashboardActionCenterProps = {
 }
 
 export function DashboardActionCenter(props: DashboardActionCenterProps) {
-  return <DashboardIteration1 {...props} iterationNumber={1} />
+  return <DashboardActionCenterLayout {...props} />
 }

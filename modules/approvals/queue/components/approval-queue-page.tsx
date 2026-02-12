@@ -44,7 +44,7 @@ import {
 } from "@/modules/approvals/queue/actions/finalize-approval-queue-request-action"
 import type { ApprovalQueueItem } from "@/modules/approvals/queue/utils/get-approval-queue-data"
 
-type ApprovalQueueIterationsProps = {
+type ApprovalQueuePageProps = {
   companyId: string
   companyName: string
   items: ApprovalQueueItem[]
@@ -68,7 +68,7 @@ const requestTypeLabel = (kind: ApprovalQueueItem["kind"]): string => {
   return kind === "LEAVE" ? "Leave Request" : "Overtime Request"
 }
 
-export function ApprovalQueueIterations({ companyId, companyName, items, summary }: ApprovalQueueIterationsProps) {
+export function ApprovalQueuePage({ companyId, companyName, items, summary }: ApprovalQueuePageProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [query, setQuery] = useState("")

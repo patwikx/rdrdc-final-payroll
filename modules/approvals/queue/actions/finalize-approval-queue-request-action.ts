@@ -12,7 +12,7 @@ import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   consumeReservedLeaveBalanceForRequest,
   releaseReservedLeaveBalanceForRequest,
-} from "@/modules/employee-portal/utils/leave-balance-ledger"
+} from "@/modules/leave/utils/leave-balance-ledger"
 import { applyCtoCreditForApprovedOvertime } from "@/modules/employee-portal/utils/cto-conversion"
 import {
   approveApprovalQueueRequestInputSchema,

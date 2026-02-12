@@ -1,6 +1,7 @@
 import { RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { getPhYear } from "@/lib/ph-time"
 import { leaveDateRangeSchema, leaveYearSchema } from "@/modules/leave/schemas/leave-query-schemas"
 import type {
   LeaveBalanceSummaryReportEmployeeRow,
@@ -30,7 +31,7 @@ const isExcludedInBalanceSummaryReport = (value: string): boolean => {
 }
 
 export const resolveLeaveYear = (input: number | undefined): number => {
-  const currentYear = new Date().getFullYear()
+  const currentYear = getPhYear()
   const parsed = typeof input === "number" ? leaveYearSchema.safeParse(input) : null
   if (parsed?.success) return parsed.data
   return currentYear

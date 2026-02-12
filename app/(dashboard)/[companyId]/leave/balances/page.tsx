@@ -5,7 +5,7 @@ import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
 } from "@/modules/auth/utils/active-company-context"
-import { LeaveBalanceLayoutIterations } from "@/modules/leave/components/leave-balance-layout-iterations"
+import { LeaveBalancePage } from "@/modules/leave/components/leave-balance-page"
 import { getLeaveBalanceWorkspaceData, resolveLeaveYear } from "@/modules/leave/utils/leave-domain"
 
 type LeaveBalancesRouteProps = {
@@ -70,7 +70,7 @@ export default async function LeaveBalancesRoutePage({ params, searchParams }: L
   })
 
   return (
-    <LeaveBalanceLayoutIterations
+    <LeaveBalancePage
       companyId={company.companyId}
       selectedYear={selectedYear}
       years={years}

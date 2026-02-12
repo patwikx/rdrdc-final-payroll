@@ -6,7 +6,7 @@ import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
 } from "@/modules/auth/utils/active-company-context"
-import { ApprovalQueueIterations } from "@/modules/approvals/queue/components/approval-queue-iterations"
+import { ApprovalQueuePage } from "@/modules/approvals/queue/components/approval-queue-page"
 import { getApprovalQueueData } from "@/modules/approvals/queue/utils/get-approval-queue-data"
 
 type ApprovalQueueRouteProps = {
@@ -83,6 +83,6 @@ export default async function ApprovalQueueRoutePage({ params }: ApprovalQueueRo
   }
 
   return (
-    <ApprovalQueueIterations companyId={data.companyId} companyName={data.companyName} items={data.items} summary={data.summary} />
+    <ApprovalQueuePage companyId={data.companyId} companyName={data.companyName} items={data.items} summary={data.summary} />
   )
 }

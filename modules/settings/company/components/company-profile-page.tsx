@@ -28,6 +28,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { getPhYear } from "@/lib/ph-time"
 import { updateCompanyProfileAction } from "@/modules/settings/company/actions/update-company-profile-action"
 import {
   ADDRESS_TYPE_OPTIONS,
@@ -365,7 +366,7 @@ function RegistrationGovernmentFields({ form, updateCompanyField }: LayoutProps)
               onSelect={(date) => updateCompanyField("dateOfIncorporation", toPhDateInputValue(date))}
               captionLayout="dropdown"
               fromYear={1900}
-              toYear={new Date().getFullYear()}
+              toYear={getPhYear()}
             />
           </PopoverContent>
         </Popover>

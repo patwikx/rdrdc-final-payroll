@@ -49,6 +49,7 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { getPhYear } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { setActiveCompanyAction } from "@/modules/auth/actions/set-active-company-action"
 import {
@@ -90,7 +91,7 @@ const subItemIconMap: Record<string, ReactNode> = {
   "employee-user-access": <IconShieldCheck className="size-3.5" />,
   // Time Keeping
   dtr: <IconClock className="size-3.5" />,
-  "attendance-exceptions": <IconClipboardList className="size-3.5" />,
+  "sync-biometrics": <IconClipboardList className="size-3.5" />,
   schedules: <IconCalendarTime className="size-3.5" />,
   // Payroll
   "payroll-runs": <IconReceipt2 className="size-3.5" />,
@@ -304,7 +305,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
               className="text-muted-foreground"
             >
               <span className="text-xs">
-                © {new Date().getFullYear()} RDRDC Payroll
+                © {getPhYear()} RDRDC Payroll
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>

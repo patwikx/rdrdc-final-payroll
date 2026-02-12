@@ -45,7 +45,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     roles: ALL_ROLES,
     items: [
       { id: "dtr", label: "Daily Time Record", path: "/attendance/dtr" },
-      { id: "attendance-exceptions", label: "Sync Biometrics", path: "/attendance/sync-biometrics" },
+      { id: "sync-biometrics", label: "Sync Biometrics", path: "/attendance/sync-biometrics" },
       { id: "schedules", label: "Leave Calendar", path: "/attendance/schedules" },
     ],
   },

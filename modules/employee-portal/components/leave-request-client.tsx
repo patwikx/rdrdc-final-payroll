@@ -44,54 +44,18 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { cancelLeaveRequestAction, createLeaveRequestAction } from "@/modules/employee-portal/actions/leave-request-actions"
-
-type LeaveRequestRow = {
-  id: string
-  requestNumber: string
-  isHalfDay: boolean
-  halfDayPeriod: string | null
-  startDate: string
-  endDate: string
-  numberOfDays: number
-  reason: string | null
-  statusCode: string
-  leaveTypeName: string
-  supervisorApproverName: string | null
-  supervisorApprovedAt: string | null
-  supervisorApprovalRemarks: string | null
-  hrApproverName: string | null
-  hrApprovedAt: string | null
-  hrApprovalRemarks: string | null
-  hrRejectedAt: string | null
-  hrRejectionReason: string | null
-  approverName: string | null
-  rejectionReason: string | null
-}
-
-type LeaveTypeOption = {
-  id: string
-  code: string
-  name: string
-  isPaid: boolean
-  requiresApproval: boolean
-}
-
-type LeaveBalanceItem = {
-  id: string
-  leaveTypeId: string
-  leaveTypeName: string
-  currentBalance: number
-  availableBalance: number
-  creditsEarned: number
-  creditsUsed: number
-}
+import { cancelLeaveRequestAction, createLeaveRequestAction } from "@/modules/leave/actions/leave-request-actions"
+import type {
+  EmployeePortalLeaveBalanceItem,
+  EmployeePortalLeaveRequestRow,
+  EmployeePortalLeaveTypeOption,
+} from "@/modules/leave/types/employee-portal-leave-types"
 
 type LeaveRequestClientProps = {
   companyId: string
-  leaveTypes: LeaveTypeOption[]
-  leaveBalances: LeaveBalanceItem[]
-  requests: LeaveRequestRow[]
+  leaveTypes: EmployeePortalLeaveTypeOption[]
+  leaveBalances: EmployeePortalLeaveBalanceItem[]
+  requests: EmployeePortalLeaveRequestRow[]
 }
 
 const statusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {

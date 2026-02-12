@@ -1,9 +1,11 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState, useTransition } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBriefcase,
+  IconChevronLeft,
+  IconChevronRight,
   IconDots,
   IconEdit,
   IconLink,
@@ -23,6 +25,7 @@ import {
 } from "@/modules/employees/user-access/actions/manage-employee-user-access-action"
 import type {
   AvailableSystemUserOption,
+  UserAccessLinkFilter,
   SystemUserAccountRow,
   UserAccessPreviewRow,
 } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
@@ -44,12 +47,27 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 
-type UserAccessIterationsProps = {
+type UserAccessPageProps = {
   companyId: string
   companyName: string
   rows: UserAccessPreviewRow[]
   availableUsers: AvailableSystemUserOption[]
   systemUsers: SystemUserAccountRow[]
+  query: string
+  employeeLinkFilter: UserAccessLinkFilter
+  systemLinkFilter: UserAccessLinkFilter
+  employeePagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
+  systemUserPagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
 }
 
 type ActionDialogState =
@@ -58,9 +76,24 @@ type ActionDialogState =
   | { type: "LINK"; row: UserAccessPreviewRow }
   | { type: "EDIT"; row: UserAccessPreviewRow }
 
-export function UserAccessIterations({ companyId, companyName, rows, availableUsers, systemUsers }: UserAccessIterationsProps) {
+export function UserAccessPage({
+  companyId,
+  companyName,
+  rows,
+  availableUsers,
+  systemUsers,
+  query,
+  employeeLinkFilter,
+  systemLinkFilter,
+  employeePagination,
+  systemUserPagination,
+}: UserAccessPageProps) {
   const router = useRouter()
-  const [query, setQuery] = useState("")
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [queryInput, setQueryInput] = useState(query)
+  const [employeeLinkFilterInput, setEmployeeLinkFilterInput] = useState<UserAccessLinkFilter>(employeeLinkFilter)
+  const [systemLinkFilterInput, setSystemLinkFilterInput] = useState<UserAccessLinkFilter>(systemLinkFilter)
 
   const [dialogState, setDialogState] = useState<ActionDialogState>({ type: "NONE" })
   const [isPending, startTransition] = useTransition()
@@ -81,11 +114,94 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
   const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
 
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((row) => `${row.employeeNumber} ${row.fullName} ${row.department} ${row.position}`.toLowerCase().includes(q))
-  }, [query, rows])
+  useEffect(() => {
+    setQueryInput(query)
+  }, [query])
+
+  useEffect(() => {
+    setEmployeeLinkFilterInput(employeeLinkFilter)
+  }, [employeeLinkFilter])
+
+  useEffect(() => {
+    setSystemLinkFilterInput(systemLinkFilter)
+  }, [systemLinkFilter])
+
+  const updateRoute = (updates: {
+    q?: string
+    empLink?: UserAccessLinkFilter
+    sysLink?: UserAccessLinkFilter
+    empPage?: number
+    sysPage?: number
+  }) => {
+    const params = new URLSearchParams(searchParams.toString())
+
+    if (typeof updates.q !== "undefined") {
+      const value = updates.q.trim()
+      if (value) {
+        params.set("q", value)
+      } else {
+        params.delete("q")
+      }
+    }
+
+    if (typeof updates.empLink !== "undefined") {
+      if (updates.empLink === "ALL") {
+        params.delete("empLink")
+      } else {
+        params.set("empLink", updates.empLink)
+      }
+    }
+
+    if (typeof updates.sysLink !== "undefined") {
+      if (updates.sysLink === "ALL") {
+        params.delete("sysLink")
+      } else {
+        params.set("sysLink", updates.sysLink)
+      }
+    }
+
+    if (typeof updates.empPage !== "undefined") {
+      if (updates.empPage > 1) {
+        params.set("empPage", String(updates.empPage))
+      } else {
+        params.delete("empPage")
+      }
+    }
+
+    if (typeof updates.sysPage !== "undefined") {
+      if (updates.sysPage > 1) {
+        params.set("sysPage", String(updates.sysPage))
+      } else {
+        params.delete("sysPage")
+      }
+    }
+
+    const next = params.toString()
+    router.push(next ? `${pathname}?${next}` : pathname)
+  }
+
+  const applyFilters = () => {
+    updateRoute({
+      q: queryInput,
+      empLink: employeeLinkFilterInput,
+      sysLink: systemLinkFilterInput,
+      empPage: 1,
+      sysPage: 1,
+    })
+  }
+
+  const resetFilters = () => {
+    setQueryInput("")
+    setEmployeeLinkFilterInput("ALL")
+    setSystemLinkFilterInput("ALL")
+    updateRoute({
+      q: "",
+      empLink: "ALL",
+      sysLink: "ALL",
+      empPage: 1,
+      sysPage: 1,
+    })
+  }
 
   const openCreate = (row: UserAccessPreviewRow) => {
     const nameBase = `${row.fullName.split(",")[1]?.trim() ?? "user"}.${row.fullName.split(",")[0]?.trim() ?? ""}`
@@ -225,17 +341,58 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
       </section>
 
       <section className="border-b border-border/60 px-4 py-3 sm:px-6">
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee" className="max-w-md" />
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_180px_auto_auto]">
+          <Input
+            value={queryInput}
+            onChange={(event) => setQueryInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                applyFilters()
+              }
+            }}
+            placeholder="Search employee, username, email"
+          />
+          <Select value={employeeLinkFilterInput} onValueChange={(value) => setEmployeeLinkFilterInput(value as UserAccessLinkFilter)}>
+            <SelectTrigger><SelectValue placeholder="Employee Link" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Employee: All</SelectItem>
+              <SelectItem value="LINKED">Employee: Linked</SelectItem>
+              <SelectItem value="UNLINKED">Employee: Unlinked</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={systemLinkFilterInput} onValueChange={(value) => setSystemLinkFilterInput(value as UserAccessLinkFilter)}>
+            <SelectTrigger><SelectValue placeholder="System Link" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">System: All</SelectItem>
+              <SelectItem value="LINKED">System: Linked</SelectItem>
+              <SelectItem value="UNLINKED">System: Unlinked</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="button" variant="outline" onClick={resetFilters} disabled={isPending}>
+            Reset
+          </Button>
+          <Button type="button" onClick={applyFilters} disabled={isPending}>
+            Apply
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Employees: {employeePagination.totalItems} total | System users: {systemUserPagination.totalItems} total
+        </p>
       </section>
 
-      <IterationOne
-        rows={filteredRows}
+      <UserAccessWorkspace
+        rows={rows}
         systemUsers={systemUsers}
         onCreate={openCreate}
         onLink={openLink}
         onUnlink={submitUnlink}
         onEdit={openEdit}
         isPending={isPending}
+        employeePagination={employeePagination}
+        systemUserPagination={systemUserPagination}
+        onEmployeePageChange={(nextPage) => updateRoute({ empPage: nextPage })}
+        onSystemUserPageChange={(nextPage) => updateRoute({ sysPage: nextPage })}
       />
 
       <Dialog open={dialogState.type === "CREATE"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
@@ -378,7 +535,7 @@ export function UserAccessIterations({ companyId, companyName, rows, availableUs
   )
 }
 
-function IterationOne({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, isPending }: {
+function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, isPending, employeePagination, systemUserPagination, onEmployeePageChange, onSystemUserPageChange }: {
   rows: UserAccessPreviewRow[]
   systemUsers: SystemUserAccountRow[]
   onCreate: (row: UserAccessPreviewRow) => void
@@ -386,6 +543,20 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, i
   onUnlink: (row: UserAccessPreviewRow) => void
   onEdit: (row: UserAccessPreviewRow) => void
   isPending: boolean
+  employeePagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
+  systemUserPagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
+  onEmployeePageChange: (nextPage: number) => void
+  onSystemUserPageChange: (nextPage: number) => void
 }) {
   return (
     <section className="grid border-b border-border/60 xl:grid-cols-[minmax(0,1fr)_440px]">
@@ -403,68 +574,103 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, i
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.employeeId} className="border-t border-border/60">
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
-                        <AvatarImage src={row.photoUrl ?? undefined} alt={row.fullName} className="!rounded-md object-cover" />
-                        <AvatarFallback className="!rounded-md text-[11px]">
-                          {getEmployeeInitials(row.fullName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div>{row.fullName}</div>
-                        <div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{row.department}</td>
-                  <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.linkedEmail}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
-                  <td className="px-3 py-2">{row.linkedCompanyRole ? <Badge variant="secondary">{row.linkedCompanyRole}</Badge> : <Badge variant="outline">-</Badge>}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant={row.requestApprover ? "default" : "destructive"}>
-                      {row.requestApprover ? "Enabled" : "Disabled"}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" disabled={isPending}>
-                          <IconDots className="size-4 rotate-90" />
-                          <span className="sr-only">Open actions</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        {!row.hasLinkedUser ? (
-                          <DropdownMenuItem onSelect={() => onCreate(row)} disabled={isPending}>
-                            Create & Link User
-                          </DropdownMenuItem>
-                        ) : null}
-                        {!row.hasLinkedUser ? (
-                          <DropdownMenuItem onSelect={() => onLink(row)} disabled={isPending}>
-                            Link Existing User
-                          </DropdownMenuItem>
-                        ) : null}
-                        {row.hasLinkedUser ? (
-                          <DropdownMenuItem onSelect={() => onEdit(row)} disabled={isPending}>
-                            <IconEdit className="mr-2 size-4" />
-                            Edit
-                          </DropdownMenuItem>
-                        ) : null}
-                        {row.hasLinkedUser ? (
-                          <DropdownMenuItem onSelect={() => onUnlink(row)} disabled={isPending}>
-                            <IconUserX className="mr-2 size-4" />
-                            Unlink
-                          </DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {rows.length === 0 ? (
+                <tr className="border-t border-border/60">
+                  <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No employees found for the current filters.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.employeeId} className="border-t border-border/60">
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
+                          <AvatarImage src={row.photoUrl ?? undefined} alt={row.fullName} className="!rounded-md object-cover" />
+                          <AvatarFallback className="!rounded-md text-[11px]">
+                            {getEmployeeInitials(row.fullName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div>{row.fullName}</div>
+                          <div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">{row.department}</td>
+                    <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.linkedEmail}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
+                    <td className="px-3 py-2">{row.linkedCompanyRole ? <Badge variant="secondary">{row.linkedCompanyRole}</Badge> : <Badge variant="outline">-</Badge>}</td>
+                    <td className="px-3 py-2">
+                      <Badge variant={row.requestApprover ? "default" : "destructive"}>
+                        {row.requestApprover ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm" disabled={isPending}>
+                            <IconDots className="size-4 rotate-90" />
+                            <span className="sr-only">Open actions</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          {!row.hasLinkedUser ? (
+                            <DropdownMenuItem onSelect={() => onCreate(row)} disabled={isPending}>
+                              Create & Link User
+                            </DropdownMenuItem>
+                          ) : null}
+                          {!row.hasLinkedUser ? (
+                            <DropdownMenuItem onSelect={() => onLink(row)} disabled={isPending}>
+                              Link Existing User
+                            </DropdownMenuItem>
+                          ) : null}
+                          {row.hasLinkedUser ? (
+                            <DropdownMenuItem onSelect={() => onEdit(row)} disabled={isPending}>
+                              <IconEdit className="mr-2 size-4" />
+                              Edit
+                            </DropdownMenuItem>
+                          ) : null}
+                          {row.hasLinkedUser ? (
+                            <DropdownMenuItem onSelect={() => onUnlink(row)} disabled={isPending}>
+                              <IconUserX className="mr-2 size-4" />
+                              Unlink
+                            </DropdownMenuItem>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          <span>
+            Page {employeePagination.page} of {employeePagination.totalPages} ({employeePagination.totalItems} employees)
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              disabled={isPending || employeePagination.page <= 1}
+              onClick={() => onEmployeePageChange(employeePagination.page - 1)}
+            >
+              <IconChevronLeft className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              disabled={isPending || employeePagination.page >= employeePagination.totalPages}
+              onClick={() => onEmployeePageChange(employeePagination.page + 1)}
+            >
+              <IconChevronRight className="size-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -504,6 +710,33 @@ function IterationOne({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, i
           )}
           </div>
         </ScrollArea>
+        <div className="flex items-center justify-between border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            Page {systemUserPagination.page} of {systemUserPagination.totalPages} ({systemUserPagination.totalItems} users)
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              disabled={isPending || systemUserPagination.page <= 1}
+              onClick={() => onSystemUserPageChange(systemUserPagination.page - 1)}
+            >
+              <IconChevronLeft className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2"
+              disabled={isPending || systemUserPagination.page >= systemUserPagination.totalPages}
+              onClick={() => onSystemUserPageChange(systemUserPagination.page + 1)}
+            >
+              <IconChevronRight className="size-3.5" />
+            </Button>
+          </div>
+        </div>
       </aside>
     </section>
   )

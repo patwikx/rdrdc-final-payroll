@@ -64,7 +64,6 @@ export function EmployeeMovementsPage({
   const [adjustmentTypeCode, setAdjustmentTypeCode] = useState<(typeof salaryAdjustmentOptions)[number]>("INCREASE")
   const [newScheduleId, setNewScheduleId] = useState("")
 
-  // Wizard state (for iteration 4)
   const [wizardStep, setWizardStep] = useState(1)
 
   const selectedEmployee = data.options.employees.find((e) => e.id === employeeId)

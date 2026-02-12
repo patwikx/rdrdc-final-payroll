@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getPhMonthIndex, getPhYear } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import type {
   LeaveBalanceWorkspaceHistoryRow,
@@ -58,7 +59,7 @@ const leaveHistoryStatusBadgeClass = (status: string): string => {
   return "border-border bg-muted text-foreground"
 }
 
-export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, balanceRows, historyRows }: Props) {
+export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, historyRows }: Props) {
   const [search, setSearch] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("all")
@@ -66,8 +67,8 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
   const [timelineWindowStart, setTimelineWindowStart] = useState(0)
   const [timelineSelectedMonth, setTimelineSelectedMonth] = useState(() => {
-    const now = new Date()
-    return now.getFullYear() === selectedYear ? now.getMonth() : 0
+    const currentPhYear = getPhYear()
+    return currentPhYear === selectedYear ? getPhMonthIndex() : 0
   })
 
   const departments = useMemo(
@@ -181,9 +182,8 @@ export function LeaveBalanceLayoutIterations({ companyId, selectedYear, years, b
   const maxTimelineWindowStart = Math.max(historyByMonth.length - TIMELINE_WINDOW, 0)
   const safeTimelineWindowStart = Math.min(timelineWindowStart, maxTimelineWindowStart)
   const visibleTimelineMonths = historyByMonth.slice(safeTimelineWindowStart, safeTimelineWindowStart + TIMELINE_WINDOW)
-  const today = new Date()
-  const currentMonthIndex = today.getMonth()
-  const currentYear = today.getFullYear()
+  const currentMonthIndex = getPhMonthIndex()
+  const currentYear = getPhYear()
 
   const handleTimelineNext = () => {
     if (timelineSelectedMonth >= historyByMonth.length - 1) return

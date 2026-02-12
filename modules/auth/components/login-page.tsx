@@ -52,12 +52,18 @@ export function LoginPage() {
     setErrorMessage(null)
 
     startTransition(async () => {
-      const result = await signIn("credentials", {
-        identifier,
-        password,
-        redirect: false,
-        callbackUrl: callbackPath ?? "/",
-      })
+      let result: Awaited<ReturnType<typeof signIn>> | undefined
+      try {
+        result = await signIn("credentials", {
+          identifier,
+          password,
+          redirect: false,
+        })
+      } catch (error) {
+        console.error("Client sign-in failed:", error)
+        setErrorMessage("Sign in failed. Please try again.")
+        return
+      }
 
       if (!result || result.error) {
         setErrorMessage("Invalid credentials. Please try again.")

@@ -1,4 +1,5 @@
 import styles from "@/modules/payroll/components/government-remittance-reports.module.css"
+import { getPhYear } from "@/lib/ph-time"
 
 export type PhilHealthRemittanceRow = {
   idNumber: string
@@ -120,7 +121,7 @@ export function GovernmentRemittanceReports({
   pagIbigRows,
   dole13thRows = [],
   birAlphalistRows = [],
-  birYear = new Date().getFullYear(),
+  birYear = getPhYear(),
   showPhilHealth = true,
   showSss = false,
   showPagIbig = true,

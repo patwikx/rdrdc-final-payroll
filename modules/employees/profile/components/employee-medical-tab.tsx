@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { getPhYear } from "@/lib/ph-time"
 import {
   createMedicalAttachmentUploadUrlAction,
   createMedicalRecordAction,
@@ -75,12 +76,6 @@ const toDateLabel = (value: string): string => {
     year: "numeric",
     timeZone: "Asia/Manila",
   }).format(date)
-}
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function RequiredLabel({ label }: { label: string }) {
@@ -287,7 +282,7 @@ export function EmployeeMedicalTab({ companyId, employee }: { companyId: string;
             <Button
               size="sm"
               onClick={() => {
-                const nowYear = new Date().getFullYear()
+                const nowYear = getPhYear()
                 setMedicalForm({ ...emptyMedicalRecordForm(), examYear: String(nowYear) })
                 setSelectedFile(null)
                 setMedicalDialogOpen(true)
@@ -420,13 +415,13 @@ export function EmployeeMedicalTab({ companyId, employee }: { companyId: string;
       </div>
 
       <Dialog open={medicalDialogOpen} onOpenChange={setMedicalDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-2xl [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle>{medicalForm.medicalRecordId ? "Edit Annual Physical Exam" : "Add Annual Physical Exam"}</DialogTitle>
             <DialogDescription>Track annual physical exam details and securely upload supporting documents in one dialog.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-2">
+          <div className="grid min-w-0 gap-4 py-2">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <RequiredLabel label="Exam Year" />
@@ -483,33 +478,47 @@ export function EmployeeMedicalTab({ companyId, employee }: { companyId: string;
                 <p className="text-xs text-muted-foreground">PDF, JPG, PNG, WEBP up to 20MB. Stored in private bucket.</p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => uploadInputRef.current?.click()}
-                className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-primary/40 bg-background px-4 py-4 text-sm font-medium text-foreground transition-colors hover:bg-primary/5"
-              >
-                <IconFileUpload className="size-4" />
-                {selectedFile ? "Replace File" : "Select File"}
-              </button>
+              <div className="relative w-full max-w-full min-w-0 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => uploadInputRef.current?.click()}
+                  className="flex h-10 w-full max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-md border border-dashed border-primary/40 bg-background px-3 pr-10 text-sm font-medium text-foreground transition-colors hover:bg-primary/5"
+                >
+                  <IconFileUpload className="size-4 shrink-0" />
+                  <span className="min-w-0 truncate">{selectedFile ? selectedFile.name : "Select File"}</span>
+                </button>
+                {selectedFile ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 z-10 size-8 -translate-y-1/2"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setSelectedFile(null)
+                      if (uploadInputRef.current) {
+                        uploadInputRef.current.value = ""
+                      }
+                    }}
+                    aria-label="Clear selected file"
+                  >
+                    <IconX className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
 
               <Input
                 ref={uploadInputRef}
                 type="file"
                 className="hidden"
                 accept="application/pdf,image/jpeg,image/png,image/webp"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0]
+                  if (nextFile) {
+                    setSelectedFile(nextFile)
+                  }
+                }}
               />
-              {selectedFile ? (
-                <div className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-background p-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">{selectedFile.type || "Unknown type"} • {formatBytes(selectedFile.size)}</p>
-                  </div>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedFile(null)} className="size-7">
-                    <IconX className="size-4" />
-                  </Button>
-                </div>
-              ) : null}
               <div className="space-y-1.5">
                 <Label>Attachment Description</Label>
                 <Input value={medicalForm.uploadDescription} onChange={(event) => setMedicalForm((prev) => ({ ...prev, uploadDescription: event.target.value }))} placeholder="e.g. Lab Results" />

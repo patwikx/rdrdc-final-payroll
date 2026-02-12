@@ -5,7 +5,7 @@ import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
 } from "@/modules/auth/utils/active-company-context"
-import { DashboardActionCenter } from "@/modules/dashboard/components/dashboard-page-iterations"
+import { DashboardActionCenter } from "@/modules/dashboard/components/dashboard-action-center"
 import { getDashboardActionCenterData } from "@/modules/dashboard/utils/get-dashboard-action-center-data"
 
 type CompanyDashboardPageProps = {

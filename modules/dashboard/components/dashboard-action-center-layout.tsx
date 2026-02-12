@@ -22,13 +22,12 @@ import type { DashboardActionCenterData } from "@/modules/dashboard/utils/get-da
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type DashboardIterationProps = {
+export type DashboardActionCenterLayoutProps = {
   companyId: string
   companyName: string
   companyCode: string
   companyRole: string
   data: DashboardActionCenterData
-  iterationNumber: number
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -54,8 +53,7 @@ function PageHeader({
   companyName,
   companyRole,
   data,
-  iterationNumber,
-}: DashboardIterationProps) {
+}: DashboardActionCenterLayoutProps) {
   const roleLabel = useMemo(() => companyRole.split("_").join(" "), [companyRole])
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -236,7 +234,7 @@ function MiniTableRows({ columns, rows, statusCol }: { columns: string[]; rows: 
 //  side by side at the bottom. Reads top-to-bottom like a report.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function DashboardIteration1(props: DashboardIterationProps) {
+export function DashboardActionCenterLayout(props: DashboardActionCenterLayoutProps) {
   const { data } = props
 
   return (

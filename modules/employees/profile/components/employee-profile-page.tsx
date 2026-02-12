@@ -24,16 +24,34 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
+import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
 import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
 import { EmployeeMedicalTab } from "@/modules/employees/profile/components/employee-medical-tab"
 import { EmployeeQualificationsTab } from "@/modules/employees/profile/components/employee-qualifications-tab"
+import {
+  deactivationReasonCodes,
+  separationReasonLabels,
+  terminationReasonCodes,
+  type EmployeeLifecycleActionType,
+  type EmployeeSeparationReasonCode,
+} from "@/modules/employees/profile/schemas/manage-employee-lifecycle-schema"
 import type { EmployeeProfileViewModel } from "@/modules/employees/profile/utils/get-employee-profile-data"
 import { toast } from "sonner"
 
@@ -124,6 +142,42 @@ type EmployeeProfileDraft = {
   isWfhEligible: boolean
 }
 
+type EmployeeLifecycleDraft = {
+  separationDate: string
+  lastWorkingDay: string
+  separationReasonCode: EmployeeSeparationReasonCode | ""
+  remarks: string
+}
+
+const getTodayPhDateInput = (): string => {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Manila",
+  }).format(new Date())
+}
+
+const buildInitialLifecycleDraft = (actionType: EmployeeLifecycleActionType): EmployeeLifecycleDraft => {
+  const today = getTodayPhDateInput()
+
+  if (actionType === "TERMINATE") {
+    return {
+      separationDate: today,
+      lastWorkingDay: today,
+      separationReasonCode: "TERMINATION_PERFORMANCE",
+      remarks: "",
+    }
+  }
+
+  return {
+    separationDate: today,
+    lastWorkingDay: "",
+    separationReasonCode: "OTHER",
+    remarks: "",
+  }
+}
+
 const toPositiveNumber = (value: string): number | null => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -168,15 +222,33 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const employee = data.employee
   const router = useRouter()
   const [isSaving, startSaving] = useTransition()
+  const [isLifecyclePending, startLifecycleTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<TabKey>("overview")
   const [isEditing, setIsEditing] = useState(false)
+  const [lifecycleActionType, setLifecycleActionType] = useState<EmployeeLifecycleActionType | null>(null)
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null)
 
   const initialDraft = useMemo(() => buildInitialDraft(employee), [employee])
   const [draft, setDraft] = useState<EmployeeProfileDraft>(initialDraft)
+  const [lifecycleDraft, setLifecycleDraft] = useState<EmployeeLifecycleDraft>(
+    buildInitialLifecycleDraft("DEACTIVATE")
+  )
 
   const onCancelEdit = () => {
     setDraft(initialDraft)
     setIsEditing(false)
+  }
+
+  const openLifecycleDialog = (actionType: EmployeeLifecycleActionType) => {
+    setLifecycleActionType(actionType)
+    setLifecycleDraft(buildInitialLifecycleDraft(actionType))
+    setLifecycleError(null)
+  }
+
+  const closeLifecycleDialog = () => {
+    if (isLifecyclePending) return
+    setLifecycleActionType(null)
+    setLifecycleError(null)
   }
 
   const onSaveEdit = () => {
@@ -321,6 +393,33 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
     })
   }
 
+  const submitLifecycleAction = () => {
+    if (!lifecycleActionType) return
+
+    startLifecycleTransition(async () => {
+      const result = await manageEmployeeLifecycleAction({
+        companyId: data.companyId,
+        employeeId: employee.id,
+        actionType: lifecycleActionType,
+        separationDate: lifecycleDraft.separationDate,
+        lastWorkingDay: lifecycleDraft.lastWorkingDay,
+        separationReasonCode: lifecycleDraft.separationReasonCode || undefined,
+        remarks: lifecycleDraft.remarks,
+      })
+
+      if (!result.ok) {
+        setLifecycleError(result.error)
+        toast.error(result.error)
+        return
+      }
+
+      setLifecycleError(null)
+      setLifecycleActionType(null)
+      toast.success(result.message)
+      router.refresh()
+    })
+  }
+
   return (
     <main className="flex w-full flex-col gap-6 px-4 py-6 sm:px-6">
       <header className="sticky top-0 z-20 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:-mx-6 sm:px-6">
@@ -418,7 +517,17 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
             </div>
           </div>
 
-          {activeTab === "overview" ? <OverviewTab employee={employee} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
+          {activeTab === "overview" ? (
+            <OverviewTab
+              employee={employee}
+              isEditing={isEditing}
+              draft={draft}
+              setDraft={setDraft}
+              isLifecyclePending={isLifecyclePending}
+              onDeactivate={() => openLifecycleDialog("DEACTIVATE")}
+              onTerminate={() => openLifecycleDialog("TERMINATE")}
+            />
+          ) : null}
           {activeTab === "personal" ? <PersonalTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
           {activeTab === "education" ? <EmployeeFamilyTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
           {activeTab === "employment" ? <EmploymentTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
@@ -429,6 +538,100 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
           {activeTab === "documents" ? <DocumentsTab employee={employee} /> : null}
         </section>
       </div>
+
+      <Dialog open={Boolean(lifecycleActionType)} onOpenChange={(open) => (!open ? closeLifecycleDialog() : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {lifecycleActionType === "TERMINATE" ? "Terminate Employee" : "Deactivate Employee"}
+            </DialogTitle>
+            <DialogDescription>
+              {lifecycleActionType
+                ? `${employee.lastName}, ${employee.firstName} (${employee.employeeNumber})`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {lifecycleActionType ? (
+            <div className="space-y-3">
+              <LifecycleDateField
+                label="Separation Date"
+                value={lifecycleDraft.separationDate}
+                onChange={(value) => setLifecycleDraft((prev) => ({ ...prev, separationDate: value }))}
+                required
+              />
+              <LifecycleDateField
+                label="Last Working Day"
+                value={lifecycleDraft.lastWorkingDay}
+                onChange={(value) => setLifecycleDraft((prev) => ({ ...prev, lastWorkingDay: value }))}
+                required={lifecycleActionType === "TERMINATE"}
+              />
+
+              <div className="space-y-1.5">
+                <Label>
+                  Reason
+                  {lifecycleActionType === "TERMINATE" ? <span className="ml-1 text-destructive">*</span> : null}
+                </Label>
+                <Select
+                  value={lifecycleDraft.separationReasonCode || "__none__"}
+                  onValueChange={(value) =>
+                    setLifecycleDraft((prev) => ({
+                      ...prev,
+                      separationReasonCode:
+                        value === "__none__" ? "" : (value as EmployeeSeparationReasonCode),
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lifecycleActionType === "TERMINATE" ? null : (
+                      <SelectItem value="__none__">Not set</SelectItem>
+                    )}
+                    {(lifecycleActionType === "TERMINATE" ? terminationReasonCodes : deactivationReasonCodes).map(
+                      (reasonCode) => (
+                        <SelectItem key={reasonCode} value={reasonCode}>
+                          {separationReasonLabels[reasonCode]}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Remarks</Label>
+                <Textarea
+                  value={lifecycleDraft.remarks}
+                  onChange={(event) => setLifecycleDraft((prev) => ({ ...prev, remarks: event.target.value }))}
+                  placeholder="Optional notes"
+                  rows={3}
+                />
+              </div>
+
+              {lifecycleError ? <p className="text-sm text-destructive">{lifecycleError}</p> : null}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeLifecycleDialog} disabled={isLifecyclePending}>
+              Cancel
+            </Button>
+            <Button
+              variant={lifecycleActionType === "TERMINATE" ? "destructive" : "default"}
+              onClick={submitLifecycleAction}
+              disabled={isLifecyclePending}
+            >
+              {isLifecyclePending
+                ? "Saving..."
+                : lifecycleActionType === "TERMINATE"
+                  ? "Confirm Termination"
+                  : "Confirm Deactivation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }
@@ -438,11 +641,17 @@ function OverviewTab({
   isEditing,
   draft,
   setDraft,
+  isLifecyclePending,
+  onDeactivate,
+  onTerminate,
 }: {
   employee: EmployeeProfileViewModel["employee"]
   isEditing: boolean
   draft: EmployeeProfileDraft
   setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
+  isLifecyclePending: boolean
+  onDeactivate: () => void
+  onTerminate: () => void
 }) {
   return (
     <div className="space-y-8">
@@ -454,10 +663,20 @@ function OverviewTab({
       </div>
 
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <Button variant="outline" disabled>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!employee.isActive || isEditing || isLifecyclePending}
+          onClick={onDeactivate}
+        >
           Deactivate
         </Button>
-        <Button variant="outline" disabled>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={!employee.isActive || isEditing || isLifecyclePending}
+          onClick={onTerminate}
+        >
           Terminate
         </Button>
       </div>
@@ -917,6 +1136,43 @@ function DateField({
       ) : (
         <p className="min-h-6 border-b border-transparent pb-1 text-sm font-medium text-foreground">{value || "-"}</p>
       )}
+    </div>
+  )
+}
+
+function LifecycleDateField({
+  label,
+  value,
+  onChange,
+  required = false,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label}
+        {required ? <span className="ml-1 text-destructive">*</span> : null}
+      </Label>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="w-full justify-between">
+            {value ? formatDateLabelFromInput(value) : "Select date"}
+            <IconCalendar className="size-4 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={value ? new Date(`${value}T00:00:00+08:00`) : undefined}
+            onSelect={(date) => onChange(toDateInputValue(date))}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

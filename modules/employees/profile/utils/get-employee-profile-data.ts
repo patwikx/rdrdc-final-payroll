@@ -44,12 +44,12 @@ const toDateInputValue = (value: Date | null | undefined): string => {
 const formatTime = (value: Date | null | undefined): string => {
   if (!value) return "-"
 
-  return new Intl.DateTimeFormat("en-PH", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Manila",
-  }).format(value)
+  const hour = value.getUTCHours()
+  const minute = value.getUTCMinutes()
+  const normalizedHour = ((hour + 11) % 12) + 1
+  const period = hour >= 12 ? "PM" : "AM"
+
+  return `${String(normalizedHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`
 }
 
 const formatCurrency = (value: number | null | undefined): string => {

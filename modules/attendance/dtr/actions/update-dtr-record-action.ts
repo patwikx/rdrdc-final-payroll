@@ -360,7 +360,7 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
   })
 
   revalidatePath(`/${context.companyId}/attendance/dtr`)
-  revalidatePath(`/${context.companyId}/attendance/exceptions`)
+  revalidatePath(`/${context.companyId}/attendance/sync-biometrics`)
   revalidatePath(`/${context.companyId}/dashboard`)
 
   return {

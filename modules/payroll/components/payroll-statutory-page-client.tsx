@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { getPhYear, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import {
   GovernmentRemittanceReports,
@@ -248,7 +249,7 @@ export function PayrollStatutoryPageClient({
 
   const resolvedReport = filteredOptions.find((option) => option.key === activeReport) ?? filteredOptions[0] ?? REPORT_OPTIONS[0]
 
-  const selectedMonthDate = monthOptions.find((option) => option.key === resolvedMonthKey)?.date ?? new Date()
+  const selectedMonthDate = monthOptions.find((option) => option.key === resolvedMonthKey)?.date ?? toPhDateOnlyUtc()
 
   const scopedRows = useMemo(() => {
     if (!resolvedMonthKey) {
@@ -367,6 +368,8 @@ export function PayrollStatutoryPageClient({
   }, [scopedRows])
 
   const selectedYearPrefix = resolvedMonthKey ? resolvedMonthKey.slice(0, 4) : ""
+  const selectedReportYear = selectedYearPrefix ? Number(selectedYearPrefix) : Number.NaN
+  const resolvedReportYear = Number.isFinite(selectedReportYear) ? selectedReportYear : getPhYear()
 
   const filteredBirRows = useMemo(() => {
     if (!selectedYearPrefix) {
@@ -547,7 +550,7 @@ export function PayrollStatutoryPageClient({
     }
 
     if (report === "dole13th") {
-      const yearLabel = selectedYearPrefix || String(new Date().getFullYear())
+      const yearLabel = String(resolvedReportYear)
       const totals = filteredDoleRows.reduce(
         (acc, row) => {
           acc.annualBasicSalary += row.annualBasicSalary
@@ -578,7 +581,7 @@ export function PayrollStatutoryPageClient({
     }
 
     if (report === "bir-alphalist") {
-      const yearLabel = selectedYearPrefix || String(new Date().getFullYear())
+      const yearLabel = String(resolvedReportYear)
       const reportRows: string[][] = [
         [companyName.toUpperCase()],
         ["BIR ANNUAL ALPHALIST"],
@@ -781,7 +784,7 @@ export function PayrollStatutoryPageClient({
                     companyName={companyName}
                     philHealthMonth={reportMonth}
                     pagIbigMonth={reportMonth}
-                    birYear={selectedYearPrefix ? Number(selectedYearPrefix) : new Date().getFullYear()}
+                    birYear={resolvedReportYear}
                     printedAt={new Date()}
                     printedBy={printedBy}
                     philHealthRows={[]}
@@ -875,7 +878,7 @@ export function PayrollStatutoryPageClient({
                   companyName={companyName}
                   philHealthMonth={reportMonth}
                   pagIbigMonth={reportMonth}
-                  birYear={selectedYearPrefix ? Number(selectedYearPrefix) : new Date().getFullYear()}
+                  birYear={resolvedReportYear}
                   printedAt={new Date()}
                   printedBy={printedBy}
                   sssRows={[]}

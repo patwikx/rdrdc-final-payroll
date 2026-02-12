@@ -1,15 +1,20 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { IconTrash } from "@tabler/icons-react"
+import { IconCalendar, IconTrash } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { type Dispatch, type SetStateAction, useMemo, useState } from "react"
 import type { ZodIssue } from "zod"
 
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { setupDraftSchema, type SetupDraftInput } from "@/modules/setup/schemas/initialize-system-schema"
 
 const SETUP_DRAFT_STORAGE_KEY = "setupDraftV1"
@@ -42,6 +47,34 @@ const fieldLabelByPath: Record<string, string> = {
   "attendance.workSchedule.saturdayHalfDay.endTime": "Saturday end time",
   "attendance.workSchedule.saturdayHalfDay.requiredHours": "Saturday required hours",
 }
+
+type OvertimeTypeCode = SetupDraftInput["attendance"]["overtimeRates"][number]["overtimeTypeCode"]
+type HolidayTypeCode = SetupDraftInput["holidays"]["items"][number]["holidayTypeCode"]
+type HolidayApplicabilityCode = SetupDraftInput["holidays"]["items"][number]["applicability"]
+type LoanCategoryCode = SetupDraftInput["loans"]["loanTypes"][number]["categoryCode"]
+type LoanInterestTypeCode = SetupDraftInput["loans"]["loanTypes"][number]["interestTypeCode"]
+
+const overtimeTypeOptions: OvertimeTypeCode[] = [
+  "REGULAR_OT",
+  "REST_DAY_OT",
+  "SPECIAL_HOLIDAY_OT",
+  "REGULAR_HOLIDAY_OT",
+  "REST_DAY_HOLIDAY_OT",
+  "NIGHT_DIFF",
+]
+
+const holidayTypeOptions: HolidayTypeCode[] = [
+  "REGULAR",
+  "SPECIAL_NON_WORKING",
+  "SPECIAL_WORKING",
+  "LOCAL",
+  "COMPANY",
+  "ONE_TIME",
+]
+
+const holidayApplicabilityOptions: HolidayApplicabilityCode[] = ["NATIONWIDE", "REGIONAL", "COMPANY"]
+const loanCategoryOptions: LoanCategoryCode[] = ["SSS", "PAGIBIG", "COMPANY", "CASH_ADVANCE"]
+const loanInterestTypeOptions: LoanInterestTypeCode[] = ["FIXED", "DIMINISHING", "ZERO"]
 
 const defaultDraft: SetupDraftInput = {
   admin: {
@@ -164,6 +197,35 @@ const defaultDraft: SetupDraftInput = {
 type StepProps = {
   draft: SetupDraftInput
   setDraft: Dispatch<SetStateAction<SetupDraftInput>>
+}
+
+const parsePhDateInput = (value: string): Date | undefined => {
+  if (!value) return undefined
+  const parsed = new Date(`${value}T00:00:00+08:00`)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
+const toPhDateInputValue = (date: Date | undefined): string => {
+  if (!date) return ""
+
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Manila",
+  }).format(date)
+}
+
+const formatPhDateLabel = (value: string): string => {
+  const parsed = parsePhDateInput(value)
+  if (!parsed) return ""
+
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Manila",
+  }).format(parsed)
 }
 
 export function SetupWizardForm() {
@@ -458,26 +520,27 @@ function AttendanceStep({ draft, setDraft }: StepProps) {
       </div>
 
       <div className="rounded-md border border-border/60 p-3">
-        <Label htmlFor="satEnabled" className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.08em]">
-          <input
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="satEnabled" className="text-[11px] uppercase tracking-[0.08em]">
+            Enable Saturday half-day schedule
+          </Label>
+          <Switch
             id="satEnabled"
-            type="checkbox"
             checked={schedule.saturdayHalfDay.enabled}
-            onChange={(e) =>
+            onCheckedChange={(checked) =>
               setDraft((d) => ({
                 ...d,
                 attendance: {
                   ...d.attendance,
                   workSchedule: {
                     ...schedule,
-                    saturdayHalfDay: { ...schedule.saturdayHalfDay, enabled: e.target.checked },
+                    saturdayHalfDay: { ...schedule.saturdayHalfDay, enabled: checked },
                   },
                 },
               }))
             }
           />
-          Enable Saturday half-day schedule
-        </Label>
+        </div>
 
         {schedule.saturdayHalfDay.enabled ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -513,29 +576,31 @@ function AttendanceStep({ draft, setDraft }: StepProps) {
           <div key={`${rate.overtimeTypeCode}-${index}`} className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <RequiredLabel htmlFor={`ot-type-${index}`} text="OT type" />
-              <select
-                id={`ot-type-${index}`}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              <Select
                 value={rate.overtimeTypeCode}
-                onChange={(e) =>
+                onValueChange={(value) =>
                   setDraft((d) => ({
                     ...d,
                     attendance: {
                       ...d.attendance,
                       overtimeRates: d.attendance.overtimeRates.map((r, i) =>
-                        i === index ? { ...r, overtimeTypeCode: e.target.value as typeof r.overtimeTypeCode } : r
+                        i === index ? { ...r, overtimeTypeCode: value as OvertimeTypeCode } : r
                       ),
                     },
                   }))
                 }
               >
-                <option value="REGULAR_OT">REGULAR_OT</option>
-                <option value="REST_DAY_OT">REST_DAY_OT</option>
-                <option value="SPECIAL_HOLIDAY_OT">SPECIAL_HOLIDAY_OT</option>
-                <option value="REGULAR_HOLIDAY_OT">REGULAR_HOLIDAY_OT</option>
-                <option value="REST_DAY_HOLIDAY_OT">REST_DAY_HOLIDAY_OT</option>
-                <option value="NIGHT_DIFF">NIGHT_DIFF</option>
-              </select>
+                <SelectTrigger id={`ot-type-${index}`}>
+                  <SelectValue placeholder="Select OT type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {overtimeTypeOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <RequiredLabel htmlFor={`ot-mult-${index}`} text="Multiplier" />
@@ -680,11 +745,90 @@ function HolidaysStep({ draft, setDraft }: StepProps) {
 
       {holidayItems.map((item, index) => (
         <div key={`${item.name}-${index}`} className="grid gap-3 rounded-md border border-border/60 p-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><RequiredLabel htmlFor={`holiday-date-${index}`} text="Date" /><Input id={`holiday-date-${index}`} type="date" value={item.holidayDate} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, holidayDate: e.target.value } : h) } }))} /></div>
+          <div className="space-y-1.5">
+            <RequiredLabel htmlFor={`holiday-date-${index}`} text="Date" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button id={`holiday-date-${index}`} type="button" variant="outline" className="w-full justify-between">
+                  {item.holidayDate ? formatPhDateLabel(item.holidayDate) : "Select date"}
+                  <IconCalendar className="size-4 text-muted-foreground" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={parsePhDateInput(item.holidayDate)}
+                  onSelect={(date) =>
+                    setDraft((d) => ({
+                      ...d,
+                      holidays: {
+                        items: (d.holidays?.items ?? []).map((h, i) =>
+                          i === index ? { ...h, holidayDate: toPhDateInputValue(date) } : h
+                        ),
+                      },
+                    }))
+                  }
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
           <div className="space-y-1.5"><RequiredLabel htmlFor={`holiday-name-${index}`} text="Name" /><Input id={`holiday-name-${index}`} value={item.name} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, name: e.target.value } : h) } }))} /></div>
-          <div className="space-y-1.5"><RequiredLabel htmlFor={`holiday-type-${index}`} text="Type" /><select id={`holiday-type-${index}`} className="h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed outline-none" value={item.holidayTypeCode} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, holidayTypeCode: e.target.value as typeof h.holidayTypeCode } : h) } }))}><option value="REGULAR">REGULAR</option><option value="SPECIAL_NON_WORKING">SPECIAL_NON_WORKING</option><option value="SPECIAL_WORKING">SPECIAL_WORKING</option><option value="LOCAL">LOCAL</option><option value="COMPANY">COMPANY</option><option value="ONE_TIME">ONE_TIME</option></select></div>
+          <div className="space-y-1.5">
+            <RequiredLabel htmlFor={`holiday-type-${index}`} text="Type" />
+            <Select
+              value={item.holidayTypeCode}
+              onValueChange={(value) =>
+                setDraft((d) => ({
+                  ...d,
+                  holidays: {
+                    items: (d.holidays?.items ?? []).map((h, i) =>
+                      i === index ? { ...h, holidayTypeCode: value as HolidayTypeCode } : h
+                    ),
+                  },
+                }))
+              }
+            >
+              <SelectTrigger id={`holiday-type-${index}`}>
+                <SelectValue placeholder="Select holiday type" />
+              </SelectTrigger>
+              <SelectContent>
+                {holidayTypeOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5"><RequiredLabel htmlFor={`holiday-multiplier-${index}`} text="Pay multiplier" /><Input id={`holiday-multiplier-${index}`} type="number" step="0.01" value={item.payMultiplier} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, payMultiplier: Number(e.target.value) || 1 } : h) } }))} /></div>
-          <div className="space-y-1.5"><RequiredLabel htmlFor={`holiday-app-${index}`} text="Applicability" /><select id={`holiday-app-${index}`} className="h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed outline-none" value={item.applicability} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, applicability: e.target.value as typeof h.applicability } : h) } }))}><option value="NATIONWIDE">NATIONWIDE</option><option value="REGIONAL">REGIONAL</option><option value="COMPANY">COMPANY</option></select></div>
+          <div className="space-y-1.5">
+            <RequiredLabel htmlFor={`holiday-app-${index}`} text="Applicability" />
+            <Select
+              value={item.applicability}
+              onValueChange={(value) =>
+                setDraft((d) => ({
+                  ...d,
+                  holidays: {
+                    items: (d.holidays?.items ?? []).map((h, i) =>
+                      i === index ? { ...h, applicability: value as HolidayApplicabilityCode } : h
+                    ),
+                  },
+                }))
+              }
+            >
+              <SelectTrigger id={`holiday-app-${index}`}>
+                <SelectValue placeholder="Select applicability" />
+              </SelectTrigger>
+              <SelectContent>
+                {holidayApplicabilityOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5"><OptionalLabel htmlFor={`holiday-region-${index}`} text="Region" /><Input id={`holiday-region-${index}`} value={item.region ?? ""} onChange={(e) => setDraft((d) => ({ ...d, holidays: { items: (d.holidays?.items ?? []).map((h, i) => i === index ? { ...h, region: e.target.value } : h) } }))} /></div>
           <div className="sm:col-span-2 flex items-end">
             <Button
@@ -745,8 +889,60 @@ function LoansStep({ draft, setDraft }: StepProps) {
         <div key={`${item.code}-${index}`} className="grid gap-3 rounded-md border border-border/60 p-3 sm:grid-cols-3">
           <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-code-${index}`} text="Code" /><Input id={`loan-code-${index}`} value={item.code} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, code: e.target.value } : l) } }))} /></div>
           <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-name-${index}`} text="Name" /><Input id={`loan-name-${index}`} value={item.name} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, name: e.target.value } : l) } }))} /></div>
-          <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-category-${index}`} text="Category" /><select id={`loan-category-${index}`} className="h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed outline-none" value={item.categoryCode} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, categoryCode: e.target.value as typeof l.categoryCode } : l) } }))}><option value="SSS">SSS</option><option value="PAGIBIG">PAGIBIG</option><option value="COMPANY">COMPANY</option><option value="CASH_ADVANCE">CASH_ADVANCE</option></select></div>
-          <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-interest-type-${index}`} text="Interest type" /><select id={`loan-interest-type-${index}`} className="h-7 w-full rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed outline-none" value={item.interestTypeCode} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, interestTypeCode: e.target.value as typeof l.interestTypeCode } : l) } }))}><option value="FIXED">FIXED</option><option value="DIMINISHING">DIMINISHING</option><option value="ZERO">ZERO</option></select></div>
+          <div className="space-y-1.5">
+            <RequiredLabel htmlFor={`loan-category-${index}`} text="Category" />
+            <Select
+              value={item.categoryCode}
+              onValueChange={(value) =>
+                setDraft((d) => ({
+                  ...d,
+                  loans: {
+                    loanTypes: d.loans.loanTypes.map((l, i) =>
+                      i === index ? { ...l, categoryCode: value as LoanCategoryCode } : l
+                    ),
+                  },
+                }))
+              }
+            >
+              <SelectTrigger id={`loan-category-${index}`}>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {loanCategoryOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <RequiredLabel htmlFor={`loan-interest-type-${index}`} text="Interest type" />
+            <Select
+              value={item.interestTypeCode}
+              onValueChange={(value) =>
+                setDraft((d) => ({
+                  ...d,
+                  loans: {
+                    loanTypes: d.loans.loanTypes.map((l, i) =>
+                      i === index ? { ...l, interestTypeCode: value as LoanInterestTypeCode } : l
+                    ),
+                  },
+                }))
+              }
+            >
+              <SelectTrigger id={`loan-interest-type-${index}`}>
+                <SelectValue placeholder="Select interest type" />
+              </SelectTrigger>
+              <SelectContent>
+                {loanInterestTypeOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-interest-rate-${index}`} text="Interest rate" /><Input id={`loan-interest-rate-${index}`} type="number" step="0.0001" value={item.defaultInterestRate} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, defaultInterestRate: Number(e.target.value) || 0 } : l) } }))} /></div>
           <div className="space-y-1.5"><RequiredLabel htmlFor={`loan-term-${index}`} text="Max term months" /><Input id={`loan-term-${index}`} type="number" value={item.maxTermMonths} onChange={(e) => setDraft((d) => ({ ...d, loans: { loanTypes: d.loans.loanTypes.map((l, i) => i === index ? { ...l, maxTermMonths: Number(e.target.value) || 1 } : l) } }))} /></div>
           <div className="sm:col-span-3 flex items-end">
@@ -806,17 +1002,49 @@ function CompensationStep({ draft, setDraft }: StepProps) {
             <div className="space-y-1.5"><RequiredLabel htmlFor={`earn-name-${index}`} text="Name" /><Input id={`earn-name-${index}`} value={item.name} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, earningTypes: d.compensation.earningTypes.map((r, i) => i === index ? { ...r, name: e.target.value } : r) } }))} /></div>
             <div className="space-y-1.5">
               <OptionalLabel htmlFor={`earn-taxable-${index}`} text="Taxable" />
-              <Label htmlFor={`earn-taxable-${index}`} className="inline-flex h-7 items-center gap-2 rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed">
-                <input id={`earn-taxable-${index}`} type="checkbox" checked={item.isTaxable} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, earningTypes: d.compensation.earningTypes.map((r, i) => i === index ? { ...r, isTaxable: e.target.checked } : r) } }))} />
-                Enabled
-              </Label>
+              <div className="inline-flex h-9 w-full items-center gap-2 rounded-md border border-input bg-input/20 px-2">
+                <Checkbox
+                  id={`earn-taxable-${index}`}
+                  checked={item.isTaxable}
+                  onCheckedChange={(checked) =>
+                    setDraft((d) => ({
+                      ...d,
+                      compensation: {
+                        ...d.compensation,
+                        earningTypes: d.compensation.earningTypes.map((r, i) =>
+                          i === index ? { ...r, isTaxable: checked === true } : r
+                        ),
+                      },
+                    }))
+                  }
+                />
+                <Label htmlFor={`earn-taxable-${index}`} className="text-xs text-muted-foreground">
+                  Enabled
+                </Label>
+              </div>
             </div>
             <div className="space-y-1.5">
               <OptionalLabel htmlFor={`earn-gross-${index}`} text="In gross" />
-              <Label htmlFor={`earn-gross-${index}`} className="inline-flex h-7 items-center gap-2 rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed">
-                <input id={`earn-gross-${index}`} type="checkbox" checked={item.isIncludedInGross} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, earningTypes: d.compensation.earningTypes.map((r, i) => i === index ? { ...r, isIncludedInGross: e.target.checked } : r) } }))} />
-                Enabled
-              </Label>
+              <div className="inline-flex h-9 w-full items-center gap-2 rounded-md border border-input bg-input/20 px-2">
+                <Checkbox
+                  id={`earn-gross-${index}`}
+                  checked={item.isIncludedInGross}
+                  onCheckedChange={(checked) =>
+                    setDraft((d) => ({
+                      ...d,
+                      compensation: {
+                        ...d.compensation,
+                        earningTypes: d.compensation.earningTypes.map((r, i) =>
+                          i === index ? { ...r, isIncludedInGross: checked === true } : r
+                        ),
+                      },
+                    }))
+                  }
+                />
+                <Label htmlFor={`earn-gross-${index}`} className="text-xs text-muted-foreground">
+                  Enabled
+                </Label>
+              </div>
             </div>
             <div className="space-y-1.5 sm:justify-self-end">
               <OptionalLabel htmlFor={`earn-remove-${index}`} text="Actions" />
@@ -856,17 +1084,49 @@ function CompensationStep({ draft, setDraft }: StepProps) {
             <div className="space-y-1.5"><RequiredLabel htmlFor={`ded-name-${index}`} text="Name" /><Input id={`ded-name-${index}`} value={item.name} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, deductionTypes: d.compensation.deductionTypes.map((r, i) => i === index ? { ...r, name: e.target.value } : r) } }))} /></div>
             <div className="space-y-1.5">
               <OptionalLabel htmlFor={`ded-mandatory-${index}`} text="Mandatory" />
-              <Label htmlFor={`ded-mandatory-${index}`} className="inline-flex h-7 items-center gap-2 rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed">
-                <input id={`ded-mandatory-${index}`} type="checkbox" checked={item.isMandatory} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, deductionTypes: d.compensation.deductionTypes.map((r, i) => i === index ? { ...r, isMandatory: e.target.checked } : r) } }))} />
-                Enabled
-              </Label>
+              <div className="inline-flex h-9 w-full items-center gap-2 rounded-md border border-input bg-input/20 px-2">
+                <Checkbox
+                  id={`ded-mandatory-${index}`}
+                  checked={item.isMandatory}
+                  onCheckedChange={(checked) =>
+                    setDraft((d) => ({
+                      ...d,
+                      compensation: {
+                        ...d.compensation,
+                        deductionTypes: d.compensation.deductionTypes.map((r, i) =>
+                          i === index ? { ...r, isMandatory: checked === true } : r
+                        ),
+                      },
+                    }))
+                  }
+                />
+                <Label htmlFor={`ded-mandatory-${index}`} className="text-xs text-muted-foreground">
+                  Enabled
+                </Label>
+              </div>
             </div>
             <div className="space-y-1.5">
               <OptionalLabel htmlFor={`ded-pretax-${index}`} text="Pre-tax" />
-              <Label htmlFor={`ded-pretax-${index}`} className="inline-flex h-7 items-center gap-2 rounded-md border border-input bg-input/20 px-2 py-0.5 text-xs/relaxed">
-                <input id={`ded-pretax-${index}`} type="checkbox" checked={item.isPreTax} onChange={(e) => setDraft((d) => ({ ...d, compensation: { ...d.compensation, deductionTypes: d.compensation.deductionTypes.map((r, i) => i === index ? { ...r, isPreTax: e.target.checked } : r) } }))} />
-                Enabled
-              </Label>
+              <div className="inline-flex h-9 w-full items-center gap-2 rounded-md border border-input bg-input/20 px-2">
+                <Checkbox
+                  id={`ded-pretax-${index}`}
+                  checked={item.isPreTax}
+                  onCheckedChange={(checked) =>
+                    setDraft((d) => ({
+                      ...d,
+                      compensation: {
+                        ...d.compensation,
+                        deductionTypes: d.compensation.deductionTypes.map((r, i) =>
+                          i === index ? { ...r, isPreTax: checked === true } : r
+                        ),
+                      },
+                    }))
+                  }
+                />
+                <Label htmlFor={`ded-pretax-${index}`} className="text-xs text-muted-foreground">
+                  Enabled
+                </Label>
+              </div>
             </div>
             <div className="space-y-1.5 sm:justify-self-end">
               <OptionalLabel htmlFor={`ded-remove-${index}`} text="Actions" />
@@ -918,10 +1178,9 @@ function AccessPolicyStep({ draft, setDraft }: StepProps) {
         <p className="font-medium text-sm">HR Admin</p>
         {(["employees", "leave", "overtime", "payroll"] as const).map((moduleKey) => (
           <Label key={`hr-${moduleKey}`} className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.08em]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={draft.system.roleModulePolicy.hrAdmin[moduleKey]}
-              onChange={(e) => setFlag("hrAdmin", moduleKey, e.target.checked)}
+              onCheckedChange={(checked) => setFlag("hrAdmin", moduleKey, checked === true)}
             />
             {moduleKey}
           </Label>
@@ -931,10 +1190,9 @@ function AccessPolicyStep({ draft, setDraft }: StepProps) {
         <p className="font-medium text-sm">Payroll Admin</p>
         {(["employees", "leave", "overtime", "payroll"] as const).map((moduleKey) => (
           <Label key={`payroll-${moduleKey}`} className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.08em]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={draft.system.roleModulePolicy.payrollAdmin[moduleKey]}
-              onChange={(e) => setFlag("payrollAdmin", moduleKey, e.target.checked)}
+              onCheckedChange={(checked) => setFlag("payrollAdmin", moduleKey, checked === true)}
             />
             {moduleKey}
           </Label>
@@ -944,10 +1202,9 @@ function AccessPolicyStep({ draft, setDraft }: StepProps) {
         <p className="font-medium text-sm">Approver</p>
         {(["leave", "overtime"] as const).map((moduleKey) => (
           <Label key={`approver-${moduleKey}`} className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.08em]">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={draft.system.roleModulePolicy.approver[moduleKey]}
-              onChange={(e) => setFlag("approver", moduleKey, e.target.checked)}
+              onCheckedChange={(checked) => setFlag("approver", moduleKey, checked === true)}
             />
             {moduleKey}
           </Label>

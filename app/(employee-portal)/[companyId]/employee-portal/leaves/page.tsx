@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { Card, CardContent } from "@/components/ui/card"
+import { getPhYear } from "@/lib/ph-time"
 import { LeaveRequestClient } from "@/modules/employee-portal/components/leave-request-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import { getEmployeePortalLeaveRequestsReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
@@ -28,7 +29,7 @@ export default async function LeavesPage({ params }: LeavesPageProps) {
   const leaveData = await getEmployeePortalLeaveRequestsReadModel({
     companyId: context.companyId,
     employeeId: context.employee.id,
-    year: new Date().getFullYear(),
+    year: getPhYear(),
   })
 
   return (

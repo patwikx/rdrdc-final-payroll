@@ -308,6 +308,38 @@ Last updated: 2026-02-12
   - Extracted Employee Portal dashboard leave queries into `modules/leave/utils/employee-portal-leave-dashboard-read-model.ts`.
   - Updated leave read-model loaders to enforce tenant-safe company scoping on leave reads.
 
+## Active Queue (2026-02-12)
+
+- [x] Implement employee lifecycle actions in Employee Profile (`Deactivate` and `Terminate`) with full flow:
+  - Added overview action buttons with dialog-based confirmation/inputs for separation date, last working day, reason, and remarks.
+  - Added typed server action + zod schema validation + employees-module authz checks.
+  - Persists lifecycle fields (`isActive`, separation metadata, optional notes) and writes audit logs.
+  - Revalidates employee list and employee profile pages after mutation.
+- [x] Keep only `Sync Biometrics` for attendance exceptions for now:
+  - Decommissioned legacy `modules/attendance/exceptions/**` page/view-model paths that are no longer used.
+  - Kept redirect behavior from `/attendance/exceptions` -> `/attendance/sync-biometrics`.
+  - Updated DTR mutation revalidation to target `/attendance/sync-biometrics` directly.
+- [x] Standardize Setup Wizard UI controls to project conventions:
+  - Replaced raw HTML `select` and checkbox inputs with shadcn primitives (`Select`, `Checkbox`, `Switch`) in setup wizard steps.
+  - Replaced `type="date"` holiday date fields with shadcn `Calendar` + popover picker.
+  - Added PH-local date conversion/display helpers (`Asia/Manila`) for setup holiday date boundaries.
+- [x] Harden PH-local date/year fallback defaults across UI/report boundaries:
+  - Added shared PH time helpers in `lib/ph-time.ts` (`getPhYear`, `getPhMonthIndex`, `toPhDateOnlyUtc`) for consistent defaults.
+  - Replaced year/date fallbacks in statutory reports, leave-year resolution, employee portal leave/dashboard loads, company profile date-picker bounds, medical dialog year default, and sidebar year label to PH-local helpers.
+  - Updated employee portal holiday query lower-bound to PH date-only UTC boundary to prevent timezone drift.
+- [x] Scale User Access workspace for larger companies:
+  - Replaced fixed user-access caps with server-side pagination for employee rows and company user-account rows.
+  - Added URL-backed filter state (`q`, employee/system linked filters) and independent pagination state for both panels.
+  - Preserved current create/link/edit/unlink and credential update flows.
+- [x] Productionize remaining iteration-labeled page components and cleanup naming/lint debt.
+  - Renamed active iteration-labeled module components to production names:
+    - Dashboard: `dashboard-action-center-layout.tsx`, `dashboard-action-center.tsx`
+    - Approvals: `approval-queue-page.tsx`
+    - Leave: `leave-balance-page.tsx`
+    - User Access: `user-access-page.tsx`
+  - Updated all dashboard/approvals/leave/user-access route imports and component usages to new names.
+  - Removed dashboard naming/lint debt by dropping unused iteration props/types and clearing remaining lint warnings.
+
 ## Decisions
 
 - Approval model direction: keep current two-stage leave/overtime approvals and use `User.isRequestApprover` as the approver flag source.

@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react"
 
 import { db } from "@/lib/db"
+import { getPhYear, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { Card, CardContent } from "@/components/ui/card"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import { getEmployeePortalLeaveDashboardReadModel } from "@/modules/leave/utils/employee-portal-leave-dashboard-read-model"
@@ -100,7 +101,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     getEmployeePortalLeaveDashboardReadModel({
       companyId: context.companyId,
       employeeId: context.employee.id,
-      year: new Date().getFullYear(),
+      year: getPhYear(),
     }),
     db.overtimeRequest.count({
       where: {
@@ -138,7 +139,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     db.holiday.findMany({
       where: {
         isActive: true,
-        holidayDate: { gte: new Date() },
+        holidayDate: { gte: toPhDateOnlyUtc() },
         OR: [{ companyId: context.companyId }, { companyId: null }],
       },
       orderBy: { holidayDate: "asc" },

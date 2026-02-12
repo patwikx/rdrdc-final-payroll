@@ -29,7 +29,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
+import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
+import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
+import { EmployeeMedicalTab } from "@/modules/employees/profile/components/employee-medical-tab"
+import { EmployeeQualificationsTab } from "@/modules/employees/profile/components/employee-qualifications-tab"
 import type { EmployeeProfileViewModel } from "@/modules/employees/profile/utils/get-employee-profile-data"
 import { toast } from "sonner"
 
@@ -42,11 +46,11 @@ type TabKey = "overview" | "personal" | "education" | "employment" | "payroll" |
 const tabs: Array<{ value: TabKey; label: string; icon: ComponentType<{ className?: string }> }> = [
   { value: "overview", label: "Overview", icon: IconLayoutGrid },
   { value: "personal", label: "Personal", icon: IconFingerprint },
-  { value: "education", label: "Education & Family", icon: IconUsers },
+  { value: "education", label: "Family", icon: IconUsers },
   { value: "employment", label: "Employment", icon: IconBriefcase },
   { value: "payroll", label: "Payroll", icon: IconCreditCard },
   { value: "medical", label: "Medical", icon: IconHeart },
-  { value: "qualifications", label: "Qualifications", icon: IconAward },
+  { value: "qualifications", label: "Education & Trainings", icon: IconAward },
   { value: "history", label: "History", icon: IconHistory },
   { value: "documents", label: "Documents", icon: IconFileText },
 ]
@@ -414,14 +418,14 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
             </div>
           </div>
 
-          {activeTab === "overview" ? <OverviewTab employee={employee} /> : null}
+          {activeTab === "overview" ? <OverviewTab employee={employee} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
           {activeTab === "personal" ? <PersonalTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
-          {activeTab === "education" ? <EducationTab employee={employee} /> : null}
+          {activeTab === "education" ? <EmployeeFamilyTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
           {activeTab === "employment" ? <EmploymentTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
           {activeTab === "payroll" ? <PayrollTab employee={employee} options={data.options} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
-          {activeTab === "medical" ? <MedicalTab employee={employee} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
-          {activeTab === "qualifications" ? <QualificationsTab employee={employee} /> : null}
-          {activeTab === "history" ? <HistoryTab employee={employee} /> : null}
+          {activeTab === "medical" ? <EmployeeMedicalTab companyId={data.companyId} employee={employee} /> : null}
+          {activeTab === "qualifications" ? <EmployeeQualificationsTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
+          {activeTab === "history" ? <EmployeeHistoryTab companyId={data.companyId} employee={employee} options={data.options} /> : null}
           {activeTab === "documents" ? <DocumentsTab employee={employee} /> : null}
         </section>
       </div>
@@ -429,7 +433,17 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   )
 }
 
-function OverviewTab({ employee }: { employee: EmployeeProfileViewModel["employee"] }) {
+function OverviewTab({
+  employee,
+  isEditing,
+  draft,
+  setDraft,
+}: {
+  employee: EmployeeProfileViewModel["employee"]
+  isEditing: boolean
+  draft: EmployeeProfileDraft
+  setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
+}) {
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -449,23 +463,35 @@ function OverviewTab({ employee }: { employee: EmployeeProfileViewModel["employe
       </div>
 
       <SectionHeader title="Designation Summary" number="01" icon={IconBriefcase} />
-      <FieldGrid>
+      <FieldGrid className="md:grid-cols-4">
         <Field label="Official Position" value={employee.position} />
         <Field label="Department" value={employee.department} />
         <Field label="Rank Level" value={employee.rank} />
         <Field label="Employment Type" value={employee.employmentType} />
       </FieldGrid>
 
-      <SectionHeader title="Separation Summary" number="02" icon={IconCalendar} />
+      <SectionHeader title="Contact Channels" number="02" icon={IconUsers} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-2">
+          {isEditing ? <Field label="Primary Mobile" value={employee.contacts.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.mobileNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, mobileNumber: value }))} /> : employee.contacts.length === 0 ? <Empty /> : employee.contacts.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
+        </div>
+        <div className="space-y-2">
+          {isEditing ? <Field label="Primary Personal Email" value={employee.emails.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.personalEmail} onInputChange={(value) => setDraft((prev) => ({ ...prev, personalEmail: value }))} /> : employee.emails.length === 0 ? <Empty /> : employee.emails.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
+        </div>
+      </div>
+
+      <SectionHeader title="Addresses" number="03" icon={IconCalendar} />
+      <div className="space-y-2">
+        {employee.addresses.length === 0 ? <Empty /> : employee.addresses.map((row) => <RowCard key={`${row.type}-${row.line}`} title={row.line || "-"} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
+      </div>
+
+      <SectionHeader title="Separation Summary" number="04" icon={IconCalendar} />
       <FieldGrid>
         <Field label="Separation Date" value={employee.separationDate} />
         <Field label="Last Working Day" value={employee.lastWorkingDay} />
         <Field label="Separation Reason" value={employee.separationReason} />
         <Field label="Status" value={employee.isActive ? "Active" : "Deactivated"} />
       </FieldGrid>
-
-      <SectionHeader title="Emergency Contacts" number="03" icon={IconHeart} />
-      {employee.emergencyContacts.length === 0 ? <Empty /> : employee.emergencyContacts.map((row) => <RowCard key={`${row.name}-${row.relationship}`} title={row.name} subtitle={`${row.relationship} • Priority ${row.priority}`} meta={`${row.mobile} • ${row.email}`} />)}
     </div>
   )
 }
@@ -541,11 +567,11 @@ function PersonalTab({
 
       <SectionHeader title="Government IDs" number="03" icon={IconFileText} />
       <FieldGrid>
-        <Field label="TIN Number" value={employee.tinNumber} />
-        <Field label="SSS Number" value={employee.sssNumber} />
-        <Field label="PhilHealth Number" value={employee.philHealthNumber} />
-        <Field label="Pag-IBIG Number" value={employee.pagIbigNumber} />
-        <Field label="UMID Number" value={employee.umidNumber} />
+        <Field label="TIN Number" value={employee.tinNumber} editable={isEditing} inputValue={draft.tinNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, tinNumber: value }))} />
+        <Field label="SSS Number" value={employee.sssNumber} editable={isEditing} inputValue={draft.sssNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, sssNumber: value }))} />
+        <Field label="PhilHealth Number" value={employee.philHealthNumber} editable={isEditing} inputValue={draft.philHealthNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, philHealthNumber: value }))} />
+        <Field label="Pag-IBIG Number" value={employee.pagIbigNumber} editable={isEditing} inputValue={draft.pagIbigNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, pagIbigNumber: value }))} />
+        <Field label="UMID Number" value={employee.umidNumber} editable={isEditing} inputValue={draft.umidNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, umidNumber: value }))} />
       </FieldGrid>
 
       <SectionHeader title="Biometric Data" number="04" icon={IconCalendar} />
@@ -555,21 +581,6 @@ function PersonalTab({
         <Field label="Biometric ID" value={employee.biometricId} editable={isEditing} inputValue={draft.biometricId} onInputChange={(value) => setDraft((prev) => ({ ...prev, biometricId: value }))} />
         <Field label="RFID Number" value={employee.rfidNumber} editable={isEditing} inputValue={draft.rfidNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, rfidNumber: value }))} />
       </FieldGrid>
-    </div>
-  )
-}
-
-function EducationTab({ employee }: { employee: EmployeeProfileViewModel["employee"] }) {
-  return (
-    <div className="space-y-8">
-      <SectionHeader title="Dependents" number="01" icon={IconUsers} />
-      {employee.dependents.length === 0 ? <Empty /> : employee.dependents.map((row) => <RowCard key={`${row.name}-${row.relationship}`} title={row.name} subtitle={`${row.relationship} • Birth ${row.birthDate}`} meta={`Tax Dependent: ${row.taxDependent}`} />)}
-
-      <SectionHeader title="Beneficiaries" number="02" icon={IconUsers} />
-      {employee.beneficiaries.length === 0 ? <Empty /> : employee.beneficiaries.map((row) => <RowCard key={`${row.name}-${row.relationship}`} title={row.name} subtitle={`${row.relationship} • ${row.percentage}`} meta={row.contact} />)}
-
-      <SectionHeader title="Education" number="03" icon={IconAward} />
-      {employee.educations.length === 0 ? <Empty /> : employee.educations.map((row) => <RowCard key={`${row.school}-${row.course}`} title={row.school} subtitle={`${row.level} • ${row.course}`} meta={`Graduated: ${row.yearGraduated}`} />)}
     </div>
   )
 }
@@ -726,85 +737,12 @@ function PayrollTab({
       </FieldGrid>
 
       <SectionHeader title="Policy Eligibility" number="03" icon={IconAward} />
-      <FieldGrid>
+      <FieldGrid className="md:grid-cols-4">
         <ToggleField label="Overtime Eligible" value={isEditing ? draft.isOvertimeEligible : employee.overtimeEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isOvertimeEligible: checked }))} />
         <ToggleField label="Night Differential Eligible" value={isEditing ? draft.isNightDiffEligible : employee.nightDiffEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isNightDiffEligible: checked }))} />
         <ToggleField label="WFH Eligible" value={isEditing ? draft.isWfhEligible : employee.wfhEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isWfhEligible: checked }))} />
         <Field label="WFH Schedule" value={employee.wfhSchedule} editable={isEditing} inputValue={draft.wfhSchedule} onInputChange={(value) => setDraft((prev) => ({ ...prev, wfhSchedule: value }))} />
       </FieldGrid>
-    </div>
-  )
-}
-
-function MedicalTab({
-  employee,
-  isEditing,
-  draft,
-  setDraft,
-}: {
-  employee: EmployeeProfileViewModel["employee"]
-  isEditing: boolean
-  draft: EmployeeProfileDraft
-  setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
-}) {
-  return (
-    <div className="space-y-8">
-      <SectionHeader title="Annual Physical Examination" number="01" icon={IconHeart} />
-      <Empty message="Medical records are not yet available in this profile view." />
-
-      <SectionHeader title="Contact Channels" number="02" icon={IconUsers} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2">
-          {isEditing ? <Field label="Primary Mobile" value={employee.contacts.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.mobileNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, mobileNumber: value }))} /> : employee.contacts.length === 0 ? <Empty /> : employee.contacts.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
-        </div>
-        <div className="space-y-2">
-          {isEditing ? <Field label="Primary Personal Email" value={employee.emails.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.personalEmail} onInputChange={(value) => setDraft((prev) => ({ ...prev, personalEmail: value }))} /> : employee.emails.length === 0 ? <Empty /> : employee.emails.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
-        </div>
-      </div>
-
-      <SectionHeader title="Addresses" number="03" icon={IconCalendar} />
-      <div className="space-y-2">
-        {employee.addresses.length === 0 ? <Empty /> : employee.addresses.map((row) => <RowCard key={`${row.type}-${row.line}`} title={row.line || "-"} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
-      </div>
-
-      <SectionHeader title="Government IDs" number="04" icon={IconFileText} />
-      <FieldGrid>
-        <Field label="TIN Number" value={employee.tinNumber} editable={isEditing} inputValue={draft.tinNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, tinNumber: value }))} />
-        <Field label="SSS Number" value={employee.sssNumber} editable={isEditing} inputValue={draft.sssNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, sssNumber: value }))} />
-        <Field label="PhilHealth Number" value={employee.philHealthNumber} editable={isEditing} inputValue={draft.philHealthNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, philHealthNumber: value }))} />
-        <Field label="Pag-IBIG Number" value={employee.pagIbigNumber} editable={isEditing} inputValue={draft.pagIbigNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, pagIbigNumber: value }))} />
-        <Field label="UMID Number" value={employee.umidNumber} editable={isEditing} inputValue={draft.umidNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, umidNumber: value }))} />
-      </FieldGrid>
-    </div>
-  )
-}
-
-function QualificationsTab({ employee }: { employee: EmployeeProfileViewModel["employee"] }) {
-  return (
-    <div className="space-y-8">
-      <SectionHeader title="Qualifications" number="01" icon={IconAward} />
-      {employee.qualifications.length === 0 ? <Empty /> : employee.qualifications.map((row) => <RowCard key={`${row.category}-${row.name}-${row.dateLabel}`} title={`${row.category}: ${row.name}`} subtitle={row.details} meta={row.dateLabel} />)}
-    </div>
-  )
-}
-
-function HistoryTab({ employee }: { employee: EmployeeProfileViewModel["employee"] }) {
-  return (
-    <div className="space-y-8">
-      <SectionHeader title="Salary History" number="01" icon={IconCreditCard} />
-      <HistoryTable headers={["Effective", "Previous", "Current", "Adjustment", "Reason"]} rows={employee.salaryHistory.map((row) => [row.effectiveDate, row.previous, row.current, row.adjustment, row.reason])} />
-
-      <SectionHeader title="Position History" number="02" icon={IconBriefcase} />
-      <HistoryTable headers={["Effective", "Previous", "Current", "Movement", "Reason"]} rows={employee.positionHistory.map((row) => [row.effectiveDate, row.previous, row.current, row.movement, row.reason])} />
-
-      <SectionHeader title="Employment Status History" number="03" icon={IconHistory} />
-      <HistoryTable headers={["Effective", "Previous", "Current", "Reason"]} rows={employee.statusHistory.map((row) => [row.effectiveDate, row.previous, row.current, row.reason])} />
-
-      <SectionHeader title="Rank History" number="04" icon={IconAward} />
-      <HistoryTable headers={["Effective", "Previous", "Current", "Movement", "Reason"]} rows={employee.rankHistory.map((row) => [row.effectiveDate, row.previous, row.current, row.movement, row.reason])} />
-
-      <SectionHeader title="Previous Employment" number="05" icon={IconBriefcase} />
-      <HistoryTable headers={["Company", "Position", "Start", "End", "Salary"]} rows={employee.previousEmployments.map((row) => [row.company, row.position, row.startDate, row.endDate, row.salary])} />
     </div>
   )
 }
@@ -1055,33 +993,6 @@ function RowCard({ title, subtitle, meta }: { title: string; subtitle: string; m
       <p className="text-sm font-medium text-foreground">{title}</p>
       <p className="text-xs text-muted-foreground">{subtitle}</p>
       <p className="text-xs text-muted-foreground">{meta}</p>
-    </div>
-  )
-}
-
-function HistoryTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
-  if (rows.length === 0) return <Empty />
-
-  return (
-    <div className="overflow-x-auto border border-border/60">
-      <table className="w-full min-w-[760px] text-sm">
-        <thead className="bg-muted/30 text-muted-foreground">
-          <tr>
-            {headers.map((header) => (
-              <th key={header} className="px-3 py-2 text-left font-medium">{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row[0]}-${index}`} className="border-t border-border/60">
-              {row.map((cell, idx) => (
-                <td key={`${cell}-${idx}`} className="px-3 py-2">{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   )
 }

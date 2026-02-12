@@ -269,6 +269,10 @@ Last updated: 2026-02-09
   - [x] Updated employee movement history null-transition support.
     - Profile updates now record transitions when status/position/rank are cleared to `null`.
     - Movement history `new*Id` fields are nullable via schema + migration to preserve clear/unassign history events.
+  - [x] Added employee profile History-tab dialog CRUD with current-profile sync.
+    - Added dialog-based create/update/delete for Salary, Position, Employment Status, Rank, and Previous Employment history rows in `/[companyId]/employees/[employeeId]`.
+    - Added typed profile history CRUD action layer + zod schemas with company-scoped authz checks, audit logging, and route revalidation.
+    - Added latest-history sync behavior so salary/position/status/rank current profile values update automatically after history changes.
   - Port business rules from `payroll-actions-reference/**` into `modules/payroll/**` (not direct copy, structure-aligned implementation).
   - Align active UI/routes using `payroll-page-reference/**` and `payroll-components-reference/**` as behavior/layout guides.
   - Complete remaining active `/[companyId]/payroll/*` routes currently linked in sidebar (`payslips`, `adjustments`, `statutory`, etc.).

@@ -17,6 +17,13 @@ const logoutReasonMessageMap: Record<string, string> = {
   "invalid-session": "Your previous session is no longer valid. Please sign in again.",
 }
 
+const authErrorMessageMap: Record<string, string> = {
+  CredentialsSignin: "Invalid credentials. Please try again.",
+  AccessDenied: "Access denied. Please contact your administrator.",
+  Configuration: "Authentication is not configured correctly. Please contact support.",
+  Default: "Sign in failed. Please try again.",
+}
+
 export function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -25,8 +32,10 @@ export function LoginPage() {
 
   const nextPath = searchParams.get("next")
   const logoutReason = searchParams.get("reason")
+  const authError = searchParams.get("error")
   const callbackPath = nextPath && nextPath.startsWith("/") ? nextPath : null
   const logoutReasonMessage = logoutReason ? logoutReasonMessageMap[logoutReason] : null
+  const authErrorMessage = authError ? authErrorMessageMap[authError] ?? authErrorMessageMap.Default : null
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -153,7 +162,10 @@ export function LoginPage() {
               </Label>
 
               {errorMessage ? <p className="text-destructive text-xs">{errorMessage}</p> : null}
-              {!errorMessage && logoutReasonMessage ? <p className="text-xs text-muted-foreground">{logoutReasonMessage}</p> : null}
+              {!errorMessage && authErrorMessage ? <p className="text-destructive text-xs">{authErrorMessage}</p> : null}
+              {!errorMessage && !authErrorMessage && logoutReasonMessage ? (
+                <p className="text-xs text-muted-foreground">{logoutReasonMessage}</p>
+              ) : null}
 
               <Button className="w-full" size="lg" type="submit" disabled={isPending}>
                 {isPending ? "Signing in..." : "Access dashboard"}

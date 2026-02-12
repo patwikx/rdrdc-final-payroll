@@ -42,6 +42,8 @@ const resolveHomePath = (user: AuthorizedUser): string | null => {
 }
  
 export const authConfig = {
+  trustHost: true,
+  secret: process.env.AUTH_SECRET,
   session: {
     strategy: "jwt",
     maxAge: 30 * 60,

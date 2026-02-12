@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 
+import { auth } from "@/auth"
 import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
@@ -61,12 +62,16 @@ export default async function EmployeeMasterlistRoutePage({ params }: EmployeeMa
   }
 
   const data = await getEmployeeMasterlistViewModel(company.companyId)
+  const session = await auth()
+  const canDeleteEmployees =
+    data.companyRole === "COMPANY_ADMIN" || session?.user?.role === "SUPER_ADMIN"
 
   return (
     <EmployeeMasterlistPage
       companyId={company.companyId}
       companyName={data.companyName}
       employees={data.employees}
+      canDeleteEmployees={canDeleteEmployees}
     />
   )
 }

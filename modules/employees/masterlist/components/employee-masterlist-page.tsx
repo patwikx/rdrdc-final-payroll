@@ -1,8 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
+  IconAlertTriangle,
   IconBuilding,
   IconChevronDown,
   IconChevronUp,
@@ -15,21 +17,37 @@ import {
   IconPlus,
   IconSearch,
   IconShield,
+  IconTrash,
   IconUsers,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import {
+  deleteEmployeeAction,
+  restoreEmployeeAction,
+} from "@/modules/employees/masterlist/actions/delete-employee-action"
 import type { EmployeeMasterlistRow } from "@/modules/employees/masterlist/utils/get-employee-masterlist-data"
 
 type EmployeeMasterlistPageProps = {
   companyId: string
   companyName: string
   employees: EmployeeMasterlistRow[]
+  canDeleteEmployees: boolean
 }
 
 type SortColumn = "name" | "employeeNumber" | "department" | "status"
@@ -37,7 +55,14 @@ type SortDirection = "asc" | "desc"
 
 const PAGE_SIZE = 25
 
-export function EmployeeMasterlistPage({ companyId, companyName, employees }: EmployeeMasterlistPageProps) {
+export function EmployeeMasterlistPage({
+  companyId,
+  companyName,
+  employees,
+  canDeleteEmployees,
+}: EmployeeMasterlistPageProps) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const [searchTerm, setSearchTerm] = useState("")
   const [activeDept, setActiveDept] = useState<string | null>(null)
   const [activeBranch, setActiveBranch] = useState<string | null>(null)
@@ -46,6 +71,12 @@ export function EmployeeMasterlistPage({ companyId, companyName, employees }: Em
   const [sortColumn, setSortColumn] = useState<SortColumn>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
   const [currentPage, setCurrentPage] = useState(1)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string
+    employeeNumber: string
+    fullName: string
+    isActive: boolean
+  } | null>(null)
 
   const departments = useMemo(
     () =>
@@ -104,6 +135,48 @@ export function EmployeeMasterlistPage({ companyId, companyName, employees }: Em
     }
     setSortColumn(column)
     setSortDirection("asc")
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return
+    const target = deleteTarget
+
+    startTransition(async () => {
+      const result = await deleteEmployeeAction({
+        companyId,
+        employeeId: target.id,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message, {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            startTransition(async () => {
+              const restoreResult = await restoreEmployeeAction({
+                companyId,
+                employeeId: target.id,
+                restoreActive: target.isActive,
+              })
+
+              if (!restoreResult.ok) {
+                toast.error(restoreResult.error)
+                return
+              }
+
+              toast.success(restoreResult.message)
+              router.refresh()
+            })
+          },
+        },
+      })
+      setDeleteTarget(null)
+      router.refresh()
+    })
   }
 
   return (
@@ -343,12 +416,32 @@ export function EmployeeMasterlistPage({ companyId, companyName, employees }: Em
                   </div>
 
                   <div className="col-span-2 flex justify-end">
-                    <Link href={`/${companyId}/employees/${employee.id}`}>
-                      <Button variant="outline" size="sm" className="gap-1 border-border/60">
-                        <IconEye className="h-3.5 w-3.5" />
-                        View Profile
-                      </Button>
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/${companyId}/employees/${employee.id}`}>
+                        <Button variant="outline" size="sm" className="gap-1 border-border/60">
+                          <IconEye className="h-3.5 w-3.5" />
+                          View Profile
+                        </Button>
+                      </Link>
+                      {canDeleteEmployees ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() =>
+                            setDeleteTarget({
+                              id: employee.id,
+                              employeeNumber: employee.employeeNumber,
+                              fullName: employee.fullName,
+                              isActive: employee.isActive,
+                            })
+                          }
+                        >
+                          <IconTrash className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ))
@@ -384,6 +477,34 @@ export function EmployeeMasterlistPage({ companyId, companyName, employees }: Em
           ) : null}
         </main>
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="inline-flex items-center gap-2">
+              <IconAlertTriangle className="h-4 w-4 text-destructive" />
+              Delete Employee Record
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove <span className="font-medium text-foreground">{deleteTarget?.fullName}</span> (
+              {deleteTarget?.employeeNumber}) from the active employee masterlist.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault()
+                handleConfirmDelete()
+              }}
+            >
+              {isPending ? "Deleting..." : "Confirm Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

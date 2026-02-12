@@ -6,6 +6,12 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import {
+  createWallClockDateTime,
+  ensureEndAfterStart,
+  formatWallClockTime,
+  parsePhDateInput,
+} from "@/modules/attendance/dtr/utils/wall-clock"
 
 type SyncResult = {
   ok: true
@@ -31,30 +37,7 @@ type DayOverride = {
 const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const
 
 const parseDateValue = (value: string): Date | null => {
-  const normalized = value.replaceAll("/", "-")
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    return null
-  }
-  const [year, month, day] = normalized.split("-").map((item) => Number(item))
-  if (!year || !month || !day) {
-    return null
-  }
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const parseDateParts = (value: Date): { year: number; month: number; day: number } => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).formatToParts(value)
-
-  return {
-    year: Number(parts.find((part) => part.type === "year")?.value ?? "1970"),
-    month: Number(parts.find((part) => part.type === "month")?.value ?? "01"),
-    day: Number(parts.find((part) => part.type === "day")?.value ?? "01"),
-  }
+  return parsePhDateInput(value.replaceAll("/", "-"))
 }
 
 const buildDateTime = (attendanceDate: Date, hhmm: string): Date | null => {
@@ -68,8 +51,7 @@ const buildDateTime = (attendanceDate: Date, hhmm: string): Date | null => {
     return null
   }
 
-  const date = parseDateParts(attendanceDate)
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  return createWallClockDateTime(attendanceDate, `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`)
 }
 
 const parseTimeString = (attendanceDate: Date, value: string): Date | null => {
@@ -77,20 +59,15 @@ const parseTimeString = (attendanceDate: Date, value: string): Date | null => {
     return null
   }
 
-  const [hour, minute] = value.split(":").map((part) => Number(part))
-  if (hour > 23 || minute > 59) {
-    return null
-  }
-
-  const date = parseDateParts(attendanceDate)
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  return createWallClockDateTime(attendanceDate, value)
 }
 
 const parseScheduleTime = (attendanceDate: Date, value: Date): Date => {
-  const date = parseDateParts(attendanceDate)
-  const hour = value.getUTCHours()
-  const minute = value.getUTCMinutes()
-  return new Date(Date.UTC(date.year, date.month - 1, date.day, hour, minute, 0, 0))
+  const parsed = createWallClockDateTime(attendanceDate, formatWallClockTime(value))
+  if (!parsed) {
+    throw new Error("Invalid work schedule time.")
+  }
+  return parsed
 }
 
 const calculateNightDiffHours = (timeIn: Date, timeOut: Date): number => {
@@ -150,16 +127,21 @@ const getScheduleTimes = (
   }
 
   if (dayOverride?.timeIn && dayOverride?.timeOut) {
+    const scheduledIn = parseTimeString(attendanceDate, dayOverride.timeIn)
+    const scheduledOut = parseTimeString(attendanceDate, dayOverride.timeOut)
+    if (!scheduledIn || !scheduledOut) {
+      return { scheduledIn: null, scheduledOut: null }
+    }
+
     return {
-      scheduledIn: parseTimeString(attendanceDate, dayOverride.timeIn),
-      scheduledOut: parseTimeString(attendanceDate, dayOverride.timeOut),
+      scheduledIn,
+      scheduledOut: ensureEndAfterStart(scheduledIn, scheduledOut),
     }
   }
 
-  return {
-    scheduledIn: parseScheduleTime(attendanceDate, workSchedule.workStartTime),
-    scheduledOut: parseScheduleTime(attendanceDate, workSchedule.workEndTime),
-  }
+  const scheduledIn = parseScheduleTime(attendanceDate, workSchedule.workStartTime)
+  const scheduledOut = parseScheduleTime(attendanceDate, workSchedule.workEndTime)
+  return { scheduledIn, scheduledOut: ensureEndAfterStart(scheduledIn, scheduledOut) }
 }
 
 export async function syncBiometricsAction(params: { companyId: string; fileContent: string }): Promise<SyncResult> {
@@ -176,7 +158,10 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
   const parseErrors: Array<{ line: string; reason: string }> = []
   const validationErrors: Array<{ employeeNumber: string; date: string; reason: string }> = []
 
-  const grouped = new Map<string, { employeeNumber: string; dateText: string; attendanceDate: Date; in?: Date; out?: Date }>()
+  const grouped = new Map<
+    string,
+    { key: string; employeeNumber: string; dateText: string; attendanceDate: Date; in?: Date; out?: Date }
+  >()
 
   for (const line of lines) {
     const parts = line.trim().split(/\s+/)
@@ -208,7 +193,7 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
     }
 
     const key = `${employeeNumber}_${dateText}`
-    const current = grouped.get(key) ?? { employeeNumber, dateText, attendanceDate }
+    const current = grouped.get(key) ?? { key, employeeNumber, dateText, attendanceDate }
 
     if (typeCode === "0") {
       if (!current.in || clockTime < current.in) {
@@ -223,6 +208,34 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
     }
 
     grouped.set(key, current)
+  }
+
+  const sortedByEmployeeAndDate = Array.from(grouped.values()).sort((a, b) => {
+    if (a.employeeNumber !== b.employeeNumber) {
+      return a.employeeNumber.localeCompare(b.employeeNumber)
+    }
+    return a.attendanceDate.getTime() - b.attendanceDate.getTime()
+  })
+
+  for (let index = 0; index < sortedByEmployeeAndDate.length - 1; index += 1) {
+    const current = sortedByEmployeeAndDate[index]
+    if (!current.in || current.out) {
+      continue
+    }
+
+    const next = sortedByEmployeeAndDate[index + 1]
+    if (!next || next.employeeNumber !== current.employeeNumber || next.in || !next.out) {
+      continue
+    }
+
+    const dayGap = Math.round((next.attendanceDate.getTime() - current.attendanceDate.getTime()) / (24 * 60 * 60 * 1000))
+    if (dayGap !== 1) {
+      continue
+    }
+
+    current.out = next.out
+    grouped.set(current.key, current)
+    grouped.delete(next.key)
   }
 
   const employeeNumbers = Array.from(new Set(Array.from(grouped.values()).map((item) => item.employeeNumber)))
@@ -276,23 +289,15 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
       continue
     }
 
-    if (item.out <= item.in) {
-      recordsSkipped += 1
-      validationErrors.push({
-        employeeNumber: item.employeeNumber,
-        date: item.dateText,
-        reason: "Time out must be later than time in.",
-      })
-      continue
-    }
+    const normalizedTimeOut = ensureEndAfterStart(item.in, item.out)
 
     const schedule = getScheduleTimes(item.attendanceDate, employee.workSchedule)
     const breakMins = employee.workSchedule?.breakDurationMins ?? 60
     const graceMins = employee.workSchedule?.gracePeriodMins ?? 0
 
-    const durationMs = item.out.getTime() - item.in.getTime()
+    const durationMs = normalizedTimeOut.getTime() - item.in.getTime()
     const hoursWorked = Math.max(0, (durationMs - breakMins * 60 * 1000) / (1000 * 60 * 60))
-    const nightDiffHours = calculateNightDiffHours(item.in, item.out)
+    const nightDiffHours = calculateNightDiffHours(item.in, normalizedTimeOut)
 
     let tardinessMins = 0
     let undertimeMins = 0
@@ -304,12 +309,12 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
         tardinessMins = Math.round(lateBy - graceMins)
       }
 
-      const earlyBy = (schedule.scheduledOut.getTime() - item.out.getTime()) / (1000 * 60)
+      const earlyBy = (schedule.scheduledOut.getTime() - normalizedTimeOut.getTime()) / (1000 * 60)
       if (earlyBy > 0) {
         undertimeMins = Math.round(earlyBy)
       }
 
-      const overtimeMins = (item.out.getTime() - schedule.scheduledOut.getTime()) / (1000 * 60)
+      const overtimeMins = (normalizedTimeOut.getTime() - schedule.scheduledOut.getTime()) / (1000 * 60)
       if (overtimeMins > 0) {
         overtimeHours = overtimeMins / 60
       }
@@ -338,7 +343,7 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
         scheduledTimeIn: schedule.scheduledIn,
         scheduledTimeOut: schedule.scheduledOut,
         actualTimeIn: item.in,
-        actualTimeOut: item.out,
+        actualTimeOut: normalizedTimeOut,
         timeInSourceCode: DtrSource.BIOMETRIC,
         timeOutSourceCode: DtrSource.BIOMETRIC,
         attendanceStatus: AttendanceStatus.PRESENT,
@@ -353,7 +358,7 @@ export async function syncBiometricsAction(params: { companyId: string; fileCont
         scheduledTimeIn: schedule.scheduledIn,
         scheduledTimeOut: schedule.scheduledOut,
         actualTimeIn: item.in,
-        actualTimeOut: item.out,
+        actualTimeOut: normalizedTimeOut,
         timeInSourceCode: DtrSource.BIOMETRIC,
         timeOutSourceCode: DtrSource.BIOMETRIC,
         attendanceStatus: AttendanceStatus.PRESENT,

@@ -282,14 +282,14 @@ Last updated: 2026-02-12
   - [x] 2026-02-12 closure verification:
     - Verified sidebar payroll routes resolve to active pages (`/payroll/runs`, `/payroll/recurring-deductions`, `/payroll/payslips`, `/payroll/statutory`).
     - Verified payroll module structure (`actions`, `schemas`, `components`, `utils`) is implemented and wired.
-- [ ] Align DTR outputs to payroll computation inputs.
-  - Standardize one DTR time contract: PH wall-clock semantics (`Asia/Manila`) from upload (`test-dtr.txt`) to UI/edit/export/payroll.
-  - Remove mixed formatter behavior (`UTC` in some UI surfaces vs `Asia/Manila` in export) to prevent time drift.
-  - Support cross-midnight (overnight) shift handling in biometric sync and manual correction flows.
-  - Keep manual DTR auto-approval behavior as-is (intentional HR-only operating model).
-  - Gate payroll DTR consumption to approved-ready records only.
-  - Align overtime source-of-truth across DTR diagnostics and payroll payable computation (approved OT requests vs DTR-derived OT).
-  - Make half-day semantics explicit and non-fragile (avoid relying only on free-text remarks markers).
+- [x] Align DTR outputs to payroll computation inputs.
+  - [x] Standardized one DTR wall-clock contract from upload (`test-dtr.txt`) to UI/edit/export/payroll consumption paths.
+  - [x] Removed mixed DTR clock formatter behavior by using shared wall-clock helpers in DTR views, edit flows, schedule autofill, and CSV export.
+  - [x] Added cross-midnight (overnight) handling in biometric sync and manual correction flows.
+  - [x] Kept manual DTR auto-approval behavior as-is (intentional HR-only operating model).
+  - [x] Gated payroll DTR consumption to approved-ready records only (validation + calculation guardrails).
+  - [x] Aligned overtime source-of-truth in payroll diagnostics with approved overtime requests (payable source), while preserving anomaly checks for unapproved DTR OT entries.
+  - [x] Made half-day semantics explicit with day-fraction capture and structured remarks token support (with legacy marker compatibility).
 
 ## Backlog (Lower Priority / Later)
 - [ ] Re-introduce Leave Reports module for payroll-source reporting when prioritized.

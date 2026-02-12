@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import {
   AttendanceStatus,
   AttendanceDeductionBasis,
+  DtrApprovalStatus,
   HolidayType,
   PayFrequencyType,
   PayrollProcessStepName,
@@ -26,6 +27,7 @@ import {
   type PayrollRunActionInput,
 } from "@/modules/payroll/schemas/payroll-run-actions-schema"
 import { validatePayrollRun } from "@/modules/payroll/utils/validate-payroll-run"
+import { isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type ActionResult = { ok: true; message: string; runId?: string } | { ok: false; error: string }
 
@@ -361,11 +363,7 @@ const calculateAttendanceSnapshot = (params: {
     })
 
     const leaveDayValue = activeLeave?.isHalfDay ? 0.5 : 1
-    const dtrRemarks = dtr?.remarks?.toUpperCase() ?? ""
-    const isHalfDayDtr =
-      dtrRemarks.includes("[HALF_DAY]") ||
-      dtrRemarks.includes("HALF DAY") ||
-      dtrRemarks.includes("HALFDAY")
+    const isHalfDayDtr = isHalfDayRemarks(dtr?.remarks)
     const dtrPayableValue = isHalfDayDtr ? 0.5 : 1
 
     if (isHoliday) {
@@ -983,6 +981,13 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
 
   const employeeIds = employees.map((employee) => employee.id)
   const datesInPeriod = getDateRange(run.payPeriod.cutoffStartDate, run.payPeriod.cutoffEndDate)
+  const nonApprovedDtrCountPromise = db.dailyTimeRecord.count({
+    where: {
+      employeeId: { in: employeeIds },
+      attendanceDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
+      approvalStatusCode: { not: DtrApprovalStatus.APPROVED },
+    },
+  })
 
   const regularRunStatusesFor13th: PayrollRunStatus[] = [
     PayrollRunStatus.COMPUTED,
@@ -992,7 +997,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     PayrollRunStatus.PAID,
   ]
 
-  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, paidPreTaxRecurringYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig] = await Promise.all([
+  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, paidPreTaxRecurringYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig, nonApprovedDtrCount] = await Promise.all([
     db.holiday.findMany({
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
@@ -1002,7 +1007,11 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       select: { holidayDate: true, holidayTypeCode: true, payMultiplier: true },
     }),
     db.dailyTimeRecord.findMany({
-      where: { employeeId: { in: employeeIds }, attendanceDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate } },
+      where: {
+        employeeId: { in: employeeIds },
+        attendanceDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
+        approvalStatusCode: DtrApprovalStatus.APPROVED,
+      },
       select: {
         employeeId: true,
         attendanceDate: true,
@@ -1208,7 +1217,15 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       },
     }),
     db.systemConfig.findUnique({ where: { key: "NIGHT_DIFF_RATE" }, select: { value: true } }),
+    nonApprovedDtrCountPromise,
   ])
+
+  if (nonApprovedDtrCount > 0) {
+    return {
+      ok: false,
+      error: `${nonApprovedDtrCount} DTR entr${nonApprovedDtrCount === 1 ? "y is" : "ies are"} pending/rejected. Approve all DTR records before calculation.`,
+    }
+  }
 
   const holidaysByDate = new Map(
     holidays.map((holiday) => [toDateKey(holiday.holidayDate), { holidayTypeCode: holiday.holidayTypeCode, payMultiplier: toNumber(holiday.payMultiplier) }])

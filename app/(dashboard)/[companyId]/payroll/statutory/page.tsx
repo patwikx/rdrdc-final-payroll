@@ -39,8 +39,11 @@ export default async function PayrollStatutoryPage({ params }: PayrollStatutoryP
       printedBy={viewModel.printedBy}
       totals={viewModel.totals}
       rows={viewModel.rows}
+      trialRows={viewModel.trialRows}
       birRows={viewModel.birRows}
+      trialBirRows={viewModel.trialBirRows}
       doleRows={viewModel.doleRows}
+      trialDoleRows={viewModel.trialDoleRows}
     />
   )
 }

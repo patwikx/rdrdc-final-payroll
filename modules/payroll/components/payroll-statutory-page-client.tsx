@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import {
   GovernmentRemittanceReports,
@@ -48,53 +49,62 @@ type PayrollStatutoryPageClientProps = {
     pagIbigEmployer: string
     withholdingTax: string
   }
-  rows: Array<{
-    payslipId: string
-    employeeId: string
-    employeeName: string
-    employeeNumber: string
-    employeePhotoUrl: string | null
-    birthDate: string | null
-    sssNumber: string | null
-    philHealthPin: string | null
-    pagIbigNumber: string | null
-    tinNumber: string | null
-    runNumber: string
-    periodLabel: string
-    cutoffEndDateIso: string
-    grossPay: string
-    sssEmployee: string
-    sssEmployer: string
-    philHealthEmployee: string
-    philHealthEmployer: string
-    pagIbigEmployee: string
-    pagIbigEmployer: string
-    withholdingTax: string
-  }>
-  birRows: Array<{
-    employeeId: string
-    employeeName: string
-    employeeNumber: string
-    tinNumber: string | null
-    year: number
-    sssEmployee: string
-    philHealthEmployee: string
-    pagIbigEmployee: string
-    grossCompensation: string
-    nonTaxableBenefits: string
-    taxableCompensation: string
-    withholdingTax: string
-    annualTaxDue: string
-    taxVariance: string
-  }>
-  doleRows: Array<{
-    employeeId: string
-    employeeName: string
-    employeeNumber: string
-    year: number
-    annualBasicSalary: string
-    thirteenthMonthPay: string
-  }>
+  rows: StatutoryMonthlyRow[]
+  trialRows: StatutoryMonthlyRow[]
+  birRows: StatutoryBirRow[]
+  trialBirRows: StatutoryBirRow[]
+  doleRows: StatutoryDoleRow[]
+  trialDoleRows: StatutoryDoleRow[]
+}
+
+type StatutoryMonthlyRow = {
+  payslipId: string
+  employeeId: string
+  employeeName: string
+  employeeNumber: string
+  employeePhotoUrl: string | null
+  birthDate: string | null
+  sssNumber: string | null
+  philHealthPin: string | null
+  pagIbigNumber: string | null
+  tinNumber: string | null
+  runNumber: string
+  periodLabel: string
+  cutoffEndDateIso: string
+  grossPay: string
+  sssEmployee: string
+  sssEmployer: string
+  philHealthEmployee: string
+  philHealthEmployer: string
+  pagIbigEmployee: string
+  pagIbigEmployer: string
+  withholdingTax: string
+}
+
+type StatutoryBirRow = {
+  employeeId: string
+  employeeName: string
+  employeeNumber: string
+  tinNumber: string | null
+  year: number
+  sssEmployee: string
+  philHealthEmployee: string
+  pagIbigEmployee: string
+  grossCompensation: string
+  nonTaxableBenefits: string
+  taxableCompensation: string
+  withholdingTax: string
+  annualTaxDue: string
+  taxVariance: string
+}
+
+type StatutoryDoleRow = {
+  employeeId: string
+  employeeName: string
+  employeeNumber: string
+  year: number
+  annualBasicSalary: string
+  thirteenthMonthPay: string
 }
 
 type ReportKey = "sss" | "philhealth" | "pagibig" | "dole13th" | "bir-alphalist"
@@ -181,16 +191,24 @@ export function PayrollStatutoryPageClient({
   companyName,
   printedBy,
   rows,
+  trialRows,
   birRows,
+  trialBirRows,
   doleRows,
+  trialDoleRows,
 }: PayrollStatutoryPageClientProps) {
   const [activeReport, setActiveReport] = useState<ReportKey>("philhealth")
   const [searchText, setSearchText] = useState("")
   const [expandedBirTraceKey, setExpandedBirTraceKey] = useState<string | null>(null)
+  const [showTrialRuns, setShowTrialRuns] = useState(false)
+
+  const sourceRows = showTrialRuns ? trialRows : rows
+  const sourceBirRows = showTrialRuns ? trialBirRows : birRows
+  const sourceDoleRows = showTrialRuns ? trialDoleRows : doleRows
 
   const monthOptions = useMemo(() => {
     const monthMap = new Map<string, Date>()
-    for (const row of rows) {
+    for (const row of sourceRows) {
       const date = new Date(row.cutoffEndDateIso)
       if (Number.isNaN(date.getTime())) {
         continue
@@ -212,9 +230,12 @@ export function PayrollStatutoryPageClient({
           timeZone: "Asia/Manila",
         }),
       }))
-  }, [rows])
+  }, [sourceRows])
 
-  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(monthOptions[0]?.key ?? "")
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>("")
+  const resolvedMonthKey = monthOptions.some((option) => option.key === selectedMonthKey)
+    ? selectedMonthKey
+    : (monthOptions[0]?.key ?? "")
 
   const filteredOptions = useMemo(() => {
     const normalized = searchText.trim().toLowerCase()
@@ -227,66 +248,138 @@ export function PayrollStatutoryPageClient({
 
   const resolvedReport = filteredOptions.find((option) => option.key === activeReport) ?? filteredOptions[0] ?? REPORT_OPTIONS[0]
 
-  const selectedMonthDate = monthOptions.find((option) => option.key === selectedMonthKey)?.date ?? new Date()
+  const selectedMonthDate = monthOptions.find((option) => option.key === resolvedMonthKey)?.date ?? new Date()
 
   const scopedRows = useMemo(() => {
-    if (!selectedMonthKey) {
-      return rows
+    if (!resolvedMonthKey) {
+      return sourceRows
     }
 
-    return rows.filter((row) => row.cutoffEndDateIso.startsWith(selectedMonthKey))
-  }, [rows, selectedMonthKey])
+    return sourceRows.filter((row) => row.cutoffEndDateIso.startsWith(resolvedMonthKey))
+  }, [sourceRows, resolvedMonthKey])
 
   const philHealthRows = useMemo<PhilHealthRemittanceRow[]>(() => {
-    return scopedRows.map((row) => ({
-      idNumber: row.employeeNumber,
-      employeeName: row.employeeName,
-      pin: (row.philHealthPin ?? "").replace(/\D/g, ""),
-      employeeShare: parseAmount(row.philHealthEmployee),
-      employerShare: parseAmount(row.philHealthEmployer),
-    }))
+    const map = new Map<string, PhilHealthRemittanceRow>()
+
+    for (const row of scopedRows) {
+      const key = row.employeeId || row.employeeNumber || row.payslipId
+      const pin = (row.philHealthPin ?? "").replace(/\D/g, "")
+      const employeeShare = parseAmount(row.philHealthEmployee)
+      const employerShare = parseAmount(row.philHealthEmployer)
+      const existing = map.get(key)
+
+      if (!existing) {
+        map.set(key, {
+          idNumber: row.employeeNumber,
+          employeeName: row.employeeName,
+          pin,
+          employeeShare,
+          employerShare,
+        })
+        continue
+      }
+
+      existing.employeeShare += employeeShare
+      existing.employerShare += employerShare
+      if (!existing.pin && pin) {
+        existing.pin = pin
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
   }, [scopedRows])
 
   const sssRows = useMemo<SssRemittanceRow[]>(() => {
-    return scopedRows.map((row) => ({
-      idNumber: row.employeeNumber,
-      employeeName: row.employeeName,
-      sssNumber: row.sssNumber ?? "",
-      employeeShare: parseAmount(row.sssEmployee),
-      employerShare: parseAmount(row.sssEmployer),
-    }))
+    const map = new Map<string, SssRemittanceRow>()
+
+    for (const row of scopedRows) {
+      const key = row.employeeId || row.employeeNumber || row.payslipId
+      const sssNumber = row.sssNumber ?? ""
+      const employeeShare = parseAmount(row.sssEmployee)
+      const employerShare = parseAmount(row.sssEmployer)
+      const existing = map.get(key)
+
+      if (!existing) {
+        map.set(key, {
+          idNumber: row.employeeNumber,
+          employeeName: row.employeeName,
+          sssNumber,
+          employeeShare,
+          employerShare,
+        })
+        continue
+      }
+
+      existing.employeeShare += employeeShare
+      existing.employerShare += employerShare
+      if (!existing.sssNumber && sssNumber) {
+        existing.sssNumber = sssNumber
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
   }, [scopedRows])
 
   const pagIbigRows = useMemo<PagIbigContributionRow[]>(() => {
-    return scopedRows.map((row) => {
+    const map = new Map<string, PagIbigContributionRow>()
+
+    for (const row of scopedRows) {
+      const key = row.employeeId || row.employeeNumber || row.payslipId
       const nameParts = extractNameParts(row.employeeName)
-      return {
-        employeeId: row.employeeNumber,
-        surname: nameParts.surname,
-        firstName: nameParts.firstName,
-        middleName: nameParts.middleName,
-        birthDate: row.birthDate ? new Date(row.birthDate) : new Date("2000-01-01"),
-        pagIbigNumber: row.pagIbigNumber ?? "",
-        employeeShare: parseAmount(row.pagIbigEmployee),
-        employerShare: parseAmount(row.pagIbigEmployer),
+      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+      const birthDate =
+        parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime())
+          ? parsedBirthDate
+          : new Date("2000-01-01")
+      const pagIbigNumber = row.pagIbigNumber ?? ""
+      const employeeShare = parseAmount(row.pagIbigEmployee)
+      const employerShare = parseAmount(row.pagIbigEmployer)
+      const existing = map.get(key)
+
+      if (!existing) {
+        map.set(key, {
+          employeeId: row.employeeNumber,
+          surname: nameParts.surname,
+          firstName: nameParts.firstName,
+          middleName: nameParts.middleName,
+          birthDate,
+          pagIbigNumber,
+          employeeShare,
+          employerShare,
+        })
+        continue
       }
+
+      existing.employeeShare += employeeShare
+      existing.employerShare += employerShare
+      if (!existing.pagIbigNumber && pagIbigNumber) {
+        existing.pagIbigNumber = pagIbigNumber
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      const surnameCompare = a.surname.localeCompare(b.surname)
+      if (surnameCompare !== 0) {
+        return surnameCompare
+      }
+      return a.firstName.localeCompare(b.firstName)
     })
   }, [scopedRows])
 
-  const selectedYearPrefix = selectedMonthKey ? selectedMonthKey.slice(0, 4) : ""
+  const selectedYearPrefix = resolvedMonthKey ? resolvedMonthKey.slice(0, 4) : ""
 
   const filteredBirRows = useMemo(() => {
     if (!selectedYearPrefix) {
-      return birRows
+      return sourceBirRows
     }
 
     const year = Number(selectedYearPrefix)
-    return birRows.filter((row) => row.year === year)
-  }, [birRows, selectedYearPrefix])
+    return sourceBirRows.filter((row) => row.year === year)
+  }, [sourceBirRows, selectedYearPrefix])
 
   const filteredDoleRows = useMemo<Dole13thMonthRow[]>(() => {
     const targetYear = selectedYearPrefix ? Number(selectedYearPrefix) : undefined
-    const scoped = targetYear ? doleRows.filter((row) => row.year === targetYear) : doleRows
+    const scoped = targetYear ? sourceDoleRows.filter((row) => row.year === targetYear) : sourceDoleRows
 
     return scoped.map((row) => ({
       employeeId: row.employeeNumber,
@@ -294,7 +387,7 @@ export function PayrollStatutoryPageClient({
       annualBasicSalary: parseAmount(row.annualBasicSalary),
       thirteenthMonthPay: parseAmount(row.thirteenthMonthPay),
     }))
-  }, [doleRows, selectedYearPrefix])
+  }, [sourceDoleRows, selectedYearPrefix])
 
   const exportCsvTemplate = (report: ReportKey) => {
     if (report === "philhealth") {
@@ -539,7 +632,7 @@ export function PayrollStatutoryPageClient({
           {companyName} Statutory Reports
         </h1>
         <p className="text-sm text-muted-foreground">
-          Select PhilHealth or Pag-IBIG to view the printable report.
+          Default view shows REGULAR runs only. Enable trial mode to view latest TRIAL run per pay period.
         </p>
       </header>
 
@@ -559,7 +652,7 @@ export function PayrollStatutoryPageClient({
                 className="pl-8"
               />
             </div>
-            <Select value={selectedMonthKey} onValueChange={setSelectedMonthKey}>
+            <Select value={resolvedMonthKey} onValueChange={setSelectedMonthKey}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
@@ -571,6 +664,13 @@ export function PayrollStatutoryPageClient({
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+              <div>
+                <p className="text-xs font-medium">Show Trial Runs</p>
+                <p className="text-[11px] text-muted-foreground">Latest TRIAL_RUN per pay period</p>
+              </div>
+              <Switch checked={showTrialRuns} onCheckedChange={setShowTrialRuns} />
+            </div>
           </div>
 
           <ScrollArea className="h-[620px] pr-1">
@@ -606,6 +706,9 @@ export function PayrollStatutoryPageClient({
               <div>
                 <p className="text-sm font-semibold">{resolvedReport.label}</p>
                 <p className="text-xs text-muted-foreground">{resolvedReport.frequency}</p>
+                <p className="text-xs text-muted-foreground">
+                  Source: {showTrialRuns ? "TRIAL_RUN (latest per pay period)" : "REGULAR"}
+                </p>
               </div>
               {resolvedReport.key === "sss" || resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" || resolvedReport.key === "dole13th" ? (
                 <div className="flex items-center gap-2">

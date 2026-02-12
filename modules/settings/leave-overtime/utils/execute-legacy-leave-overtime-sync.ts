@@ -728,7 +728,7 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
   const employeeResolver = await buildEmployeeResolver(input.companyId)
   const leaveTypeResolver = await buildLeaveTypeResolver(input.companyId, input.dryRun)
 
-  const [legacyLeaves, legacyOvertime, legacyBalances] = await Promise.all([
+  const [legacyLeaves, legacyOvertime] = await Promise.all([
     fetchRows({
       baseUrl: input.baseUrl,
       endpoint: input.leaveEndpoint,
@@ -740,14 +740,6 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
     fetchRows({
       baseUrl: input.baseUrl,
       endpoint: input.overtimeEndpoint,
-      companyId: input.companyId,
-      legacyScopeId: input.legacyScopeId,
-      apiToken: input.apiToken,
-      timeoutMs: input.timeoutMs,
-    }),
-    fetchRows({
-      baseUrl: input.baseUrl,
-      endpoint: input.balanceEndpoint,
       companyId: input.companyId,
       legacyScopeId: input.legacyScopeId,
       apiToken: input.apiToken,
@@ -1094,116 +1086,13 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
     }
   }
 
-  for (const row of legacyBalances) {
-    try {
-      const recordId = legacyRecordId(row)
-      const employeeIdentity = extractEmployeeIdentity(row)
-      const employeeMatch = employeeResolver.resolve(employeeIdentity)
-      if (!employeeMatch.matched) {
-        unmatched.push({
-          domain: "balance",
-          reason: employeeMatch.reason ?? "NO_EMPLOYEE_MATCH",
-          legacyRecordId: recordId,
-          employeeNumber: employeeIdentity.employeeNumber,
-          firstName: employeeIdentity.firstName,
-          lastName: employeeIdentity.lastName,
-        })
-        continue
-      }
-
-      const leaveTypeIdentity = extractLeaveTypeIdentity(row)
-      const leaveType = await leaveTypeResolver.resolve(leaveTypeIdentity)
-      if (!leaveType) {
-        unmatched.push({
-          domain: "balance",
-          reason: "LEAVE_TYPE_NOT_FOUND_OR_CREATE_FAILED",
-          legacyRecordId: recordId,
-          employeeNumber: employeeIdentity.employeeNumber,
-          firstName: employeeIdentity.firstName,
-          lastName: employeeIdentity.lastName,
-          leaveTypeCode: leaveTypeIdentity.code,
-          leaveTypeName: leaveTypeIdentity.name,
-        })
-        continue
-      }
-
-      const year = safeNumber(pickPath(row, ["year"]))
-      if (!year || year < 2000 || year > 2100) {
-        skipped.push({ domain: "balance", reason: "INVALID_YEAR", legacyRecordId: recordId })
-        continue
-      }
-
-      const allocatedDays = safeNumber(pickPath(row, ["allocatedDays", "totalEntitlement"]))
-      const usedDays = safeNumber(pickPath(row, ["usedDays"]))
-      if (allocatedDays === null || usedDays === null) {
-        skipped.push({
-          domain: "balance",
-          reason: "MISSING_ALLOCATED_OR_USED_DAYS",
-          legacyRecordId: recordId,
-        })
-        continue
-      }
-
-      const currentBalance = allocatedDays - usedDays
-      const createdAt = toDate(pickPath(row, ["createdAt"]))
-      const updatedAt = toDate(pickPath(row, ["updatedAt"]))
-
-      if (!input.dryRun) {
-        await db.leaveBalance.upsert({
-          where: {
-            employeeId_leaveTypeId_year: {
-              employeeId: employeeMatch.matched.id,
-              leaveTypeId: leaveType.id,
-              year: Math.trunc(year),
-            },
-          },
-          update: {
-            openingBalance: allocatedDays,
-            creditsEarned: 0,
-            creditsUsed: usedDays,
-            creditsForfeited: 0,
-            creditsConverted: 0,
-            creditsCarriedOver: 0,
-            currentBalance,
-            pendingRequests: 0,
-            availableBalance: currentBalance,
-            ...(updatedAt ? { updatedAt } : {}),
-          },
-          create: {
-            employeeId: employeeMatch.matched.id,
-            leaveTypeId: leaveType.id,
-            year: Math.trunc(year),
-            openingBalance: allocatedDays,
-            creditsEarned: 0,
-            creditsUsed: usedDays,
-            creditsForfeited: 0,
-            creditsConverted: 0,
-            creditsCarriedOver: 0,
-            currentBalance,
-            pendingRequests: 0,
-            availableBalance: currentBalance,
-            ...(createdAt ? { createdAt } : {}),
-            ...(updatedAt ? { updatedAt } : {}),
-          },
-        })
-      }
-
-      processed.leaveBalances += 1
-    } catch (error) {
-      errors.push({
-        domain: "balance",
-        message: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
   processed.leaveTypesCreated = leaveTypeResolver.getCreatedCount()
 
   const summary: LegacySyncSummary = {
     fetched: {
       leaveRequests: legacyLeaves.length,
       overtimeRequests: legacyOvertime.length,
-      leaveBalances: legacyBalances.length,
+      leaveBalances: 0,
     },
     processed: {
       ...processed,

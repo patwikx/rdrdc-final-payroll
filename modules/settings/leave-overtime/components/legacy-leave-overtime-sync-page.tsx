@@ -53,10 +53,8 @@ export function LegacyLeaveOvertimeSyncPage({ companyId, companyName }: LegacyLe
     return [
       { label: "Fetched Leave Requests", value: result.summary.fetched.leaveRequests },
       { label: "Fetched Overtime Requests", value: result.summary.fetched.overtimeRequests },
-      { label: "Fetched Leave Balances", value: result.summary.fetched.leaveBalances },
       { label: "Processed Leave Requests", value: result.summary.processed.leaveRequests },
       { label: "Processed Overtime Requests", value: result.summary.processed.overtimeRequests },
-      { label: "Processed Leave Balances", value: result.summary.processed.leaveBalances },
       { label: "Created Leave Types", value: result.summary.processed.leaveTypesCreated },
       { label: "Unmatched Rows", value: result.summary.unmatchedCount },
       { label: "Skipped Rows", value: result.summary.skippedCount },
@@ -90,7 +88,7 @@ export function LegacyLeaveOvertimeSyncPage({ companyId, companyName }: LegacyLe
           Legacy Leave / OT Sync
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Import leave, overtime, and leave-balance history from your legacy system into {companyName}.
+          Import leave and overtime history from your legacy system into {companyName}.
         </p>
       </header>
 
@@ -98,7 +96,9 @@ export function LegacyLeaveOvertimeSyncPage({ companyId, companyName }: LegacyLe
         <Card className="border-border/60">
           <CardHeader>
             <CardTitle className="text-base">Legacy API Connection</CardTitle>
-            <CardDescription>Provide your old system API details, then run dry-run first before apply mode.</CardDescription>
+            <CardDescription>
+              Provide your old system API details, then run dry-run first before apply mode. Leave-balance sync is disabled.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
@@ -154,17 +154,6 @@ export function LegacyLeaveOvertimeSyncPage({ companyId, companyName }: LegacyLe
                   id="overtimeEndpoint"
                   value={form.overtimeEndpoint}
                   onChange={(event) => setForm((previous) => ({ ...previous, overtimeEndpoint: event.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="balanceEndpoint">
-                  Leave Balance Endpoint<Required />
-                </Label>
-                <Input
-                  id="balanceEndpoint"
-                  value={form.balanceEndpoint}
-                  onChange={(event) => setForm((previous) => ({ ...previous, balanceEndpoint: event.target.value }))}
                 />
               </div>
 

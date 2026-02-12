@@ -11,17 +11,14 @@ import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   releaseReservedLeaveBalanceForRequest,
   reserveLeaveBalanceForRequest,
-} from "@/modules/employee-portal/utils/leave-balance-ledger"
+} from "@/modules/leave/utils/leave-balance-ledger"
 import {
   cancelLeaveRequestInputSchema,
   createLeaveRequestInputSchema,
   type CancelLeaveRequestInput,
   type CreateLeaveRequestInput,
-} from "@/modules/employee-portal/schemas/leave-request-actions-schema"
-
-type LeaveRequestActionResult =
-  | { ok: true; message: string }
-  | { ok: false; error: string }
+} from "@/modules/leave/schemas/leave-request-actions-schema"
+import type { LeaveActionResult } from "@/modules/leave/types/leave-action-result"
 
 const parseDateInput = (value: string): Date => {
   const [year, month, day] = value.split("-").map((part) => Number(part))
@@ -55,7 +52,7 @@ const generateLeaveRequestNumber = async (): Promise<string> => {
   throw new Error("REQUEST_NUMBER_GENERATION_FAILED")
 }
 
-export async function createLeaveRequestAction(input: CreateLeaveRequestInput): Promise<LeaveRequestActionResult> {
+export async function createLeaveRequestAction(input: CreateLeaveRequestInput): Promise<LeaveActionResult> {
   const parsed = createLeaveRequestInputSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid leave request payload." }
@@ -191,7 +188,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
   }
 }
 
-export async function cancelLeaveRequestAction(input: CancelLeaveRequestInput): Promise<LeaveRequestActionResult> {
+export async function cancelLeaveRequestAction(input: CancelLeaveRequestInput): Promise<LeaveActionResult> {
   const parsed = cancelLeaveRequestInputSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid cancellation payload." }

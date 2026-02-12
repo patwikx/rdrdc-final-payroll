@@ -296,17 +296,17 @@ Last updated: 2026-02-12
   - [x] Made half-day semantics explicit with day-fraction capture and structured remarks token support (with legacy marker compatibility).
 
 ## Backlog (Lower Priority / Later)
-- [ ] Re-introduce Leave Reports module for payroll-source reporting when prioritized.
-  - Current pay period auto-resolve.
-  - Filed leave + overtime with supervisor-approved source rows.
-  - Rich filtering + export-ready output.
+- [x] Re-introduce Leave Reports module for payroll-source reporting when prioritized. (Skipped by product decision)
+  - Deferred until explicitly re-prioritized in a future reporting sprint.
 - [x] Remove remaining Employee Portal loan entry points to match current scope policy.
   - Removed Employee Portal loan quick-action and pending loan widget from portal dashboard.
   - Removed Employee Portal `/loans` and `/loan-calculator` routes from employee scope.
-- [ ] Formalize `modules/leave` as a full domain module (not UI-only).
-  - Add `actions`, `schemas`, `utils`, and `types` under `modules/leave`.
-  - Move leave domain queries/transforms from route files/components into module-level loaders/services.
-  - Standardize typed action result contracts and centralized leave domain validations.
+- [x] Formalize `modules/leave` as a full domain module (not UI-only).
+  - Moved employee leave submit/cancel actions and validation schemas into `modules/leave/actions` + `modules/leave/schemas`.
+  - Moved leave balance ledger mutations into `modules/leave/utils` and updated all leave-approval consumers to use module-local utilities.
+  - Added leave-domain typed action result contracts and employee-portal leave read-model types under `modules/leave/types`.
+  - Extracted Employee Portal dashboard leave queries into `modules/leave/utils/employee-portal-leave-dashboard-read-model.ts`.
+  - Updated leave read-model loaders to enforce tenant-safe company scoping on leave reads.
 
 ## Decisions
 

@@ -2,14 +2,12 @@
 
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import type { LeaveActionDataResult } from "@/modules/leave/types/leave-action-result"
 import { getLeaveBalanceWorkspaceData, resolveLeaveYear } from "@/modules/leave/utils/leave-domain"
 
-type GetLeaveBalanceWorkspaceActionResult =
-  | {
-      ok: true
-      data: Awaited<ReturnType<typeof getLeaveBalanceWorkspaceData>> & { selectedYear: number }
-    }
-  | { ok: false; error: string }
+type GetLeaveBalanceWorkspaceActionResult = LeaveActionDataResult<
+  Awaited<ReturnType<typeof getLeaveBalanceWorkspaceData>> & { selectedYear: number }
+>
 
 export async function getLeaveBalanceWorkspaceAction(input: {
   companyId: string

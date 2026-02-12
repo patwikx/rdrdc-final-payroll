@@ -1,6 +1,7 @@
 import { RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import type { EmployeePortalLeaveRequestsReadModel } from "@/modules/leave/types/employee-portal-leave-types"
 
 const dateLabel = new Intl.DateTimeFormat("en-PH", {
   month: "short",
@@ -23,10 +24,15 @@ export async function getEmployeePortalLeaveRequestsReadModel(params: {
   companyId: string
   employeeId: string
   year: number
-}) {
+}): Promise<EmployeePortalLeaveRequestsReadModel> {
   const [leaveRequests, leaveBalances, leaveTypes] = await Promise.all([
     db.leaveRequest.findMany({
-      where: { employeeId: params.employeeId },
+      where: {
+        employeeId: params.employeeId,
+        employee: {
+          companyId: params.companyId,
+        },
+      },
       orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }],
       take: 100,
       select: {
@@ -57,6 +63,9 @@ export async function getEmployeePortalLeaveRequestsReadModel(params: {
       where: {
         employeeId: params.employeeId,
         year: params.year,
+        employee: {
+          companyId: params.companyId,
+        },
       },
       orderBy: { leaveType: { name: "asc" } },
       select: {

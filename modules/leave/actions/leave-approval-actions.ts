@@ -9,7 +9,8 @@ import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   consumeReservedLeaveBalanceForRequest,
   releaseReservedLeaveBalanceForRequest,
-} from "@/modules/employee-portal/utils/leave-balance-ledger"
+} from "@/modules/leave/utils/leave-balance-ledger"
+import type { LeaveActionResult } from "@/modules/leave/types/leave-action-result"
 
 const pagingSchema = z.object({
   companyId: z.string().uuid(),
@@ -26,8 +27,6 @@ const decisionSchema = z.object({
 const hasHrPrivileges = (role: CompanyRole): boolean => {
   return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
 }
-
-type ActionResult = { ok: true; message: string } | { ok: false; error: string }
 
 const findActorEmployee = async (userId: string, companyId: string): Promise<{ id: string } | null> => {
   return db.employee.findFirst({
@@ -157,7 +156,7 @@ export async function getLeaveRequestsForHrApprovalAction(input: z.input<typeof 
   return { ok: true as const, data: { data, total } }
 }
 
-export async function approveLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+export async function approveLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<LeaveActionResult> {
   const parsed = decisionSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid request payload." }
 
@@ -193,7 +192,7 @@ export async function approveLeaveBySupervisorAction(input: z.input<typeof decis
   return { ok: true, message: "Leave request approved." }
 }
 
-export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<LeaveActionResult> {
   const parsed = decisionSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid request payload." }
 
@@ -258,7 +257,7 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
   return { ok: true, message: "Leave request rejected." }
 }
 
-export async function approveLeaveByHrAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+export async function approveLeaveByHrAction(input: z.input<typeof decisionSchema>): Promise<LeaveActionResult> {
   const parsed = decisionSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid request payload." }
 
@@ -326,7 +325,7 @@ export async function approveLeaveByHrAction(input: z.input<typeof decisionSchem
   return { ok: true, message: "Leave request approved." }
 }
 
-export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema>): Promise<ActionResult> {
+export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema>): Promise<LeaveActionResult> {
   const parsed = decisionSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid request payload." }
 

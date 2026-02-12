@@ -17,6 +17,7 @@ import {
 import { db } from "@/lib/db"
 import { Card, CardContent } from "@/components/ui/card"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { getEmployeePortalLeaveDashboardReadModel } from "@/modules/leave/utils/employee-portal-leave-dashboard-read-model"
 
 type EmployeePortalDashboardPageProps = {
   params: Promise<{ companyId: string }>
@@ -46,14 +47,6 @@ const money = new Intl.NumberFormat("en-PH", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
-
-const LEAVE_BALANCE_CARD_TYPES = new Set([
-  "vacation leave",
-  "sick leave",
-  "compensatory time off",
-  "compensary time off",
-  "cto",
-])
 
 function QuickActionCard({ href, title, desc, icon: Icon, disabled = false }: QuickCardProps) {
   if (disabled) {
@@ -103,24 +96,11 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     )
   }
 
-  const [leaveBalances, pendingLeaveRequests, pendingOvertimeRequests, recentPayslips, upcomingHolidays] = await Promise.all([
-    db.leaveBalance.findMany({
-      where: {
-        employeeId: context.employee.id,
-        year: new Date().getFullYear(),
-      },
-      select: {
-        id: true,
-        availableBalance: true,
-        leaveType: { select: { name: true } },
-      },
-      orderBy: { leaveType: { name: "asc" } },
-    }),
-    db.leaveRequest.count({
-      where: {
-        employeeId: context.employee.id,
-        statusCode: "PENDING",
-      },
+  const [leaveDashboard, pendingOvertimeRequests, recentPayslips, upcomingHolidays] = await Promise.all([
+    getEmployeePortalLeaveDashboardReadModel({
+      companyId: context.companyId,
+      employeeId: context.employee.id,
+      year: new Date().getFullYear(),
     }),
     db.overtimeRequest.count({
       where: {
@@ -173,8 +153,6 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     }),
   ])
 
-  const filteredLeaveBalances = leaveBalances.filter((balance) => LEAVE_BALANCE_CARD_TYPES.has(balance.leaveType.name.trim().toLowerCase()))
-
   return (
     <div className="min-h-screen w-full animate-in fade-in bg-background pb-8 duration-500">
       <div className="flex flex-col justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6 md:flex-row md:items-end">
@@ -210,11 +188,11 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
                 <IconBeach className="h-4 w-4 text-primary" />
               </div>
               <div className="space-y-2.5 p-4">
-                {filteredLeaveBalances.length > 0 ? (
-                  filteredLeaveBalances.map((balance) => (
+                {leaveDashboard.leaveBalances.length > 0 ? (
+                  leaveDashboard.leaveBalances.map((balance) => (
                     <div key={balance.id} className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{balance.leaveType.name}</span>
-                      <span className="text-sm font-semibold text-foreground">{Number(balance.availableBalance)} days</span>
+                      <span className="text-sm text-muted-foreground">{balance.leaveTypeName}</span>
+                      <span className="text-sm font-semibold text-foreground">{balance.availableBalance} days</span>
                     </div>
                   ))
                 ) : (
@@ -231,7 +209,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
               <div className="space-y-2.5 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Leave Requests</span>
-                  <span className="text-sm font-semibold text-foreground">{pendingLeaveRequests}</span>
+                  <span className="text-sm font-semibold text-foreground">{leaveDashboard.pendingLeaveRequests}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Overtime Requests</span>

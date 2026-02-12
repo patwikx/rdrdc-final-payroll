@@ -160,6 +160,7 @@ export async function validatePayrollRun(
     companyId: run.companyId,
     isActive: true,
     deletedAt: null,
+    employeeNumber: { not: "admin" },
     payPeriodPatternId: run.payPeriod.patternId,
   }
 

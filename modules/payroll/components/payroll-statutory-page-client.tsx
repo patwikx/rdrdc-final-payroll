@@ -635,7 +635,7 @@ export function PayrollStatutoryPageClient({
           {companyName} Statutory Reports
         </h1>
         <p className="text-sm text-muted-foreground">
-          Default view shows REGULAR runs only. Enable trial mode to view latest TRIAL run per pay period.
+          Default view shows regular runs only. Enable trial mode to view the latest trial run per pay period.
         </p>
       </header>
 
@@ -670,7 +670,7 @@ export function PayrollStatutoryPageClient({
             <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
               <div>
                 <p className="text-xs font-medium">Show Trial Runs</p>
-                <p className="text-[11px] text-muted-foreground">Latest TRIAL_RUN per pay period</p>
+                <p className="text-[11px] text-muted-foreground">Latest trial run per pay period</p>
               </div>
               <Switch checked={showTrialRuns} onCheckedChange={setShowTrialRuns} />
             </div>
@@ -710,7 +710,7 @@ export function PayrollStatutoryPageClient({
                 <p className="text-sm font-semibold">{resolvedReport.label}</p>
                 <p className="text-xs text-muted-foreground">{resolvedReport.frequency}</p>
                 <p className="text-xs text-muted-foreground">
-                  Source: {showTrialRuns ? "TRIAL_RUN (latest per pay period)" : "REGULAR"}
+                  Source: {showTrialRuns ? "Trial runs (latest per pay period)" : "Regular runs"}
                 </p>
               </div>
               {resolvedReport.key === "sss" || resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" || resolvedReport.key === "dole13th" ? (

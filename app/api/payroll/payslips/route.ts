@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { PayrollRunType } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
@@ -82,7 +81,7 @@ export async function GET(request: NextRequest) {
   const payslipWhere = {
     payrollRun: {
       companyId: context.companyId,
-      runTypeCode: { not: PayrollRunType.TRIAL_RUN },
+      isTrialRun: false,
     },
     generatedAt: {
       gte: startDate,

@@ -8,6 +8,52 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   return Number(value.toString())
 }
 
+type NonTrialRunType = Exclude<PayrollRunType, "TRIAL_RUN">
+
+const runTypeLabelMap: Record<NonTrialRunType, string> = {
+  REGULAR: "Regular",
+  THIRTEENTH_MONTH: "13th Month",
+  MID_YEAR_BONUS: "Mid-Year Bonus",
+  SPECIAL: "Special",
+}
+
+const nonTrialRunTypes: NonTrialRunType[] = ["REGULAR", "THIRTEENTH_MONTH", "MID_YEAR_BONUS", "SPECIAL"]
+
+const isNonTrialRunType = (value: unknown): value is NonTrialRunType => {
+  return typeof value === "string" && nonTrialRunTypes.includes(value as NonTrialRunType)
+}
+
+const getRunTypeLabel = (runTypeCode: PayrollRunType, isTrialRun: boolean, remarks: string | null): string => {
+  if (runTypeCode !== "TRIAL_RUN") {
+    const baseLabel = runTypeLabelMap[runTypeCode as NonTrialRunType] ?? runTypeCode
+    if (!isTrialRun) {
+      return baseLabel
+    }
+
+    return `Trial (${baseLabel})`
+  }
+
+  // Legacy fallback for rows created before isTrialRun existed.
+  if (!isTrialRun) {
+    return "Trial (Regular)"
+  }
+
+  let baseRunType: NonTrialRunType = "REGULAR"
+
+  if (remarks) {
+    try {
+      const parsed = JSON.parse(remarks) as { runConfig?: { baseRunType?: unknown } }
+      if (isNonTrialRunType(parsed.runConfig?.baseRunType)) {
+        baseRunType = parsed.runConfig.baseRunType
+      }
+    } catch {
+      // Use REGULAR as fallback for legacy trial rows without runConfig.
+    }
+  }
+
+  return `Trial (${runTypeLabelMap[baseRunType]})`
+}
+
 export type PayrollRunsViewModel = {
   companyId: string
   companyName: string
@@ -15,6 +61,7 @@ export type PayrollRunsViewModel = {
     id: string
     runNumber: string
     runTypeCode: PayrollRunType
+    runTypeLabel: string
     statusCode: string
     isLocked: boolean
     currentStepNumber: number
@@ -76,6 +123,7 @@ export async function getPayrollRunsViewModel(companyId: string): Promise<Payrol
       id: run.id,
       runNumber: run.runNumber,
       runTypeCode: run.runTypeCode,
+      runTypeLabel: getRunTypeLabel(run.runTypeCode, run.isTrialRun, run.remarks),
       statusCode: run.statusCode,
       isLocked: run.payPeriod.statusCode === "LOCKED",
       currentStepNumber: run.currentStepNumber,

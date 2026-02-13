@@ -82,6 +82,7 @@ model PayrollRun {
   payPeriod   PayPeriod @relation(fields: [payPeriodId], references: [id])
 
   runTypeCode PayrollRunType @default(REGULAR)
+  isTrialRun  Boolean        @default(false)
 
   statusCode PayrollRunStatus @default(DRAFT)
 
@@ -131,6 +132,7 @@ model PayrollRun {
   @@index([runNumber])
   @@index([statusCode])
   @@index([runTypeCode])
+  @@index([isTrialRun])
   @@index([currentStepNumber])
   @@index([isPostedToGL])
 }

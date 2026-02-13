@@ -104,6 +104,9 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
   const [reason, setReason] = useState("")
+  const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
 
   const requestedHours = useMemo(() => {
     const startMinutes = timeToMinutes(startTime)
@@ -305,67 +308,109 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
-              {requests.map((request) => (
-                <div key={request.id} className="group border-b border-border/60 last:border-b-0 hover:bg-muted/20">
-                  <div className="grid grid-cols-12 items-center gap-3 px-3 py-4">
-                    <div className="col-span-2 text-xs text-muted-foreground">{request.requestNumber}</div>
-                    <div className="col-span-2 text-sm text-foreground">{request.overtimeDate}</div>
-                    <div className="col-span-2 text-sm font-medium text-foreground">{formatClock(request.startTime)} - {formatClock(request.endTime)}</div>
-                    <div className="col-span-1 text-sm text-foreground">{request.hours} HRS</div>
-                    <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{request.reason || "No reason provided"}</div>
-                    <div className="col-span-2">
-                      <Badge variant={statusVariant(request.statusCode)} className="w-full justify-center rounded-full border px-2 py-1 text-xs shadow-none">{statusLabel(request.statusCode)}</Badge>
-                    </div>
-                    <div className="col-span-1 flex justify-end">
-                      {request.statusCode === "PENDING" ? (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="outline" className="rounded-lg">Cancel</Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-base font-semibold">Confirm Cancellation</AlertDialogTitle>
-                              <AlertDialogDescription className="text-sm">Are you sure you want to cancel this overtime request?</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="rounded-lg">Keep Request</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => cancel(request.id)} className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes, Cancel</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      ) : null}
-                    </div>
-                  </div>
+              {(() => {
+                const totalPages = Math.ceil(requests.length / ITEMS_PER_PAGE)
+                const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+                const paginatedRequests = requests.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+                return (
+                  <>
+                    {paginatedRequests.map((request) => {
+                      const isExpanded = expandedRequestId === request.id
+                      return (
+                        <div key={request.id} className={cn("group border-b border-border/60 last:border-b-0 cursor-pointer transition-colors", isExpanded && "bg-primary/10")}>
+                          <div className="grid grid-cols-12 items-center gap-3 px-3 py-4" onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}>
+                            <div className="col-span-2 text-xs text-foreground">{request.requestNumber}</div>
+                            <div className="col-span-2 text-sm text-foreground">{request.overtimeDate}</div>
+                            <div className="col-span-2 text-sm text-foreground leading-tight">
+                              <div>{formatClock(request.startTime)}</div>
+                              <div className="text-muted-foreground text-xs">to {formatClock(request.endTime)}</div>
+                            </div>
+                            <div className="col-span-1 text-sm text-foreground">{request.hours} HRS</div>
+                            <div className="col-span-2 text-xs text-foreground line-clamp-2">{request.reason || "No reason provided"}</div>
+                            <div className="col-span-2">
+                              <Badge variant={statusVariant(request.statusCode)} className="w-full justify-center rounded-full border px-2 py-1 text-xs shadow-none">{statusLabel(request.statusCode)}</Badge>
+                            </div>
+                            <div className="col-span-1 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                              {request.statusCode === "PENDING" ? (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="outline" className="rounded-lg">Cancel</Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle className="text-base font-semibold">Confirm Cancellation</AlertDialogTitle>
+                                      <AlertDialogDescription className="text-sm">Are you sure you want to cancel this overtime request?</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel className="rounded-lg">Keep Request</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => cancel(request.id)} className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes, Cancel</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              ) : null}
+                            </div>
+                          </div>
 
-                  {(request.supervisorApproverName || request.hrApproverName || request.statusCode !== "PENDING") ? (
-                    <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
-                      <p className="mb-2 text-xs text-muted-foreground">Approval Status</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
-                          {request.supervisorApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.statusCode === "PENDING" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-foreground">Supervisor</p>
-                            {request.supervisorApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.supervisorApproverName}</p> : null}
-                            {request.supervisorApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.supervisorApprovedAt}</p> : null}
-                            {request.supervisorApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.supervisorApprovalRemarks}&quot;</p> : null}
-                          </div>
+                          {isExpanded && (request.supervisorApproverName || request.hrApproverName || request.statusCode !== "PENDING") ? (
+                            <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+                              <p className="mb-2 text-xs text-muted-foreground">Approval Status</p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
+                                  {request.supervisorApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.statusCode === "PENDING" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-foreground">Supervisor</p>
+                                    {request.supervisorApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.supervisorApproverName}</p> : null}
+                                    {request.supervisorApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.supervisorApprovedAt}</p> : null}
+                                    {request.supervisorApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.supervisorApprovalRemarks}&quot;</p> : null}
+                                  </div>
+                                </div>
+                                <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
+                                  {request.hrApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.hrRejectedAt ? <IconX className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" /> : request.statusCode === "SUPERVISOR_APPROVED" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-foreground">HR</p>
+                                    {request.hrApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.hrApproverName}</p> : null}
+                                    {request.hrApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.hrApprovedAt}</p> : null}
+                                    {request.hrApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.hrApprovalRemarks}&quot;</p> : null}
+                                    {request.hrRejectedAt ? <p className="mt-1 text-xs text-destructive">Rejected {request.hrRejectedAt}</p> : null}
+                                    {request.hrRejectionReason ? <p className="mt-1 text-xs italic text-destructive">Reason: &quot;{request.hrRejectionReason}&quot;</p> : null}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                        <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
-                          {request.hrApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.hrRejectedAt ? <IconX className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" /> : request.statusCode === "SUPERVISOR_APPROVED" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-foreground">HR</p>
-                            {request.hrApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.hrApproverName}</p> : null}
-                            {request.hrApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.hrApprovedAt}</p> : null}
-                            {request.hrApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.hrApprovalRemarks}&quot;</p> : null}
-                            {request.hrRejectedAt ? <p className="mt-1 text-xs text-destructive">Rejected {request.hrRejectedAt}</p> : null}
-                            {request.hrRejectionReason ? <p className="mt-1 text-xs italic text-destructive">Reason: &quot;{request.hrRejectionReason}&quot;</p> : null}
-                          </div>
+                      )
+                    })}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">
+                          Page {currentPage} of {totalPages} • {requests.length} records
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={currentPage <= 1}
+                            onClick={() => { setCurrentPage(currentPage - 1); setExpandedRequestId(null) }}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => { setCurrentPage(currentPage + 1); setExpandedRequestId(null) }}
+                          >
+                            Next
+                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>

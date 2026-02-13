@@ -81,6 +81,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     roles: ["COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN"],
     items: [
       { id: "settings-company", label: "Company Profile", path: "/settings/company" },
+      { id: "settings-company-new", label: "New Company Setup", path: "/settings/company/new" },
       { id: "settings-organization", label: "Organization Setup", path: "/settings/organization" },
       { id: "settings-employment", label: "Employment Setup", path: "/settings/employment" },
       { id: "settings-legacy-employee-sync", label: "Legacy Employee Sync", path: "/settings/employment/legacy-sync" },

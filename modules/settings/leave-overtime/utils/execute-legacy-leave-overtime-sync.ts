@@ -166,6 +166,15 @@ const parseTimeStringToUtcTime = (value: unknown): Date | null => {
   return new Date(Date.UTC(1970, 0, 1, hour, minute, second, 0))
 }
 
+const computeHoursWithOvernightFallback = (startTime: Date, endTime: Date): number => {
+  const hourMs = 1000 * 60 * 60
+  const rawDiff = (endTime.getTime() - startTime.getTime()) / hourMs
+  if (rawDiff < 0) {
+    return rawDiff + 24
+  }
+  return rawDiff
+}
+
 const splitName = (value: unknown): { firstName: string; lastName: string } => {
   const raw = safeString(value)
   if (!raw) return { firstName: "", lastName: "" }
@@ -980,7 +989,15 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
       const overtimeDate = toUtcDateOnly(overtimeDateRaw)
 
       const providedHours = safeNumber(pickPath(row, ["hours"]))
-      const computedHours = (normalizedEndTime.getTime() - normalizedStartTime.getTime()) / (1000 * 60 * 60)
+      const computedHours = startDateTime && endDateTime
+        ? (() => {
+            const dateTimeDiff = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60)
+            if (dateTimeDiff > 0) {
+              return dateTimeDiff
+            }
+            return computeHoursWithOvernightFallback(normalizedStartTime, normalizedEndTime)
+          })()
+        : computeHoursWithOvernightFallback(normalizedStartTime, normalizedEndTime)
       const hours = providedHours && providedHours > 0 ? providedHours : computedHours
       if (!Number.isFinite(hours) || hours <= 0) {
         skipped.push({ domain: "overtime", reason: "INVALID_HOURS", legacyRecordId: recordId })

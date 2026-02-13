@@ -54,6 +54,8 @@ type SortColumn = "name" | "employeeNumber" | "department" | "status"
 type SortDirection = "asc" | "desc"
 
 const PAGE_SIZE = 10
+const MASTERLIST_GRID_COLUMNS =
+  "grid-cols-[minmax(260px,_2.2fr)_minmax(180px,_1.4fr)_minmax(150px,_1.1fr)_120px_minmax(180px,_1fr)]"
 
 export function EmployeeMasterlistPage({
   companyId,
@@ -356,8 +358,7 @@ export function EmployeeMasterlistPage({
 
         <main className="flex flex-1 flex-col bg-background p-0">
           <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/10">
-            <div className="grid h-10 grid-cols-[88px_minmax(240px,_2fr)_minmax(170px,_1.2fr)_minmax(150px,_1fr)_minmax(120px,_0.8fr)_minmax(190px,_1fr)] items-center gap-4 px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <SortHeader label="Employee ID" active={sortColumn === "employeeNumber"} direction={sortDirection} onClick={() => toggleSort("employeeNumber")} className="" />
+            <div className={cn("grid h-10 items-center gap-5 px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground", MASTERLIST_GRID_COLUMNS)}>
               <SortHeader label="Employee Name" active={sortColumn === "name"} direction={sortDirection} onClick={() => toggleSort("name")} className="" />
               <div>Position</div>
               <SortHeader label="Department" active={sortColumn === "department"} direction={sortDirection} onClick={() => toggleSort("department")} className="" />
@@ -379,11 +380,7 @@ export function EmployeeMasterlistPage({
               </div>
             ) : (
               paginatedEmployees.map((employee) => (
-                <div key={employee.id} className="group grid grid-cols-[88px_minmax(240px,_2fr)_minmax(170px,_1.2fr)_minmax(150px,_1fr)_minmax(120px,_0.8fr)_minmax(190px,_1fr)] items-center gap-4 px-8 py-4 transition-colors hover:bg-muted/5">
-                  <div>
-                    <Badge variant="secondary" className="px-2 py-0 text-[11px] font-semibold">{employee.employeeNumber}</Badge>
-                  </div>
-
+                <div key={employee.id} className={cn("group grid items-center gap-5 px-8 py-4 transition-colors hover:bg-muted/5", MASTERLIST_GRID_COLUMNS)}>
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9 shrink-0 border border-border/60">
                       <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="object-cover" />
@@ -396,7 +393,7 @@ export function EmployeeMasterlistPage({
                       <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
                         {employee.lastName}, {employee.firstName}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">{employee.email}</p>
+                      <p className="truncate text-xs text-muted-foreground">{employee.employeeNumber}</p>
                     </div>
                   </div>
 

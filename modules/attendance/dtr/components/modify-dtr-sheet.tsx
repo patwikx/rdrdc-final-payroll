@@ -135,25 +135,25 @@ function ModifyDtrSheetForm({
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => (!open ? onClose() : null)}>
-      <SheetContent className="w-full sm:max-w-md p-0 bg-background overflow-y-auto">
-        <SheetHeader className="p-8 border-b border-border/60 bg-muted/5">
+      <SheetContent className="flex h-full w-full flex-col overflow-hidden bg-background p-0 sm:max-w-md">
+        <SheetHeader className="border-b border-border/60 bg-muted/5 px-5 py-4 sm:px-6 sm:py-5">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-1 bg-primary" />
+            <div className="h-9 w-1 bg-primary" />
             <div>
-              <SheetTitle className="text-xl">Modify Record</SheetTitle>
-              <SheetDescription className="text-sm text-muted-foreground">
+              <SheetTitle className="text-lg">Modify Record</SheetTitle>
+              <SheetDescription className="text-xs text-muted-foreground sm:text-sm">
                 Adjust time logs for {record.employee.firstName} {record.employee.lastName}
               </SheetDescription>
             </div>
           </div>
         </SheetHeader>
 
-        <div className="p-8 pb-32 space-y-6">
-          <div className="p-4 bg-primary/[0.02] border border-primary/10 space-y-1">
-            <p className="text-sm text-primary flex items-center gap-2">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
+          <div className="space-y-1 border border-primary/10 bg-primary/[0.02] p-3">
+            <p className="flex items-center gap-2 text-xs font-medium text-primary sm:text-sm">
               <IconClockHour4 className="h-3 w-3" /> Record Context
             </p>
-            <p className="text-sm text-foreground">
+            <p className="text-xs text-foreground sm:text-sm">
               Date: {format(new Date(record.attendanceDate), "PPPP")}
             </p>
           </div>
@@ -164,16 +164,16 @@ function ModifyDtrSheetForm({
             size="sm"
             onClick={handleAutofill}
             disabled={loading}
-            className="w-full border-primary/30 text-primary hover:bg-primary/5"
+            className="h-8 w-full border-primary/30 text-xs text-primary hover:bg-primary/5 sm:h-9 sm:text-sm"
           >
             <IconCalendarEvent className="mr-2 h-3.5 w-3.5" />
             Autofill from Work Schedule
           </Button>
 
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Attendance Status</label>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground sm:text-sm">Attendance Status</label>
             <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
-              <SelectTrigger className="h-10">
+              <SelectTrigger className="h-9 sm:h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -186,11 +186,11 @@ function ModifyDtrSheetForm({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Attendance Date</label>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground sm:text-sm">Attendance Date</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant="outline" className="h-9 w-full justify-between text-xs sm:h-10 sm:text-sm">
                   <span>{pickedDate ? format(pickedDate, "yyyy-MM-dd") : "Set date"}</span>
                   <IconCalendarEvent className="h-4 w-4 opacity-60" />
                 </Button>
@@ -206,10 +206,10 @@ function ModifyDtrSheetForm({
             </Popover>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Day Fraction</label>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground sm:text-sm">Day Fraction</label>
             <Select value={dayFraction} onValueChange={(value) => setDayFraction(value as "FULL" | "HALF")}>
-              <SelectTrigger className="h-10">
+              <SelectTrigger className="h-9 sm:h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -222,43 +222,43 @@ function ModifyDtrSheetForm({
             </Select>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">Actual Clock-In</label>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground sm:text-sm">Actual Clock-In</label>
               <Input
                 type="time"
                 value={timeIn}
                 onChange={(event) => setTimeIn(event.target.value)}
-                className="h-10"
+                className="h-9 sm:h-10"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">Actual Clock-Out</label>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground sm:text-sm">Actual Clock-Out</label>
               <Input
                 type="time"
                 value={timeOut}
                 onChange={(event) => setTimeOut(event.target.value)}
-                className="h-10"
+                className="h-9 sm:h-10"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm text-muted-foreground">Adjustment Justification</label>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground sm:text-sm">Adjustment Justification</label>
             <Textarea
               value={remarks}
               onChange={(event) => setRemarks(event.target.value)}
-              className="min-h-[100px] resize-none"
+              className="min-h-[88px] resize-none sm:min-h-[96px]"
               placeholder="Enter reason for manual override..."
             />
           </div>
 
-          <div className="pt-4 flex flex-col gap-3">
+          <div className="space-y-2 border-t border-border/40 pt-3">
             <Button
               type="button"
               disabled={loading}
               onClick={handleSubmit}
-              className="w-full gap-2"
+              className="h-9 w-full gap-2 sm:h-10"
             >
               {loading ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconDeviceFloppy className="h-4 w-4" />}
               Save Changes
@@ -267,18 +267,18 @@ function ModifyDtrSheetForm({
               type="button"
               variant="outline"
               onClick={onClose}
-              className="w-full"
+              className="h-9 w-full sm:h-10"
             >
               Cancel
             </Button>
           </div>
-        </div>
 
-        <div className="absolute bottom-0 left-0 w-full p-6 bg-muted/30 border-t border-border/40 flex items-center gap-3">
-          <IconAlertTriangle className="h-5 w-5 text-amber-500" />
-          <p className="text-sm text-muted-foreground leading-tight">
+          <div className="flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/40 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-950/10">
+            <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <p className="text-xs leading-tight text-muted-foreground sm:text-sm">
             Manual adjustments are logged for auditing and will bypass biometric validation.
-          </p>
+            </p>
+          </div>
         </div>
       </SheetContent>
     </Sheet>

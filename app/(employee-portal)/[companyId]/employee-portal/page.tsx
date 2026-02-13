@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import type { ComponentType } from "react"
-import { PayrollRunType } from "@prisma/client"
 import {
   IconAlertCircle,
   IconArrowRight,
@@ -114,7 +113,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
         employeeId: context.employee.id,
         payrollRun: {
           companyId: context.companyId,
-          runTypeCode: { not: PayrollRunType.TRIAL_RUN },
+          isTrialRun: false,
         },
       },
       orderBy: { generatedAt: "desc" },

@@ -17,14 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createPayrollRunAction } from "@/modules/payroll/actions/payroll-run-actions"
+
+type NonTrialRunType = Exclude<PayrollRunType, "TRIAL_RUN">
 
 type CreatePayrollRunFormProps = {
   companyId: string
   payPeriods: Array<{ id: string; label: string }>
   defaultPayPeriodId?: string
-  runTypes: Array<{ code: PayrollRunType; label: string }>
+  runTypes: Array<{ code: NonTrialRunType; label: string }>
   departments: Array<{ id: string; name: string }>
   branches: Array<{ id: string; name: string }>
   embedded?: boolean
@@ -47,9 +50,11 @@ export function CreatePayrollRunForm({
   const [isPending, startTransition] = useTransition()
 
   const [payPeriodId] = useState<string>(defaultPayPeriodId ?? payPeriods[0]?.id ?? "")
-  const [runTypeCode, setRunTypeCode] = useState<PayrollRunType>(runTypes[0]?.code ?? PayrollRunType.REGULAR)
+  const [runTypeCode, setRunTypeCode] = useState<NonTrialRunType>(runTypes[0]?.code ?? PayrollRunType.REGULAR)
+  const [isTrialRun, setIsTrialRun] = useState(false)
   const [departmentIds, setDepartmentIds] = useState<string[]>([])
   const [branchIds, setBranchIds] = useState<string[]>([])
+  const [payPeriodTooltipOpen, setPayPeriodTooltipOpen] = useState(false)
 
   const canSubmit = useMemo(() => payPeriodId.length > 0, [payPeriodId])
   const selectedPayPeriodLabel = useMemo(
@@ -73,6 +78,7 @@ export function CreatePayrollRunForm({
         companyId,
         payPeriodId,
         runTypeCode,
+        isTrialRun,
         departmentIds,
         branchIds,
       })
@@ -94,14 +100,29 @@ export function CreatePayrollRunForm({
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-4 rounded-xl border border-border/70 bg-card/80 p-4"}>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5">
             <Label className="text-xs">Pay Period<Required /></Label>
             <TooltipProvider>
-              <Tooltip>
+              <Tooltip
+                open={payPeriodTooltipOpen}
+                onOpenChange={(nextOpen) => {
+                  if (!nextOpen) {
+                    setPayPeriodTooltipOpen(false)
+                  }
+                }}
+              >
                 <TooltipTrigger asChild>
-                  <button type="button" className="text-muted-foreground" aria-label="Pay period selection policy">
+                  <button
+                    type="button"
+                    className="text-muted-foreground"
+                    aria-label="Pay period selection policy"
+                    onPointerEnter={() => setPayPeriodTooltipOpen(true)}
+                    onPointerLeave={() => setPayPeriodTooltipOpen(false)}
+                    onPointerDown={() => setPayPeriodTooltipOpen(false)}
+                    onBlur={() => setPayPeriodTooltipOpen(false)}
+                  >
                     <IconInfoCircle className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
@@ -116,7 +137,7 @@ export function CreatePayrollRunForm({
 
         <div className="space-y-1.5">
           <Label className="text-xs">Run Type<Required /></Label>
-          <Select value={runTypeCode} onValueChange={(value) => setRunTypeCode(value as PayrollRunType)}>
+          <Select value={runTypeCode} onValueChange={(value) => setRunTypeCode(value as NonTrialRunType)}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
               {runTypes.map((type) => (
@@ -124,6 +145,14 @@ export function CreatePayrollRunForm({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Trial Run</Label>
+          <div className="flex h-10 items-center justify-between rounded-md border border-border/60 px-3">
+            <p className="text-xs text-muted-foreground">Enable dry-run for selected type.</p>
+            <Switch checked={isTrialRun} onCheckedChange={setIsTrialRun} />
+          </div>
         </div>
       </div>
 

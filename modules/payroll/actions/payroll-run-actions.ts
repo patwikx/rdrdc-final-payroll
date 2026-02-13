@@ -11,6 +11,7 @@ import {
   PayrollProcessStepName,
   PayrollProcessStepStatus,
   PayrollRunStatus,
+  type PayrollRunType,
   RequestStatus,
   TaxTableType,
   type Prisma,
@@ -53,6 +54,13 @@ type PayrollRunFilters = {
   departmentIds: string[]
   branchIds: string[]
   employeeIds: string[]
+}
+
+type NonTrialRunType = Exclude<PayrollRunType, "TRIAL_RUN">
+
+type PayrollRunConfig = {
+  isTrialRun: boolean
+  baseRunType: NonTrialRunType
 }
 
 type AttendanceSnapshot = {
@@ -192,6 +200,12 @@ const computeAnnualTaxFromBracketRows = (
 
 const roundQuantity = (value: number): number => Math.round(value * 10000) / 10000
 
+const nonTrialRunTypes: NonTrialRunType[] = ["REGULAR", "THIRTEENTH_MONTH", "MID_YEAR_BONUS", "SPECIAL"]
+
+const isNonTrialRunType = (value: unknown): value is NonTrialRunType => {
+  return typeof value === "string" && nonTrialRunTypes.includes(value as NonTrialRunType)
+}
+
 const parseRunFilters = (remarks: string | null): PayrollRunFilters => {
   if (!remarks) {
     return { departmentIds: [], branchIds: [], employeeIds: [] }
@@ -206,6 +220,37 @@ const parseRunFilters = (remarks: string | null): PayrollRunFilters => {
     }
   } catch {
     return { departmentIds: [], branchIds: [], employeeIds: [] }
+  }
+}
+
+const parseRunConfig = (
+  runTypeCode: PayrollRunType,
+  isTrialRun: boolean,
+  remarks: string | null
+): PayrollRunConfig => {
+  if (runTypeCode !== "TRIAL_RUN") {
+    return {
+      isTrialRun,
+      baseRunType: isNonTrialRunType(runTypeCode) ? runTypeCode : "REGULAR",
+    }
+  }
+
+  let baseRunType: NonTrialRunType = "REGULAR"
+
+  if (remarks) {
+    try {
+      const parsed = JSON.parse(remarks) as { runConfig?: { baseRunType?: unknown } }
+      if (isNonTrialRunType(parsed.runConfig?.baseRunType)) {
+        baseRunType = parsed.runConfig.baseRunType
+      }
+    } catch {
+      // Fallback to REGULAR for legacy trial runs without runConfig metadata.
+    }
+  }
+
+  return {
+    isTrialRun: true,
+    baseRunType,
   }
 }
 
@@ -510,6 +555,10 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
   const access = await ensurePayrollAccess(payload.companyId)
   if (!access.ok) return access
   const { context } = access
+  const selectedBaseRunType: NonTrialRunType =
+    payload.runTypeCode === "TRIAL_RUN" ? "REGULAR" : payload.runTypeCode
+  const isTrialRun = payload.isTrialRun || payload.runTypeCode === "TRIAL_RUN"
+  const persistedRunTypeCode: PayrollRunType = selectedBaseRunType
 
   const period = await db.payPeriod.findFirst({
     where: {
@@ -569,7 +618,8 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
           companyId: context.companyId,
           payPeriodId: period.id,
           runNumber,
-          runTypeCode: payload.runTypeCode,
+          runTypeCode: persistedRunTypeCode,
+          isTrialRun,
           statusCode: PayrollRunStatus.DRAFT,
           totalEmployees: eligibleEmployeeCount,
           currentStepNumber: 2,
@@ -580,6 +630,10 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
               departmentIds: payload.departmentIds ?? [],
               branchIds: payload.branchIds ?? [],
               employeeIds: payload.employeeIds ?? [],
+            },
+            runConfig: {
+              isTrialRun,
+              baseRunType: selectedBaseRunType,
             },
           }),
         },
@@ -607,6 +661,10 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
                     branchIds: payload.branchIds ?? [],
                     employeeIds: payload.employeeIds ?? [],
                   },
+                  runConfig: {
+                    isTrialRun,
+                    baseRunType: selectedBaseRunType,
+                  },
                 })
               : null,
         })),
@@ -621,7 +679,9 @@ export async function createPayrollRunAction(input: CreatePayrollRunInput): Prom
           reason: "CREATE_PAYROLL_RUN",
           changes: [
             { fieldName: "runNumber", newValue: run.runNumber },
-            { fieldName: "runTypeCode", newValue: payload.runTypeCode },
+            { fieldName: "runTypeCode", newValue: persistedRunTypeCode },
+            { fieldName: "baseRunType", newValue: selectedBaseRunType },
+            { fieldName: "isTrialRun", newValue: isTrialRun },
             { fieldName: "payPeriodId", newValue: payload.payPeriodId },
             { fieldName: "totalEmployees", newValue: eligibleEmployeeCount },
           ],
@@ -913,8 +973,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   if (!step2?.isCompleted) return { ok: false, error: "Payroll run must pass validation before calculation." }
 
   const filters = parseRunFilters(run.remarks)
-  const isThirteenthMonthRun = run.runTypeCode === "THIRTEENTH_MONTH"
-  const isMidYearBonusRun = run.runTypeCode === "MID_YEAR_BONUS"
+  const runConfig = parseRunConfig(run.runTypeCode, run.isTrialRun, run.remarks)
+  const isThirteenthMonthRun = runConfig.baseRunType === "THIRTEENTH_MONTH"
+  const isMidYearBonusRun = runConfig.baseRunType === "MID_YEAR_BONUS"
   const isBonusOnlyRun = isThirteenthMonthRun || isMidYearBonusRun
   const yearStartDate = new Date(Date.UTC(run.payPeriod.year, 0, 1))
   const yearEndDate = new Date(Date.UTC(run.payPeriod.year, 11, 31))
@@ -1097,6 +1158,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         employeeId: { in: employeeIds },
         payrollRun: {
           companyId: run.companyId,
+          isTrialRun: false,
           statusCode: PayrollRunStatus.PAID,
           payPeriod: { year: run.payPeriod.year, cutoffEndDate: { lt: run.payPeriod.cutoffStartDate } },
         },
@@ -1110,6 +1172,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         payrollRun: {
           companyId: run.companyId,
           runTypeCode: "REGULAR",
+          isTrialRun: false,
           statusCode: { in: regularRunStatusesFor13th },
           payPeriod: {
             year: run.payPeriod.year,
@@ -1126,6 +1189,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         payrollRun: {
           companyId: run.companyId,
           runTypeCode: { in: ["THIRTEENTH_MONTH", "MID_YEAR_BONUS"] },
+          isTrialRun: false,
           statusCode: PayrollRunStatus.PAID,
           payPeriod: {
             year: run.payPeriod.year,
@@ -1141,6 +1205,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         payrollRun: {
           companyId: run.companyId,
           runTypeCode: "REGULAR",
+          isTrialRun: false,
           statusCode: PayrollRunStatus.PAID,
           payPeriod: {
             year: run.payPeriod.year,
@@ -2233,6 +2298,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               preTaxRecurringReducesTaxableIncome: true,
               leaveFallbackOnUnmatchedOnLeave: "UNPAID",
               runTypeCode: run.runTypeCode,
+              isTrialRun: runConfig.isTrialRun,
               thirteenthMonthFormula: isThirteenthMonthRun ? "(ytdRegularBasicOrProratedFallback) / 12" : undefined,
               midYearBonusFormula: isMidYearBonusRun ? "baseSalary / 2" : undefined,
             },
@@ -2670,7 +2736,7 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
         },
       })
 
-      if (run.runTypeCode === "REGULAR") {
+      if (run.runTypeCode === "REGULAR" && !run.isTrialRun) {
         await tx.payPeriod.update({
           where: { id: run.payPeriodId },
           data: {
@@ -2751,7 +2817,7 @@ export async function reopenPayrollRunAction(input: PayrollRunActionInput): Prom
         data: { status: PayrollProcessStepStatus.PENDING, isCompleted: false, completedAt: null },
       })
 
-      if (run.runTypeCode === "REGULAR") {
+      if (run.runTypeCode === "REGULAR" && !run.isTrialRun) {
         await tx.payPeriod.update({
           where: { id: run.payPeriodId },
           data: {

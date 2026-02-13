@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { PayrollRunType } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { createAuditLog, getRequestAuditMetadata } from "@/modules/audit/utils/audit-log"
@@ -32,7 +31,7 @@ export async function GET(request: Request, context: RouteContext) {
         id: payslipId,
         payrollRun: {
           companyId: activeCompany.companyId,
-          runTypeCode: { not: PayrollRunType.TRIAL_RUN },
+          isTrialRun: false,
         },
       },
       select: {

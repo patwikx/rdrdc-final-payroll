@@ -5,6 +5,7 @@ export const createPayrollRunInputSchema = z.object({
   companyId: z.string().uuid(),
   payPeriodId: z.string().uuid(),
   runTypeCode: z.nativeEnum(PayrollRunType),
+  isTrialRun: z.boolean().optional(),
   departmentIds: z.array(z.string().uuid()).optional(),
   branchIds: z.array(z.string().uuid()).optional(),
   employeeIds: z.array(z.string().uuid()).optional(),

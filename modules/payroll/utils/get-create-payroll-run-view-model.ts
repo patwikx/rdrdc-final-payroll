@@ -12,22 +12,23 @@ const toDateLabel = (value: Date): string => {
   }).format(value)
 }
 
+type NonTrialRunType = Exclude<PayrollRunType, "TRIAL_RUN">
+
 export type CreatePayrollRunViewModel = {
   companyId: string
   companyName: string
   payPeriods: Array<{ id: string; label: string }>
   defaultPayPeriodId: string
-  runTypes: Array<{ code: PayrollRunType; label: string }>
+  runTypes: Array<{ code: NonTrialRunType; label: string }>
   departments: Array<{ id: string; name: string }>
   branches: Array<{ id: string; name: string }>
 }
 
-const runTypeOptions: Array<{ code: PayrollRunType; label: string }> = [
+const runTypeOptions: Array<{ code: NonTrialRunType; label: string }> = [
   { code: PayrollRunType.REGULAR, label: "Regular" },
   { code: PayrollRunType.THIRTEENTH_MONTH, label: "13th Month" },
   { code: PayrollRunType.MID_YEAR_BONUS, label: "Mid-Year Bonus" },
   { code: PayrollRunType.SPECIAL, label: "Special" },
-  { code: PayrollRunType.TRIAL_RUN, label: "Trial Run" },
 ]
 
 export async function getCreatePayrollRunViewModel(companyId: string): Promise<CreatePayrollRunViewModel> {

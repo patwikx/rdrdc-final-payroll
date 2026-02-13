@@ -122,6 +122,7 @@ type StatutorySourcePayslip = {
     payPeriodId: string
     runNumber: string
     runTypeCode: PayrollRunType
+    isTrialRun: boolean
     createdAt: Date
     payPeriod: {
       year: number
@@ -186,7 +187,9 @@ const selectLatestTrialPayslipsByPayPeriod = (payslips: StatutorySourcePayslip[]
   >()
 
   for (const payslip of payslips) {
-    if (payslip.payrollRun.runTypeCode !== PayrollRunType.TRIAL_RUN) {
+    const isTrialPayslip =
+      payslip.payrollRun.isTrialRun || payslip.payrollRun.runTypeCode === PayrollRunType.TRIAL_RUN
+    if (!isTrialPayslip) {
       continue
     }
 
@@ -208,7 +211,9 @@ const selectLatestTrialPayslipsByPayPeriod = (payslips: StatutorySourcePayslip[]
   }
 
   return payslips.filter((payslip) => {
-    if (payslip.payrollRun.runTypeCode !== PayrollRunType.TRIAL_RUN) {
+    const isTrialPayslip =
+      payslip.payrollRun.isTrialRun || payslip.payrollRun.runTypeCode === PayrollRunType.TRIAL_RUN
+    if (!isTrialPayslip) {
       return false
     }
 
@@ -451,6 +456,7 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
           payPeriodId: true,
           runNumber: true,
           runTypeCode: true,
+          isTrialRun: true,
           createdAt: true,
           payPeriod: {
             select: {
@@ -490,7 +496,11 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
   ])
 
   const payslips = allPayslips as StatutorySourcePayslip[]
-  const regularPayslips = payslips.filter((payslip) => payslip.payrollRun.runTypeCode === PayrollRunType.REGULAR)
+  const regularPayslips = payslips.filter(
+    (payslip) =>
+      payslip.payrollRun.runTypeCode === PayrollRunType.REGULAR &&
+      !payslip.payrollRun.isTrialRun
+  )
   const latestTrialPayslips = selectLatestTrialPayslipsByPayPeriod(payslips)
 
   const printedBy =

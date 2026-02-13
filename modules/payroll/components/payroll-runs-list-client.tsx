@@ -47,12 +47,14 @@ import {
 } from "@/components/ui/table"
 import { CreatePayrollRunForm } from "@/modules/payroll/components/create-payroll-run-form"
 
+type NonTrialRunType = Exclude<PayrollRunType, "TRIAL_RUN">
+
 type PayrollRunsListClientProps = {
   companyId: string
   createOptions: {
     payPeriods: Array<{ id: string; label: string }>
     defaultPayPeriodId?: string
-    runTypes: Array<{ code: PayrollRunType; label: string }>
+    runTypes: Array<{ code: NonTrialRunType; label: string }>
     departments: Array<{ id: string; name: string }>
     branches: Array<{ id: string; name: string }>
   }
@@ -60,6 +62,7 @@ type PayrollRunsListClientProps = {
     id: string
     runNumber: string
     runTypeCode: string
+    runTypeLabel: string
     statusCode: string
     isLocked: boolean
     currentStepNumber: number
@@ -101,7 +104,9 @@ export function PayrollRunsListClient({ companyId, runs, createOptions }: Payrol
 
   const filteredRuns = useMemo(() => {
     return runs.filter((run) => {
-      const matchesSearch = `${run.runNumber} ${run.runTypeCode}`.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = `${run.runNumber} ${run.runTypeCode} ${run.runTypeLabel}`
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
       const matchesStatus = statusFilter ? getDisplayStatus(run) === statusFilter : true
       return matchesSearch && matchesStatus
     })
@@ -252,7 +257,7 @@ export function PayrollRunsListClient({ companyId, runs, createOptions }: Payrol
                         </div>
                         <div>
                           <p className="text-sm font-semibold">{run.runNumber}</p>
-                          <p className="text-[11px] text-muted-foreground">{run.runTypeCode}</p>
+                          <p className="text-[11px] text-muted-foreground">{run.runTypeLabel}</p>
                         </div>
                       </div>
                     </TableCell>

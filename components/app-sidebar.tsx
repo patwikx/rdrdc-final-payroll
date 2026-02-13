@@ -103,6 +103,7 @@ const subItemIconMap: Record<string, ReactNode> = {
   "leave-balances": <IconChartBar className="size-3.5" />,
   // Settings
   "settings-company": <IconBuilding className="size-3.5" />,
+  "settings-company-new": <IconBuilding className="size-3.5" />,
   "settings-organization": <IconUsersGroup className="size-3.5" />,
   "settings-employment": <IconFolderOpen className="size-3.5" />,
   "settings-payroll": <IconCreditCardPay className="size-3.5" />,
@@ -133,14 +134,23 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
   const router = useRouter()
   const pathname = usePathname()
 
-  const activeCompany =
-    companies.find((c) => c.companyId === activeCompanyId) ??
-    companies[0] ?? {
-      companyId: activeCompanyId,
-      companyCode: "N/A",
-      companyName: "No Company",
-      role: "EMPLOYEE",
-    }
+  const routeCompanyId = useMemo(() => {
+    const segments = pathname.split("/").filter(Boolean)
+    return segments[0] ?? null
+  }, [pathname])
+
+  const activeCompany = useMemo(() => {
+    return (
+      (routeCompanyId ? companies.find((company) => company.companyId === routeCompanyId) : null) ??
+      companies.find((company) => company.companyId === activeCompanyId) ??
+      companies[0] ?? {
+        companyId: activeCompanyId,
+        companyCode: "N/A",
+        companyName: "No Company",
+        role: "EMPLOYEE",
+      }
+    )
+  }, [activeCompanyId, companies, routeCompanyId])
 
   // ── Team data ─────────────────────────────────────────────────────────
   const teams = companies.map((company) => ({
@@ -213,7 +223,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
       <SidebarHeader>
         <TeamSwitcher
           teams={teams}
-          activeTeamId={activeCompanyId}
+          activeTeamId={activeCompany.companyId}
           onTeamChange={handleTeamChange}
         />
       </SidebarHeader>

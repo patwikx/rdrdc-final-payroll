@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useTransition } from "react"
 import {
   IconBriefcase,
@@ -9,6 +10,7 @@ import {
   IconId,
   IconMail,
   IconMapPin,
+  IconPlus,
   IconRefresh,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
@@ -50,6 +52,7 @@ type CompanyProfilePageProps = {
   companyName: string
   parentCompanyOptions: ParentCompanyOption[]
   initialData: CompanyProfileInput
+  canCreateCompany: boolean
 }
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
@@ -93,6 +96,7 @@ export function CompanyProfilePage({
   companyName,
   parentCompanyOptions,
   initialData,
+  canCreateCompany,
 }: CompanyProfilePageProps) {
   const [form, setForm] = useState<CompanyProfileInput>(initialData)
   const [isPending, startTransition] = useTransition()
@@ -176,6 +180,14 @@ export function CompanyProfilePage({
             <p className="text-sm text-muted-foreground">Complete legal, tax, contact, and operational company profile.</p>
           </div>
           <div className="flex items-center gap-2">
+            {canCreateCompany ? (
+              <Button asChild type="button" variant="outline" disabled={isPending}>
+                <Link href={`/${initialData.companyId}/settings/company/new`}>
+                  <IconPlus className="size-4" />
+                  New Company Setup
+                </Link>
+              </Button>
+            ) : null}
             <Button type="button" variant="ghost" onClick={handleReset} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset

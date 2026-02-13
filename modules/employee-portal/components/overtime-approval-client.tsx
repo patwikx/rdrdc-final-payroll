@@ -75,6 +75,9 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
   const [isPending, startTransition] = useTransition()
+  const [rowsPage, setRowsPage] = useState(1)
+  const [historyPage, setHistoryPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
 
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId])
   const stats = useMemo(() => {
@@ -178,38 +181,74 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
               <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
               <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
             </div>
-            {rows.map((row) => (
-              <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
-                <div className="col-span-2">
-                  <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
-                  <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
-                </div>
-                <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
-                <div className="col-span-1">
-                  <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
-                  {isHR && row.ctoConversionPreview ? (
-                    <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
-                  ) : null}
-                </div>
-                <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
-                <div className="col-span-2">
-                  <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
-                    {toLabel(row.statusCode)}
-                  </Badge>
-                </div>
-                <div className="col-span-2 flex justify-end gap-2">
-                  <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
-                    <IconX className="mr-1 h-3.5 w-3.5" />
-                    Reject
-                  </Button>
-                  <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
-                    <IconCheck className="mr-1 h-3.5 w-3.5" />
-                    Approve
-                  </Button>
-                </div>
-              </div>
-            ))}
+            {(() => {
+              const totalPages = Math.ceil(rows.length / ITEMS_PER_PAGE)
+              const startIndex = (rowsPage - 1) * ITEMS_PER_PAGE
+              const paginatedRows = rows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+              return (
+                <>
+                  {paginatedRows.map((row) => (
+                    <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                      <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
+                      <div className="col-span-2">
+                        <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
+                        <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
+                      </div>
+                      <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
+                      <div className="col-span-1">
+                        <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
+                        {isHR && row.ctoConversionPreview ? (
+                          <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
+                        ) : null}
+                      </div>
+                      <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
+                      <div className="col-span-2">
+                        <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
+                          {toLabel(row.statusCode)}
+                        </Badge>
+                      </div>
+                      <div className="col-span-2 flex justify-end gap-2">
+                        <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
+                          <IconX className="mr-1 h-3.5 w-3.5" />
+                          Reject
+                        </Button>
+                        <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                          <IconCheck className="mr-1 h-3.5 w-3.5" />
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                      <p className="text-xs text-muted-foreground">
+                        Page {rowsPage} of {totalPages} • {rows.length} records
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          disabled={rowsPage <= 1}
+                          onClick={() => setRowsPage(rowsPage - 1)}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          disabled={rowsPage >= totalPages}
+                          onClick={() => setRowsPage(rowsPage + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
 
@@ -309,32 +348,68 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">CTO</p>
               </div>
-              {filteredHistoryRows.map((row) => (
-                <div key={`history-${row.id}`} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                  <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
-                  <div className="col-span-2">
-                    <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
-                    <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
-                  </div>
-                  <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
-                  <div className="col-span-1">
-                    <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
-                    {isHR && row.ctoConversionPreview ? (
-                      <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
-                    ) : null}
-                  </div>
-                  <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
-                  <div className="col-span-2 space-y-1">
-                    <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
-                      {toLabel(row.statusCode)}
-                    </Badge>
-                    <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
-                  </div>
-                  <div className="col-span-2 text-right text-xs text-muted-foreground">
-                    {isHR && row.ctoConversionPreview ? "CTO 1:1" : "-"}
-                  </div>
-                </div>
-              ))}
+              {(() => {
+                const totalPages = Math.ceil(filteredHistoryRows.length / ITEMS_PER_PAGE)
+                const startIndex = (historyPage - 1) * ITEMS_PER_PAGE
+                const paginatedHistory = filteredHistoryRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+                return (
+                  <>
+                    {paginatedHistory.map((row) => (
+                      <div key={`history-${row.id}`} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                        <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
+                        <div className="col-span-2">
+                          <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
+                          <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
+                        </div>
+                        <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
+                        <div className="col-span-1">
+                          <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
+                          {isHR && row.ctoConversionPreview ? (
+                            <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
+                          ) : null}
+                        </div>
+                        <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
+                        <div className="col-span-2 space-y-1">
+                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
+                            {toLabel(row.statusCode)}
+                          </Badge>
+                          <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
+                        </div>
+                        <div className="col-span-2 text-right text-xs text-muted-foreground">
+                          {isHR && row.ctoConversionPreview ? "CTO 1:1" : "-"}
+                        </div>
+                      </div>
+                    ))}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">
+                          Page {historyPage} of {totalPages} • {filteredHistoryRows.length} records
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={historyPage <= 1}
+                            onClick={() => setHistoryPage(historyPage - 1)}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={historyPage >= totalPages}
+                            onClick={() => setHistoryPage(historyPage + 1)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>

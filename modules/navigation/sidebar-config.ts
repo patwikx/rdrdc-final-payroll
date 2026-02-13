@@ -89,6 +89,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "settings-leave-ot", label: "Leave / OT Policies", path: "/settings/leave-overtime" },
       { id: "settings-legacy-leave-ot-sync", label: "Legacy Leave/OT Sync", path: "/settings/leave-overtime/legacy-sync" },
       { id: "settings-statutory", label: "Statutory Tables", path: "/settings/statutory" },
+      { id: "settings-audit-logs", label: "Audit Logs", path: "/settings/audit-logs" },
     ],
   },
 ]

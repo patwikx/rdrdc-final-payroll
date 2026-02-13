@@ -279,6 +279,42 @@ const toPositiveNumber = (value: string): number | null => {
 
 const toRateString = (value: number): string => value.toFixed(2)
 
+const computeDailyRate = (monthlyRate: number, monthlyDivisor: number): number => {
+  if (!Number.isFinite(monthlyRate) || monthlyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(monthlyDivisor) || monthlyDivisor <= 0) {
+    return 0
+  }
+
+  return (monthlyRate * 12) / monthlyDivisor
+}
+
+const computeHourlyRate = (dailyRate: number, hoursPerDay: number): number => {
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(hoursPerDay) || hoursPerDay <= 0) {
+    return 0
+  }
+
+  return dailyRate / hoursPerDay
+}
+
+const formatRateDisplay = (value: string): string => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return "-"
+  }
+
+  return parsed.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDraft => {
   const monthlyRate = toPositiveNumber(draft.monthlyRate)
   if (!monthlyRate) {
@@ -298,13 +334,13 @@ const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDr
     }
   }
 
-  const dailyRate = (monthlyRate * 12) / monthlyDivisor
+  const dailyRate = computeDailyRate(monthlyRate, monthlyDivisor)
   const hoursPerDay = toPositiveNumber(draft.hoursPerDay)
 
   return {
     ...draft,
     dailyRate: toRateString(dailyRate),
-    hourlyRate: hoursPerDay ? toRateString(dailyRate / hoursPerDay) : "",
+    hourlyRate: hoursPerDay ? toRateString(computeHourlyRate(dailyRate, hoursPerDay)) : "",
   }
 }
 
@@ -398,11 +434,11 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const onSaveEdit = () => {
     startSaving(async () => {
       const numberOfDependents = Number(draft.numberOfDependents)
-      const monthlyRate = draft.monthlyRate.trim().length > 0 ? Number(draft.monthlyRate) : undefined
-      const dailyRate = draft.dailyRate.trim().length > 0 ? Number(draft.dailyRate) : undefined
-      const hourlyRate = draft.hourlyRate.trim().length > 0 ? Number(draft.hourlyRate) : undefined
-      const monthlyDivisor = draft.monthlyDivisor.trim().length > 0 ? Number(draft.monthlyDivisor) : undefined
-      const hoursPerDay = draft.hoursPerDay.trim().length > 0 ? Number(draft.hoursPerDay) : undefined
+      const monthlyRateInput = draft.monthlyRate.trim().length > 0 ? Number(draft.monthlyRate) : undefined
+      const monthlyDivisorInput = draft.monthlyDivisor.trim().length > 0 ? Number(draft.monthlyDivisor) : undefined
+      const hoursPerDayInput = draft.workHours.trim().length > 0 ? Number(draft.workHours) : undefined
+      const dailyRateInput = draft.dailyRate.trim().length > 0 ? Number(draft.dailyRate) : undefined
+      const hourlyRateInput = draft.hourlyRate.trim().length > 0 ? Number(draft.hourlyRate) : undefined
       const heightCm = draft.heightCm.trim().length > 0 ? Number(draft.heightCm) : undefined
       const weightKg = draft.weightKg.trim().length > 0 ? Number(draft.weightKg) : undefined
       const previousEmployerIncome = draft.previousEmployerIncome.trim().length > 0 ? Number(draft.previousEmployerIncome) : undefined
@@ -424,27 +460,27 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
         return
       }
 
-      if (monthlyRate !== undefined && Number.isNaN(monthlyRate)) {
+      if (monthlyRateInput !== undefined && Number.isNaN(monthlyRateInput)) {
         toast.error("Monthly Rate must be a valid number.")
         return
       }
 
-      if (monthlyDivisor !== undefined && Number.isNaN(monthlyDivisor)) {
+      if (monthlyDivisorInput !== undefined && Number.isNaN(monthlyDivisorInput)) {
         toast.error("Monthly Divisor must be a valid number.")
         return
       }
 
-      if (hoursPerDay !== undefined && Number.isNaN(hoursPerDay)) {
+      if (hoursPerDayInput !== undefined && Number.isNaN(hoursPerDayInput)) {
         toast.error("Hours Per Day must be a valid number.")
         return
       }
 
-      if (dailyRate !== undefined && Number.isNaN(dailyRate)) {
+      if (dailyRateInput !== undefined && Number.isNaN(dailyRateInput)) {
         toast.error("Daily Rate must be a valid number.")
         return
       }
 
-      if (hourlyRate !== undefined && Number.isNaN(hourlyRate)) {
+      if (hourlyRateInput !== undefined && Number.isNaN(hourlyRateInput)) {
         toast.error("Hourly Rate must be a valid number.")
         return
       }
@@ -458,6 +494,20 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
         toast.error("Weight must be a valid number.")
         return
       }
+
+      const normalizedMonthlyRate = monthlyRateInput
+      const normalizedMonthlyDivisor = normalizedMonthlyRate !== undefined ? (monthlyDivisorInput ?? 365) : monthlyDivisorInput
+      const normalizedHoursPerDay = normalizedMonthlyRate !== undefined ? (hoursPerDayInput ?? 8) : hoursPerDayInput
+
+      const normalizedDailyRate =
+        normalizedMonthlyRate !== undefined && normalizedMonthlyDivisor !== undefined
+          ? computeDailyRate(normalizedMonthlyRate, normalizedMonthlyDivisor)
+          : dailyRateInput
+
+      const normalizedHourlyRate =
+        normalizedDailyRate !== undefined && normalizedHoursPerDay !== undefined
+          ? computeHourlyRate(normalizedDailyRate, normalizedHoursPerDay)
+          : hourlyRateInput
 
       const result = await updateEmployeeProfileAction({
         companyId: data.companyId,
@@ -506,11 +556,11 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
         numberOfDependents,
         previousEmployerIncome,
         previousEmployerTaxWithheld,
-        monthlyRate,
-        dailyRate,
-        hourlyRate,
-        monthlyDivisor,
-        hoursPerDay,
+        monthlyRate: normalizedMonthlyRate,
+        dailyRate: normalizedDailyRate,
+        hourlyRate: normalizedHourlyRate,
+        monthlyDivisor: normalizedMonthlyDivisor,
+        hoursPerDay: normalizedHoursPerDay,
         salaryGrade: draft.salaryGrade,
         salaryBand: draft.salaryBand,
         minimumWageRegion: draft.minimumWageRegion,
@@ -1131,9 +1181,19 @@ function EmploymentTab({
           onValueChange={(value) => {
             setDraft((prev) => {
               const selected = options.workSchedules.find((item) => item.id === value)
-              if (!selected) return { ...prev, workScheduleId: value }
+              if (!selected) {
+                return recalculateDerivedRates({
+                  ...prev,
+                  workScheduleId: value,
+                  workStart: "",
+                  workEnd: "",
+                  workHours: "",
+                  gracePeriod: "",
+                  hoursPerDay: "",
+                })
+              }
 
-              return {
+              return recalculateDerivedRates({
                 ...prev,
                 workScheduleId: value,
                 workStart: selected.workStart,
@@ -1141,7 +1201,7 @@ function EmploymentTab({
                 workHours: selected.hoursPerDay,
                 gracePeriod: selected.gracePeriod,
                 hoursPerDay: selected.hoursPerDay,
-              }
+              })
             })
           }}
         />
@@ -1168,6 +1228,11 @@ function PayrollTab({
   draft: EmployeeProfileDraft
   setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
 }) {
+  const rateTypeValue = isEditing && draft.monthlyRate.trim().length > 0 ? "Monthly" : employee.salaryRateType
+  const dailyRateValue = isEditing ? formatRateDisplay(draft.dailyRate) : employee.dailyRate
+  const hourlyRateValue = isEditing ? formatRateDisplay(draft.hourlyRate) : employee.hourlyRate
+  const hoursPerDayValue = isEditing ? draft.workHours || "-" : employee.workHours
+
   return (
     <div className="space-y-8">
       <SectionHeader title="Salary Information" number="01" icon={IconCreditCard} />
@@ -1183,9 +1248,9 @@ function PayrollTab({
           }
         />
         <Field label="Currency" value={employee.currency} />
-        <Field label="Rate Type" value={employee.salaryRateType} />
-        <Field label="Daily Rate" value={employee.dailyRate} editable={isEditing} inputValue={draft.dailyRate} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, dailyRate: value }))} />
-        <Field label="Hourly Rate" value={employee.hourlyRate} editable={isEditing} inputValue={draft.hourlyRate} inputMode="decimal" onInputChange={(value) => setDraft((prev) => ({ ...prev, hourlyRate: value }))} />
+        <Field label="Rate Type" value={rateTypeValue} />
+        <Field label="Daily Rate" value={dailyRateValue} />
+        <Field label="Hourly Rate" value={hourlyRateValue} />
         <Field
           label="Monthly Divisor"
           value={employee.monthlyDivisor}
@@ -1197,14 +1262,8 @@ function PayrollTab({
           }
         />
         <Field
-          label="Hours Per Day"
-          value={employee.hoursPerDay}
-          editable={isEditing}
-          inputValue={draft.hoursPerDay}
-          inputMode="decimal"
-          onInputChange={(value) =>
-            setDraft((prev) => recalculateDerivedRates({ ...prev, hoursPerDay: value }))
-          }
+          label="Hours Per Day (Work Schedule)"
+          value={hoursPerDayValue}
         />
         <Field label="Salary Grade" value={employee.salaryGrade} editable={isEditing} inputValue={draft.salaryGrade} onInputChange={(value) => setDraft((prev) => ({ ...prev, salaryGrade: value }))} />
         <Field label="Salary Band" value={employee.salaryBand} editable={isEditing} inputValue={draft.salaryBand} onInputChange={(value) => setDraft((prev) => ({ ...prev, salaryBand: value }))} />
@@ -1625,8 +1684,8 @@ function buildInitialDraft(employee: EmployeeProfileViewModel["employee"]): Empl
     monthlyRate: employee.monthlyRate === "-" ? "" : employee.monthlyRate.replace(/[^0-9.]/g, ""),
     dailyRate: employee.dailyRate === "-" ? "" : employee.dailyRate.replace(/[^0-9.]/g, ""),
     hourlyRate: employee.hourlyRate === "-" ? "" : employee.hourlyRate.replace(/[^0-9.]/g, ""),
-    monthlyDivisor: employee.monthlyDivisor === "-" ? "" : employee.monthlyDivisor,
-    hoursPerDay: employee.hoursPerDay === "-" ? "" : employee.hoursPerDay,
+    monthlyDivisor: employee.monthlyDivisor === "-" ? "365" : employee.monthlyDivisor,
+    hoursPerDay: employee.workHours === "-" ? (employee.hoursPerDay === "-" ? "8" : employee.hoursPerDay) : employee.workHours,
     salaryGrade: employee.salaryGrade === "-" ? "" : employee.salaryGrade,
     salaryBand: employee.salaryBand === "-" ? "" : employee.salaryBand,
     minimumWageRegion: employee.minimumWageRegion === "-" ? "" : employee.minimumWageRegion,

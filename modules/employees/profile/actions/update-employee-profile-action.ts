@@ -82,6 +82,30 @@ const getTodayPhDate = (): Date => {
   return parsePhDate(today) ?? new Date()
 }
 
+const computeDailyRate = (monthlyRate: number, monthlyDivisor: number): number => {
+  if (!Number.isFinite(monthlyRate) || monthlyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(monthlyDivisor) || monthlyDivisor <= 0) {
+    return 0
+  }
+
+  return (monthlyRate * 12) / monthlyDivisor
+}
+
+const computeHourlyRate = (dailyRate: number, hoursPerDay: number): number => {
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+    return 0
+  }
+
+  if (!Number.isFinite(hoursPerDay) || hoursPerDay <= 0) {
+    return 0
+  }
+
+  return dailyRate / hoursPerDay
+}
+
 export async function updateEmployeeProfileAction(
   input: UpdateEmployeeProfileInput
 ): Promise<UpdateEmployeeProfileActionResult> {
@@ -119,6 +143,7 @@ export async function updateEmployeeProfileAction(
           departmentId: true,
           branchId: true,
           rankId: true,
+          workScheduleId: true,
         },
       })
 
@@ -132,6 +157,7 @@ export async function updateEmployeeProfileAction(
       const nextDepartmentId = toNullableId(payload.departmentId)
       const nextBranchId = toNullableId(payload.branchId)
       const nextRankId = toNullableId(payload.rankId)
+      const nextWorkScheduleId = toNullableId(payload.workScheduleId)
 
       if (nextEmploymentStatusId !== employee.employmentStatusId) {
         await tx.employeeStatusHistory.create({
@@ -241,7 +267,7 @@ export async function updateEmployeeProfileAction(
           rankId: nextRankId,
           branchId: nextBranchId,
           reportingManagerId: toNullableId(payload.reportingManagerId),
-          workScheduleId: toNullableId(payload.workScheduleId),
+          workScheduleId: nextWorkScheduleId,
           payPeriodPatternId: toNullableId(payload.payPeriodPatternId),
           taxStatusId: toTaxStatusEnum(payload.taxStatusId),
           biometricId: toNullable(payload.biometricId),
@@ -260,7 +286,7 @@ export async function updateEmployeeProfileAction(
 
       const salary = await tx.employeeSalary.findUnique({
         where: { employeeId: employee.id },
-        select: { id: true, baseSalary: true },
+        select: { id: true, baseSalary: true, monthlyDivisor: true, hoursPerDay: true },
       })
 
       if (salary && payload.monthlyRate !== undefined) {
@@ -299,18 +325,82 @@ export async function updateEmployeeProfileAction(
         }
       }
 
+      const hasSalaryPayload =
+        payload.monthlyRate !== undefined ||
+        payload.dailyRate !== undefined ||
+        payload.hourlyRate !== undefined ||
+        payload.monthlyDivisor !== undefined ||
+        payload.hoursPerDay !== undefined ||
+        payload.salaryGrade !== undefined ||
+        payload.salaryBand !== undefined ||
+        payload.minimumWageRegion !== undefined
+
+      const effectiveMonthlyRate =
+        payload.monthlyRate !== undefined
+          ? payload.monthlyRate
+          : salary?.baseSalary
+            ? Number(salary.baseSalary)
+            : undefined
+
+      const scheduleHoursPerDay = nextWorkScheduleId
+        ? await tx.workSchedule.findFirst({
+            where: {
+              id: nextWorkScheduleId,
+              companyId: context.companyId,
+              isActive: true,
+            },
+            select: {
+              requiredHoursPerDay: true,
+            },
+          })
+        : null
+
+      const effectiveMonthlyDivisor = payload.monthlyDivisor ?? salary?.monthlyDivisor ?? 365
+      const effectiveHoursPerDay =
+        (scheduleHoursPerDay?.requiredHoursPerDay ? Number(scheduleHoursPerDay.requiredHoursPerDay) : undefined) ??
+        payload.hoursPerDay ??
+        (salary?.hoursPerDay ? Number(salary.hoursPerDay) : 8)
+
+      const computedDailyRate =
+        effectiveMonthlyRate !== undefined
+          ? computeDailyRate(effectiveMonthlyRate, effectiveMonthlyDivisor)
+          : payload.dailyRate
+
+      const computedHourlyRate =
+        computedDailyRate !== undefined
+          ? computeHourlyRate(computedDailyRate, effectiveHoursPerDay)
+          : payload.hourlyRate
+
       if (salary) {
         await tx.employeeSalary.update({
           where: { employeeId: employee.id },
           data: {
             ...(payload.monthlyRate !== undefined ? { baseSalary: payload.monthlyRate.toString() } : {}),
-            ...(payload.dailyRate !== undefined ? { dailyRate: payload.dailyRate.toString() } : {}),
-            ...(payload.hourlyRate !== undefined ? { hourlyRate: payload.hourlyRate.toString() } : {}),
-            ...(payload.monthlyDivisor !== undefined ? { monthlyDivisor: payload.monthlyDivisor } : {}),
-            ...(payload.hoursPerDay !== undefined ? { hoursPerDay: payload.hoursPerDay.toString() } : {}),
+            ...(computedDailyRate !== undefined ? { dailyRate: computedDailyRate.toFixed(2) } : {}),
+            ...(computedHourlyRate !== undefined ? { hourlyRate: computedHourlyRate.toFixed(2) } : {}),
+            ...(hasSalaryPayload ? { monthlyDivisor: effectiveMonthlyDivisor } : {}),
+            ...(hasSalaryPayload ? { hoursPerDay: effectiveHoursPerDay.toString() } : {}),
+            ...(payload.monthlyRate !== undefined ? { salaryRateTypeCode: "MONTHLY" } : {}),
             ...(payload.salaryGrade !== undefined ? { salaryGrade: toNullable(payload.salaryGrade) } : {}),
             ...(payload.salaryBand !== undefined ? { salaryBand: toNullable(payload.salaryBand) } : {}),
             ...(payload.minimumWageRegion !== undefined ? { minimumWageRegion: toNullable(payload.minimumWageRegion) } : {}),
+          },
+        })
+      } else if (hasSalaryPayload && effectiveMonthlyRate !== undefined) {
+        await tx.employeeSalary.create({
+          data: {
+            employeeId: employee.id,
+            baseSalary: effectiveMonthlyRate.toString(),
+            salaryRateTypeCode: "MONTHLY",
+            dailyRate: (computedDailyRate ?? 0).toFixed(2),
+            hourlyRate: (computedHourlyRate ?? 0).toFixed(2),
+            monthlyDivisor: effectiveMonthlyDivisor,
+            hoursPerDay: effectiveHoursPerDay.toString(),
+            salaryGrade: toNullable(payload.salaryGrade),
+            salaryBand: toNullable(payload.salaryBand),
+            minimumWageRegion: toNullable(payload.minimumWageRegion),
+            effectiveDate,
+            isActive: true,
           },
         })
       }

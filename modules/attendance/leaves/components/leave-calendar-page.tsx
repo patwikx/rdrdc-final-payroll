@@ -17,6 +17,7 @@ import { IconCalendarEvent } from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import type { LeaveCalendarEntry } from "@/modules/attendance/leaves/utils/get-leave-calendar-view-model"
 
 type LeaveCalendarPageProps = {
@@ -50,7 +51,7 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date(`${range.startDate}T00:00:00Z`))
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(toPhDayStartUtcInstant(range.startDate) ?? undefined)
 
   const baseMonth = useMemo(() => {
     if (/^\d{4}-\d{2}$/.test(selectedMonth)) {

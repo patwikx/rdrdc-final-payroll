@@ -55,3 +55,28 @@ export type EmployeePortalLeaveDashboardReadModel = {
   pendingLeaveRequests: number
   leaveBalances: EmployeePortalLeaveDashboardBalanceCard[]
 }
+
+export type EmployeePortalLeaveApprovalRow = {
+  id: string
+  requestNumber: string
+  startDate: string
+  endDate: string
+  numberOfDays: number
+  reason: string | null
+  statusCode: string
+  employeeName: string
+  employeeNumber: string
+  leaveTypeName: string
+}
+
+export type EmployeePortalLeaveApprovalHistoryRow = EmployeePortalLeaveApprovalRow & {
+  decidedAtIso: string
+  decidedAtLabel: string
+}
+
+export type EmployeePortalLeaveApprovalHistoryPage = {
+  rows: EmployeePortalLeaveApprovalHistoryRow[]
+  total: number
+  page: number
+  pageSize: number
+}

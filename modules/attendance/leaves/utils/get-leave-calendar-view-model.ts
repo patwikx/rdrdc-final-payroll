@@ -1,6 +1,6 @@
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
 type Input = {
   month?: string
@@ -65,7 +65,7 @@ const formatDate = (value: Date): string => {
 
 export async function getLeaveCalendarViewModel(companyId: string, input?: Input): Promise<LeaveCalendarViewModel> {
   const context = await getActiveCompanyContext({ companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     throw new Error("ACCESS_DENIED")
   }
 

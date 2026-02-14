@@ -4,12 +4,14 @@ import { useEffect, useState, useTransition } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBriefcase,
+  IconBuilding,
   IconChevronLeft,
   IconChevronRight,
   IconDots,
   IconEdit,
   IconLink,
   IconMail,
+  IconPackage,
   IconShieldCheck,
   IconUser,
   IconUserCheck,
@@ -21,10 +23,12 @@ import {
   createEmployeeSystemUserAction,
   linkEmployeeToExistingUserAction,
   unlinkEmployeeUserAction,
+  updateEmployeeCompanyAccessAction,
   updateLinkedUserCredentialsAction,
 } from "@/modules/employees/user-access/actions/manage-employee-user-access-action"
 import type {
   AvailableSystemUserOption,
+  UserAccessCompanyOption,
   UserAccessLinkFilter,
   SystemUserAccountRow,
   UserAccessPreviewRow,
@@ -32,6 +36,7 @@ import type {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -53,6 +58,7 @@ type UserAccessPageProps = {
   rows: UserAccessPreviewRow[]
   availableUsers: AvailableSystemUserOption[]
   systemUsers: SystemUserAccountRow[]
+  companyOptions: UserAccessCompanyOption[]
   query: string
   employeeLinkFilter: UserAccessLinkFilter
   systemLinkFilter: UserAccessLinkFilter
@@ -70,6 +76,91 @@ type UserAccessPageProps = {
   }
 }
 
+type EditableCompanyAccess = {
+  companyId: string
+  role: "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE"
+  isDefault: boolean
+  isMaterialRequestPurchaser: boolean
+  isMaterialRequestPoster: boolean
+  enabled: boolean
+}
+
+const buildDefaultCompanyAccesses = (
+  companyOptions: UserAccessCompanyOption[],
+  currentCompanyId: string
+): EditableCompanyAccess[] => {
+  return companyOptions.map((company) => ({
+    companyId: company.companyId,
+    role: "EMPLOYEE",
+    isDefault: company.companyId === currentCompanyId,
+    isMaterialRequestPurchaser: false,
+    isMaterialRequestPoster: false,
+    enabled: company.companyId === currentCompanyId,
+  }))
+}
+
+const setAccessEnabledInList = (
+  list: EditableCompanyAccess[],
+  targetCompanyId: string,
+  enabled: boolean
+): EditableCompanyAccess[] => {
+  const next = list.map((entry) => (entry.companyId === targetCompanyId ? { ...entry, enabled } : entry))
+
+  if (!enabled) {
+    const disabledWasDefault = list.some((entry) => entry.companyId === targetCompanyId && entry.enabled && entry.isDefault)
+    if (disabledWasDefault) {
+      let defaultAssigned = false
+      for (const entry of next) {
+        if (entry.enabled && !defaultAssigned) {
+          entry.isDefault = true
+          defaultAssigned = true
+        } else {
+          entry.isDefault = false
+        }
+      }
+    }
+  } else if (!next.some((entry) => entry.enabled && entry.isDefault)) {
+    const enabledEntry = next.find((entry) => entry.companyId === targetCompanyId && entry.enabled)
+    if (enabledEntry) {
+      enabledEntry.isDefault = true
+    }
+  }
+
+  return [...next]
+}
+
+const setAccessDefaultInList = (list: EditableCompanyAccess[], targetCompanyId: string): EditableCompanyAccess[] => {
+  return list.map((entry) => ({
+    ...entry,
+    isDefault: entry.enabled && entry.companyId === targetCompanyId,
+  }))
+}
+
+const patchAccessInList = (
+  list: EditableCompanyAccess[],
+  targetCompanyId: string,
+  patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+): EditableCompanyAccess[] => {
+  return list.map((entry) => (entry.companyId === targetCompanyId ? { ...entry, ...patch } : entry))
+}
+
+const normalizeEnabledCompanyAccesses = (list: EditableCompanyAccess[]) => {
+  const enabled = list.filter((entry) => entry.enabled)
+  if (enabled.length === 0) {
+    return []
+  }
+
+  const hasDefault = enabled.some((entry) => entry.isDefault)
+
+  return enabled.map((entry, index) => ({
+    companyId: entry.companyId,
+    role: entry.role,
+    isDefault: hasDefault ? entry.isDefault : index === 0,
+    isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
+    isMaterialRequestPoster: entry.isMaterialRequestPoster,
+  }))
+}
+
 type ActionDialogState =
   | { type: "NONE" }
   | { type: "CREATE"; row: UserAccessPreviewRow }
@@ -82,6 +173,7 @@ export function UserAccessPage({
   rows,
   availableUsers,
   systemUsers,
+  companyOptions,
   query,
   employeeLinkFilter,
   systemLinkFilter,
@@ -101,18 +193,22 @@ export function UserAccessPage({
   const [createUsername, setCreateUsername] = useState("")
   const [createEmail, setCreateEmail] = useState("")
   const [createPassword, setCreatePassword] = useState("")
-  const [createRole, setCreateRole] = useState("EMPLOYEE")
   const [createApprover, setCreateApprover] = useState(false)
+  const [createCompanyAccesses, setCreateCompanyAccesses] = useState<EditableCompanyAccess[]>(() =>
+    buildDefaultCompanyAccesses(companyOptions, companyId)
+  )
 
   const [linkUserId, setLinkUserId] = useState("")
-  const [linkRole, setLinkRole] = useState("EMPLOYEE")
+  const [linkCompanyAccesses, setLinkCompanyAccesses] = useState<EditableCompanyAccess[]>(() =>
+    buildDefaultCompanyAccesses(companyOptions, companyId)
+  )
 
   const [editUsername, setEditUsername] = useState("")
   const [editEmail, setEditEmail] = useState("")
   const [editPassword, setEditPassword] = useState("")
-  const [editRole, setEditRole] = useState("EMPLOYEE")
   const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
+  const [editCompanyAccesses, setEditCompanyAccesses] = useState<EditableCompanyAccess[]>([])
 
   useEffect(() => {
     setQueryInput(query)
@@ -125,6 +221,37 @@ export function UserAccessPage({
   useEffect(() => {
     setSystemLinkFilterInput(systemLinkFilter)
   }, [systemLinkFilter])
+
+  const buildEditableCompanyAccesses = (row: UserAccessPreviewRow): EditableCompanyAccess[] => {
+    const accessByCompanyId = new Map(row.linkedCompanyAccesses.map((entry) => [entry.companyId, entry]))
+
+    const mapped = companyOptions.map((company) => {
+      const existing = accessByCompanyId.get(company.companyId)
+      return {
+        companyId: company.companyId,
+        role: (existing?.role ?? (company.companyId === companyId ? (row.linkedCompanyRole ?? "EMPLOYEE") : "EMPLOYEE")) as EditableCompanyAccess["role"],
+        isDefault: existing?.isDefault ?? false,
+        isMaterialRequestPurchaser: existing?.isMaterialRequestPurchaser ?? false,
+        isMaterialRequestPoster: existing?.isMaterialRequestPoster ?? false,
+        enabled: Boolean(existing) || company.companyId === companyId,
+      }
+    })
+
+    const hasDefaultEnabled = mapped.some((entry) => entry.enabled && entry.isDefault)
+    if (!hasDefaultEnabled) {
+      const currentCompanyEntry = mapped.find((entry) => entry.companyId === companyId && entry.enabled)
+      if (currentCompanyEntry) {
+        currentCompanyEntry.isDefault = true
+      } else {
+        const firstEnabled = mapped.find((entry) => entry.enabled)
+        if (firstEnabled) {
+          firstEnabled.isDefault = true
+        }
+      }
+    }
+
+    return mapped
+  }
 
   const updateRoute = (updates: {
     q?: string
@@ -211,14 +338,14 @@ export function UserAccessPage({
     setCreateUsername(nameBase || `user.${row.employeeNumber.toLowerCase()}`)
     setCreateEmail("")
     setCreatePassword("")
-    setCreateRole("EMPLOYEE")
     setCreateApprover(false)
+    setCreateCompanyAccesses(buildDefaultCompanyAccesses(companyOptions, companyId))
     setDialogState({ type: "CREATE", row })
   }
 
   const openLink = (row: UserAccessPreviewRow) => {
     setLinkUserId("")
-    setLinkRole("EMPLOYEE")
+    setLinkCompanyAccesses(buildDefaultCompanyAccesses(companyOptions, companyId))
     setDialogState({ type: "LINK", row })
   }
 
@@ -226,9 +353,9 @@ export function UserAccessPage({
     setEditUsername(row.linkedUsername ?? "")
     setEditEmail(row.linkedEmail ?? "")
     setEditPassword("")
-    setEditRole(row.linkedCompanyRole ?? "EMPLOYEE")
     setEditApprover(row.requestApprover)
     setEditIsActive(row.linkedUserActive)
+    setEditCompanyAccesses(buildEditableCompanyAccesses(row))
     setDialogState({ type: "EDIT", row })
   }
 
@@ -237,18 +364,74 @@ export function UserAccessPage({
     setDialogState({ type: "NONE" })
   }
 
+  const setCreateAccessEnabled = (targetCompanyId: string, enabled: boolean) => {
+    setCreateCompanyAccesses((previous) => setAccessEnabledInList(previous, targetCompanyId, enabled))
+  }
+
+  const setCreateAccessDefault = (targetCompanyId: string) => {
+    setCreateCompanyAccesses((previous) => setAccessDefaultInList(previous, targetCompanyId))
+  }
+
+  const updateCreateAccessField = (
+    targetCompanyId: string,
+    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+  ) => {
+    setCreateCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
+  }
+
+  const setLinkAccessEnabled = (targetCompanyId: string, enabled: boolean) => {
+    setLinkCompanyAccesses((previous) => setAccessEnabledInList(previous, targetCompanyId, enabled))
+  }
+
+  const setLinkAccessDefault = (targetCompanyId: string) => {
+    setLinkCompanyAccesses((previous) => setAccessDefaultInList(previous, targetCompanyId))
+  }
+
+  const updateLinkAccessField = (
+    targetCompanyId: string,
+    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+  ) => {
+    setLinkCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
+  }
+
+  const setCompanyAccessEnabled = (targetCompanyId: string, enabled: boolean) => {
+    setEditCompanyAccesses((previous) => setAccessEnabledInList(previous, targetCompanyId, enabled))
+  }
+
+  const setCompanyAccessDefault = (targetCompanyId: string) => {
+    setEditCompanyAccesses((previous) => setAccessDefaultInList(previous, targetCompanyId))
+  }
+
+  const updateCompanyAccessField = (
+    targetCompanyId: string,
+    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+  ) => {
+    setEditCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
+  }
+
   const submitCreate = () => {
     if (dialogState.type !== "CREATE") return
 
     startTransition(async () => {
+      const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(createCompanyAccesses)
+      if (normalizedCompanyAccesses.length === 0) {
+        toast.error("Assign at least one company access.")
+        return
+      }
+      const currentAccess =
+        normalizedCompanyAccesses.find((entry) => entry.companyId === companyId) ??
+        normalizedCompanyAccesses[0]
+
       const result = await createEmployeeSystemUserAction({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: createUsername,
         email: createEmail,
         password: createPassword,
-        companyRole: createRole as "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE",
+        companyRole: currentAccess.role,
         isRequestApprover: createApprover,
+        isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
+        isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
       })
 
       if (!result.ok) {
@@ -256,7 +439,18 @@ export function UserAccessPage({
         return
       }
 
-      toast.success(result.message)
+      const accessResult = await updateEmployeeCompanyAccessAction({
+        companyId,
+        employeeId: dialogState.row.employeeId,
+        accesses: normalizedCompanyAccesses,
+      })
+
+      if (!accessResult.ok) {
+        toast.error(accessResult.error)
+        return
+      }
+
+      toast.success(`${result.message} ${accessResult.message}`)
       setDialogState({ type: "NONE" })
       router.refresh()
     })
@@ -270,12 +464,23 @@ export function UserAccessPage({
     }
 
     startTransition(async () => {
+      const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(linkCompanyAccesses)
+      if (normalizedCompanyAccesses.length === 0) {
+        toast.error("Assign at least one company access.")
+        return
+      }
+      const currentAccess =
+        normalizedCompanyAccesses.find((entry) => entry.companyId === companyId) ??
+        normalizedCompanyAccesses[0]
+
       const result = await linkEmployeeToExistingUserAction({
         companyId,
         employeeId: dialogState.row.employeeId,
         userId: linkUserId,
-        companyRole: linkRole as "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE",
+        companyRole: currentAccess.role,
         isRequestApprover: false,
+        isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
+        isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
       })
 
       if (!result.ok) {
@@ -283,7 +488,18 @@ export function UserAccessPage({
         return
       }
 
-      toast.success(result.message)
+      const accessResult = await updateEmployeeCompanyAccessAction({
+        companyId,
+        employeeId: dialogState.row.employeeId,
+        accesses: normalizedCompanyAccesses,
+      })
+
+      if (!accessResult.ok) {
+        toast.error(accessResult.error)
+        return
+      }
+
+      toast.success(`${result.message} ${accessResult.message}`)
       setDialogState({ type: "NONE" })
       router.refresh()
     })
@@ -293,6 +509,12 @@ export function UserAccessPage({
     if (dialogState.type !== "EDIT") return
 
     startTransition(async () => {
+      const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(editCompanyAccesses)
+      if (normalizedCompanyAccesses.length === 0) {
+        toast.error("Assign at least one company access.")
+        return
+      }
+
       const result = await updateLinkedUserCredentialsAction({
         companyId,
         employeeId: dialogState.row.employeeId,
@@ -300,7 +522,6 @@ export function UserAccessPage({
         email: editEmail,
         password: editPassword.trim().length > 0 ? editPassword : undefined,
         isActive: editIsActive,
-        companyRole: editRole as "COMPANY_ADMIN" | "HR_ADMIN" | "PAYROLL_ADMIN" | "EMPLOYEE",
         isRequestApprover: editApprover,
       })
 
@@ -309,7 +530,18 @@ export function UserAccessPage({
         return
       }
 
-      toast.success(result.message)
+      const accessResult = await updateEmployeeCompanyAccessAction({
+        companyId,
+        employeeId: dialogState.row.employeeId,
+        accesses: normalizedCompanyAccesses,
+      })
+
+      if (!accessResult.ok) {
+        toast.error(accessResult.error)
+        return
+      }
+
+      toast.success(`${result.message} ${accessResult.message}`)
       setDialogState({ type: "NONE" })
       router.refresh()
     })
@@ -417,20 +649,90 @@ export function UserAccessPage({
               <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
               <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} disabled={isPending} />
             </div>
-            <div className="space-y-2">
-              <Label>Company Role</Label>
-              <Select value={createRole} onValueChange={setCreateRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
-                  <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
-                  <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
               <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
               <Switch checked={createApprover} onCheckedChange={setCreateApprover} disabled={isPending} />
+            </div>
+            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <IconBuilding className="size-4" />
+                Multi-Company Access
+              </p>
+              <div className="space-y-2">
+                {createCompanyAccesses.map((access) => {
+                  const company = companyOptions.find((option) => option.companyId === access.companyId)
+                  return (
+                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                          <Checkbox
+                            checked={access.enabled}
+                            onCheckedChange={(checked) => setCreateAccessEnabled(access.companyId, checked === true)}
+                            disabled={isPending}
+                          />
+                          <span>{company?.companyName ?? access.companyId}</span>
+                        </label>
+                        <Button
+                          type="button"
+                          variant={access.isDefault && access.enabled ? "default" : "outline"}
+                          size="sm"
+                          disabled={isPending || !access.enabled}
+                          onClick={() => setCreateAccessDefault(access.companyId)}
+                        >
+                          {access.isDefault && access.enabled ? "Default" : "Set Default"}
+                        </Button>
+                      </div>
+
+                      {access.enabled ? (
+                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                          <Select
+                            value={access.role}
+                            onValueChange={(value) =>
+                              updateCreateAccessField(access.companyId, {
+                                role: value as EditableCompanyAccess["role"],
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                              <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                              <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                              <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                            <Switch
+                              checked={access.isMaterialRequestPurchaser}
+                              onCheckedChange={(checked) =>
+                                updateCreateAccessField(access.companyId, {
+                                  isMaterialRequestPurchaser: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                            <Switch
+                              checked={access.isMaterialRequestPoster}
+                              onCheckedChange={(checked) =>
+                                updateCreateAccessField(access.companyId, {
+                                  isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -462,16 +764,86 @@ export function UserAccessPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Company Role</Label>
-              <Select value={linkRole} onValueChange={setLinkRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
-                  <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
-                  <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <IconBuilding className="size-4" />
+                Multi-Company Access
+              </p>
+              <div className="space-y-2">
+                {linkCompanyAccesses.map((access) => {
+                  const company = companyOptions.find((option) => option.companyId === access.companyId)
+                  return (
+                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                          <Checkbox
+                            checked={access.enabled}
+                            onCheckedChange={(checked) => setLinkAccessEnabled(access.companyId, checked === true)}
+                            disabled={isPending}
+                          />
+                          <span>{company?.companyName ?? access.companyId}</span>
+                        </label>
+                        <Button
+                          type="button"
+                          variant={access.isDefault && access.enabled ? "default" : "outline"}
+                          size="sm"
+                          disabled={isPending || !access.enabled}
+                          onClick={() => setLinkAccessDefault(access.companyId)}
+                        >
+                          {access.isDefault && access.enabled ? "Default" : "Set Default"}
+                        </Button>
+                      </div>
+
+                      {access.enabled ? (
+                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                          <Select
+                            value={access.role}
+                            onValueChange={(value) =>
+                              updateLinkAccessField(access.companyId, {
+                                role: value as EditableCompanyAccess["role"],
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                              <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                              <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                              <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                            <Switch
+                              checked={access.isMaterialRequestPurchaser}
+                              onCheckedChange={(checked) =>
+                                updateLinkAccessField(access.companyId, {
+                                  isMaterialRequestPurchaser: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                            <Switch
+                              checked={access.isMaterialRequestPoster}
+                              onCheckedChange={(checked) =>
+                                updateLinkAccessField(access.companyId, {
+                                  isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -504,20 +876,90 @@ export function UserAccessPage({
               <Label>New Password (optional)</Label>
               <Input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} disabled={isPending} placeholder="Leave blank to keep current password" />
             </div>
-            <div className="space-y-2">
-              <Label>Company Role</Label>
-              <Select value={editRole} onValueChange={setEditRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
-                  <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
-                  <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
               <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
               <Switch checked={editApprover} onCheckedChange={setEditApprover} disabled={isPending} />
+            </div>
+            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <IconBuilding className="size-4" />
+                Multi-Company Access
+              </p>
+              <div className="space-y-2">
+                {editCompanyAccesses.map((access) => {
+                  const company = companyOptions.find((option) => option.companyId === access.companyId)
+                  return (
+                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                          <Checkbox
+                            checked={access.enabled}
+                            onCheckedChange={(checked) => setCompanyAccessEnabled(access.companyId, checked === true)}
+                            disabled={isPending}
+                          />
+                          <span>{company?.companyName ?? access.companyId}</span>
+                        </label>
+                        <Button
+                          type="button"
+                          variant={access.isDefault && access.enabled ? "default" : "outline"}
+                          size="sm"
+                          disabled={isPending || !access.enabled}
+                          onClick={() => setCompanyAccessDefault(access.companyId)}
+                        >
+                          {access.isDefault && access.enabled ? "Default" : "Set Default"}
+                        </Button>
+                      </div>
+
+                      {access.enabled ? (
+                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                          <Select
+                            value={access.role}
+                            onValueChange={(value) =>
+                              updateCompanyAccessField(access.companyId, {
+                                role: value as EditableCompanyAccess["role"],
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                              <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                              <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                              <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                            <Switch
+                              checked={access.isMaterialRequestPurchaser}
+                              onCheckedChange={(checked) =>
+                                updateCompanyAccessField(access.companyId, {
+                                  isMaterialRequestPurchaser: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
+                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                            <Switch
+                              checked={access.isMaterialRequestPoster}
+                              onCheckedChange={(checked) =>
+                                updateCompanyAccessField(access.companyId, {
+                                  isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
             <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
               <span className="text-sm text-foreground">Active Account</span>
@@ -562,7 +1004,7 @@ function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, on
     <section className="grid border-b border-border/60 xl:grid-cols-[minmax(0,1fr)_440px]">
       <div className="overflow-hidden xl:border-r xl:border-border/60">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] text-xs">
+          <table className="w-full min-w-[1200px] text-xs">
             <thead className="bg-muted/40">
               <tr>
                 <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" /> <span>Employee</span></span></th>
@@ -570,13 +1012,15 @@ function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, on
                 <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconLink className="size-3.5" /> <span>Linked User</span></span></th>
                 <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconShieldCheck className="size-3.5" /> <span>Role</span></span></th>
                 <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUserCheck className="size-3.5" /> <span>Request Approver</span></span></th>
+                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconPackage className="size-3.5" /> <span>MRS Purchaser</span></span></th>
+                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconPackage className="size-3.5" /> <span>MRS Poster</span></span></th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr className="border-t border-border/60">
-                  <td colSpan={6} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">
                     No employees found for the current filters.
                   </td>
                 </tr>
@@ -603,6 +1047,16 @@ function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, on
                     <td className="px-3 py-2">
                       <Badge variant={row.requestApprover ? "default" : "destructive"}>
                         {row.requestApprover ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={row.materialRequestPurchaser ? "default" : "outline"}>
+                        {row.materialRequestPurchaser ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={row.materialRequestPoster ? "default" : "outline"}>
+                        {row.materialRequestPoster ? "Enabled" : "Disabled"}
                       </Badge>
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -700,6 +1154,12 @@ function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, on
                 <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
                   <Badge variant="secondary" className="px-2.5">{user.companyRole}</Badge>
                   <Badge variant={user.isRequestApprover ? "default" : "outline"} className="px-2.5">{user.isRequestApprover ? "Request Approver" : "Standard"}</Badge>
+                  <Badge variant={user.isMaterialRequestPurchaser ? "default" : "outline"} className="px-2.5">
+                    {user.isMaterialRequestPurchaser ? "MRS Purchaser" : "No MRS Purchaser"}
+                  </Badge>
+                  <Badge variant={user.isMaterialRequestPoster ? "default" : "outline"} className="px-2.5">
+                    {user.isMaterialRequestPoster ? "MRS Poster" : "No MRS Poster"}
+                  </Badge>
                   <Badge variant={user.isActive ? "default" : "outline"} className="px-2.5">{user.isActive ? "Active" : "Inactive"}</Badge>
                 </div>
                 {user.isLinked && user.linkedEmployeeNumber ? (

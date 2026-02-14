@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import { dtrDateRangeInputSchema, type DtrDateRangeInput } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
 import { formatWallClockTime } from "@/modules/attendance/dtr/utils/wall-clock"
 
@@ -51,7 +51,7 @@ export async function exportDtrCsvAction(input: DtrDateRangeInput): Promise<Expo
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
 
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to export DTR logs." }
   }
 

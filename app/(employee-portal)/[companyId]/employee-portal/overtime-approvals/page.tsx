@@ -42,5 +42,15 @@ export default async function OvertimeApprovalsPage({ params }: OvertimeApproval
     approverEmployeeId: context.employee?.id,
   })
 
-  return <OvertimeApprovalClient companyId={context.companyId} isHR={isHR} rows={overtimeApprovalData.rows} historyRows={overtimeApprovalData.historyRows} />
+  return (
+    <OvertimeApprovalClient
+      companyId={context.companyId}
+      isHR={isHR}
+      rows={overtimeApprovalData.rows}
+      historyRows={overtimeApprovalData.historyRows}
+      initialHistoryTotal={overtimeApprovalData.historyTotal}
+      initialHistoryPage={overtimeApprovalData.historyPage}
+      initialHistoryPageSize={overtimeApprovalData.historyPageSize}
+    />
+  )
 }

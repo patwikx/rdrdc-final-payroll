@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import {
   createDeductionTypeAction,
@@ -83,19 +84,9 @@ type DeductionTypeForm = {
 const CREATE_DEDUCTION_TYPE_VALUE = "__create_deduction_type__"
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
-}
-
 const fromPhDateInputValue = (value: string): Date | undefined => {
   if (!value) return undefined
-  return new Date(`${value}T00:00:00+08:00`)
+  return parsePhDateInputToPhDate(value) ?? undefined
 }
 
 const getDefaultRecurringDeductionForm = (): RecurringDeductionForm => ({

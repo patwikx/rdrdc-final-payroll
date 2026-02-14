@@ -6,17 +6,17 @@
 // ============================================================================
 
 model SeparationRequest {
-  id                      String           @id @default(uuid())
+  id                      String               @id @default(uuid())
   employeeId              String
-  employee                Employee         @relation("EmployeeSeparation", fields: [employeeId], references: [id])
+  employee                Employee             @relation("EmployeeSeparation", fields: [employeeId], references: [id])
   separationTypeCode      SeparationTypeCode
   separationReasonCode    SeparationReasonCode
-  requestedSeparationDate DateTime @db.Date
-  lastWorkingDay          DateTime @db.Date
+  requestedSeparationDate DateTime             @db.Date
+  lastWorkingDay          DateTime             @db.Date
   noticePeriodInDays      Int
   status                  SeparationStatus
-  isRehireEligible        Boolean          @default(true)
-  rehireNotes             String?          @db.Text
+  isRehireEligible        Boolean              @default(true)
+  rehireNotes             String?              @db.Text
 
   createdById        String
   createdBy          User      @relation("SeparationRequestCreatedBy", fields: [createdById], references: [id])
@@ -90,16 +90,16 @@ model FinalPayCalculation {
 }
 
 model SeparationAuditLog {
-  id                  String            @id @default(uuid())
+  id                  String                @id @default(uuid())
   separationRequestId String
-  separationRequest   SeparationRequest @relation(fields: [separationRequestId], references: [id], onDelete: Cascade)
+  separationRequest   SeparationRequest     @relation(fields: [separationRequestId], references: [id], onDelete: Cascade)
   action              SeparationAuditAction
   performedBy         String
-  user                User              @relation("SeparationAuditUser", fields: [performedBy], references: [id])
-  performedAt         DateTime          @default(now())
+  user                User                  @relation("SeparationAuditUser", fields: [performedBy], references: [id])
+  performedAt         DateTime              @default(now())
   previousState       Json?
   newState            Json?
-  notes               String?           @db.Text
+  notes               String?               @db.Text
 
   @@index([separationRequestId])
   @@index([performedBy])

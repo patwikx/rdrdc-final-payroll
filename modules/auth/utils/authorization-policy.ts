@@ -26,6 +26,7 @@ export type ModuleKey = (typeof MODULE_KEYS)[number]
 type RoleSet = ReadonlySet<CompanyRole>
 
 const asRoleSet = (roles: readonly CompanyRole[]): RoleSet => new Set(roles)
+const ATTENDANCE_SENSITIVE_ROLES = asRoleSet(["COMPANY_ADMIN", "HR_ADMIN"])
 
 export const AUTHORIZATION_POLICY: Readonly<Record<ModuleKey, RoleSet>> = {
   dashboard: asRoleSet(["COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER", "EMPLOYEE"]),
@@ -42,4 +43,8 @@ export const AUTHORIZATION_POLICY: Readonly<Record<ModuleKey, RoleSet>> = {
 
 export const hasModuleAccess = (role: CompanyRole, moduleKey: ModuleKey): boolean => {
   return AUTHORIZATION_POLICY[moduleKey].has(role)
+}
+
+export const hasAttendanceSensitiveAccess = (role: CompanyRole): boolean => {
+  return ATTENDANCE_SENSITIVE_ROLES.has(role)
 }

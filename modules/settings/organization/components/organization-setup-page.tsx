@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { IconBriefcase, IconChartBar, IconEdit, IconGitBranch, IconMapPin, IconPlus, IconRefresh, IconSitemap } from "@tabler/icons-react"
@@ -382,6 +383,12 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           <div className="flex items-center gap-2">
             <Badge variant="outline">{data.companyCode}</Badge>
             <Badge variant="outline">Role: {roleLabel}</Badge>
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link href={`/${data.companyId}/settings/material-requests`}>
+                <IconGitBranch className="size-4" />
+                Material Request Approvals
+              </Link>
+            </Button>
             <Button type="button" variant="ghost" onClick={resetForms} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset Forms

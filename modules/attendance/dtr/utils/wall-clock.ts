@@ -1,3 +1,5 @@
+import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
+
 const PH_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
   month: "2-digit",
@@ -13,18 +15,7 @@ const LEGACY_HALF_DAY_MARKERS = ["[HALF_DAY]", "HALF DAY", "HALFDAY", HALF_DAY_T
 
 export const toPhDateKey = (value: Date): string => PH_DATE_FORMATTER.format(value)
 
-export const parsePhDateInput = (value: string): Date | null => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return null
-  }
-
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  if (!year || !month || !day) {
-    return null
-  }
-
-  return new Date(Date.UTC(year, month - 1, day))
-}
+export const parsePhDateInput = (value: string): Date | null => parsePhDateInputToUtcDateOnly(value)
 
 export const formatWallClockTime = (value: Date | string | null | undefined): string => {
   if (!value) return ""

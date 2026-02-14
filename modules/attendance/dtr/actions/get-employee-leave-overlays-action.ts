@@ -2,7 +2,11 @@
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import {
+  dtrEmployeeDateRangeInputSchema,
+  type DtrEmployeeDateRangeInput,
+} from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
 import type { LeaveOverlayItem } from "@/modules/attendance/dtr/types"
 import { getApprovedLeaveOverlaysForEmployee } from "@/modules/leave/utils/leave-domain"
 
@@ -21,14 +25,20 @@ export async function getEmployeeLeaveOverlaysAction(params: {
   startDate: string
   endDate: string
 }): Promise<GetEmployeeLeaveOverlaysActionResult> {
-  const context = await getActiveCompanyContext({ companyId: params.companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  const parsed = dtrEmployeeDateRangeInputSchema.safeParse(params)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid leave overlay filters." }
+  }
+
+  const payload: DtrEmployeeDateRangeInput = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to view leave overlays." }
   }
 
   const employee = await db.employee.findFirst({
     where: {
-      id: params.employeeId,
+      id: payload.employeeId,
       companyId: context.companyId,
       deletedAt: null,
     },
@@ -41,9 +51,9 @@ export async function getEmployeeLeaveOverlaysAction(params: {
 
   const leaves = await getApprovedLeaveOverlaysForEmployee({
     companyId: context.companyId,
-    employeeId: params.employeeId,
-    startDate: toPhDate(params.startDate),
-    endDate: toPhDate(params.endDate),
+    employeeId: payload.employeeId,
+    startDate: toPhDate(payload.startDate),
+    endDate: toPhDate(payload.endDate),
   })
 
   return {

@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { dtrCompanyInputSchema } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
 
 type DtrEmployee = {
   id: string
@@ -21,8 +22,13 @@ type GetDtrEmployeesActionResult =
   | { ok: false; error: string }
 
 export async function getDtrEmployeesAction(companyId: string): Promise<GetDtrEmployeesActionResult> {
-  const context = await getActiveCompanyContext({ companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  const parsed = dtrCompanyInputSchema.safeParse({ companyId })
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid company id." }
+  }
+
+  const context = await getActiveCompanyContext({ companyId: parsed.data.companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to view employees for DTR." }
   }
 

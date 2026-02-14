@@ -22,6 +22,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { deleteWorkScheduleAction } from "@/modules/settings/attendance/actions/delete-work-schedule-action"
 import { updateAttendanceRulesAction } from "@/modules/settings/attendance/actions/update-attendance-rules-action"
 import {
@@ -48,8 +49,8 @@ const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const formatDisplayDate = (value: string): string => {
   if (!value) return ""
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  if (Number.isNaN(parsed.getTime())) return ""
+  const parsed = parsePhDateInputToPhDate(value)
+  if (!parsed) return ""
 
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
@@ -57,19 +58,6 @@ const formatDisplayDate = (value: string): string => {
     year: "numeric",
     timeZone: "Asia/Manila",
   }).format(parsed)
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-
-  return formatter.format(date)
 }
 
 const getDefaultWorkingTimes = (rows: AttendanceRulesInput["daySchedules"]) => {
@@ -419,7 +407,7 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
               <PopoverContent className="w-auto p-2" align="start">
                 <Calendar
                   mode="single"
-                  selected={form.effectiveFrom ? new Date(`${form.effectiveFrom}T00:00:00+08:00`) : undefined}
+                  selected={form.effectiveFrom ? (parsePhDateInputToPhDate(form.effectiveFrom) ?? undefined) : undefined}
                   onSelect={(date) => updateField("effectiveFrom", toPhDateInputValue(date))}
                 />
               </PopoverContent>
@@ -437,7 +425,7 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
               <PopoverContent className="w-auto p-2" align="start">
                 <Calendar
                   mode="single"
-                  selected={form.effectiveTo ? new Date(`${form.effectiveTo}T00:00:00+08:00`) : undefined}
+                  selected={form.effectiveTo ? (parsePhDateInputToPhDate(form.effectiveTo) ?? undefined) : undefined}
                   onSelect={(date) => updateField("effectiveTo", toPhDateInputValue(date) || undefined)}
                 />
               </PopoverContent>

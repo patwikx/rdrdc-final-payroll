@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { RecurringDeductionType, type CompanyRole } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess } from "@/modules/auth/utils/authorization-policy"
@@ -24,7 +25,13 @@ type CreateDeductionTypeResult =
 const toDecimalText = (value: number): string => value.toFixed(2)
 
 const toPhDateOnlyUtc = (value: string): Date => {
-  return new Date(`${value}T00:00:00+08:00`)
+  const parsed = parsePhDateInputToUtcDateOnly(value)
+  if (parsed) {
+    return parsed
+  }
+
+  const [year, month, day] = value.split("-").map((part) => Number(part))
+  return new Date(Date.UTC(year, month - 1, day))
 }
 
 const mapDeductionTypeToRecurringCategory = (code: string, name: string): RecurringDeductionType => {

@@ -2,10 +2,11 @@
 
 import { AttendanceStatus, DtrApprovalStatus, DtrSource } from "@prisma/client"
 import { revalidatePath } from "next/cache"
+import { z } from "zod"
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   createWallClockDateTime,
   ensureEndAfterStart,
@@ -35,6 +36,10 @@ type DayOverride = {
 }
 
 const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const
+const syncBiometricsInputSchema = z.object({
+  companyId: z.string().uuid(),
+  fileContent: z.string().min(1, "Attendance file is empty."),
+})
 
 const parseDateValue = (value: string): Date | null => {
   return parsePhDateInput(value.replaceAll("/", "-"))
@@ -145,16 +150,22 @@ const getScheduleTimes = (
 }
 
 export async function syncBiometricsAction(params: { companyId: string; fileContent: string }): Promise<SyncResult> {
-  if (!params.fileContent.trim()) {
+  const parsedInput = syncBiometricsInputSchema.safeParse(params)
+  if (!parsedInput.success) {
+    return { ok: false, error: parsedInput.error.issues[0]?.message ?? "Invalid biometrics sync input." }
+  }
+
+  const payload = parsedInput.data
+  if (!payload.fileContent.trim()) {
     return { ok: false, error: "Attendance file is empty." }
   }
 
-  const context = await getActiveCompanyContext({ companyId: params.companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to sync biometrics." }
   }
 
-  const lines = params.fileContent.split(/\r?\n/).filter((line) => line.trim().length > 0)
+  const lines = payload.fileContent.split(/\r?\n/).filter((line) => line.trim().length > 0)
   const parseErrors: Array<{ line: string; reason: string }> = []
   const validationErrors: Array<{ employeeNumber: string; date: string; reason: string }> = []
 

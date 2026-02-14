@@ -34,9 +34,11 @@ model Department {
   createdBy    User?    @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
   updatedBy    User?    @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
 
-  employees                   Employee[]                @relation
-  previousDepartmentHistories EmployeePositionHistory[] @relation("PreviousDepartment")
-  newDepartmentHistories      EmployeePositionHistory[] @relation("NewDepartment")
+  employees                   Employee[]                             @relation
+  materialRequestApprovalFlow DepartmentMaterialRequestApprovalFlow?
+  materialRequests            MaterialRequest[]
+  previousDepartmentHistories EmployeePositionHistory[]              @relation("PreviousDepartment")
+  newDepartmentHistories      EmployeePositionHistory[]              @relation("NewDepartment")
 
   @@unique([companyId, code])
   @@index([code])
@@ -178,10 +180,10 @@ model EmploymentStatus {
   description String?
 
   // Business rules
-  isActive          Boolean @default(true)
-  allowsPayroll     Boolean @default(true)
-  allowsLeave       Boolean @default(true)
-  allowsLoans       Boolean @default(true)
+  isActive            Boolean @default(true)
+  allowsPayroll       Boolean @default(true)
+  allowsLeave         Boolean @default(true)
+  allowsLoans         Boolean @default(true)
   triggersOffboarding Boolean @default(false)
 
   displayOrder Int      @default(0)

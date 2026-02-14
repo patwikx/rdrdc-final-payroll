@@ -53,6 +53,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { createEmployeeOnboardingAction } from "@/modules/employees/onboarding/actions/create-employee-onboarding-action"
 import {
@@ -181,8 +182,8 @@ const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const formatDisplayDate = (value: string): string => {
   if (!value) return ""
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  if (Number.isNaN(parsed.getTime())) return ""
+  const parsed = parsePhDateInputToPhDate(value)
+  if (!parsed) return ""
 
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
@@ -190,16 +191,6 @@ const formatDisplayDate = (value: string): string => {
     year: "numeric",
     timeZone: "Asia/Manila",
   }).format(parsed)
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
 }
 
 const computeDailyRate = (monthlyRate: number, monthlyDivisor: number): number => {
@@ -774,7 +765,7 @@ function DateField({ label, required, value, onChange }: { label: string; requir
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-2" align="start">
-          <Calendar mode="single" selected={value ? new Date(`${value}T00:00:00+08:00`) : undefined} onSelect={(date) => onChange(toPhDateInputValue(date))} />
+          <Calendar mode="single" selected={value ? (parsePhDateInputToPhDate(value) ?? undefined) : undefined} onSelect={(date) => onChange(toPhDateInputValue(date))} />
         </PopoverContent>
       </Popover>
     </Field>

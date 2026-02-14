@@ -30,7 +30,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { getPhYear } from "@/lib/ph-time"
+import { getPhYear, parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { updateCompanyProfileAction } from "@/modules/settings/company/actions/update-company-profile-action"
 import {
   ADDRESS_TYPE_OPTIONS,
@@ -64,8 +64,8 @@ const formatDisplayDate = (value: string): string => {
     return ""
   }
 
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  if (Number.isNaN(parsed.getTime())) {
+  const parsed = parsePhDateInputToPhDate(value)
+  if (!parsed) {
     return ""
   }
 
@@ -75,21 +75,6 @@ const formatDisplayDate = (value: string): string => {
     year: "numeric",
     timeZone: "Asia/Manila",
   }).format(parsed)
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) {
-    return ""
-  }
-
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-
-  return formatter.format(date)
 }
 
 export function CompanyProfilePage({
@@ -368,14 +353,14 @@ function RegistrationGovernmentFields({ form, updateCompanyField }: LayoutProps)
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-2" align="start">
-            <Calendar
-              mode="single"
-              selected={
-                form.company.dateOfIncorporation
-                  ? new Date(`${form.company.dateOfIncorporation}T00:00:00+08:00`)
-                  : undefined
-              }
-              onSelect={(date) => updateCompanyField("dateOfIncorporation", toPhDateInputValue(date))}
+                <Calendar
+                  mode="single"
+                  selected={
+                    form.company.dateOfIncorporation
+                      ? (parsePhDateInputToPhDate(form.company.dateOfIncorporation) ?? undefined)
+                      : undefined
+                  }
+                  onSelect={(date) => updateCompanyField("dateOfIncorporation", toPhDateInputValue(date))}
               captionLayout="dropdown"
               fromYear={1900}
               toYear={getPhYear()}

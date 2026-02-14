@@ -29,6 +29,13 @@ import {
 } from "@/modules/payroll/schemas/payroll-run-actions-schema"
 import { validatePayrollRun } from "@/modules/payroll/utils/validate-payroll-run"
 import { isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
+import {
+  getDateRange,
+  getDayName,
+  getInclusiveDayCount,
+  toDateKey,
+  toUtcDateOnly,
+} from "@/modules/payroll/actions/utils/payroll-date-utils"
 
 type ActionResult = { ok: true; message: string; runId?: string } | { ok: false; error: string }
 
@@ -115,57 +122,6 @@ const defaultStatutoryDeductionSchedule: StatutoryDeductionSchedule = {
   philHealth: "FIRST_HALF",
   pagIbig: "FIRST_HALF",
   withholdingTax: "EVERY_PERIOD",
-}
-
-const toDateKey = (value: Date): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(value)
-}
-
-const getDayName = (value: Date): string => {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    timeZone: "Asia/Manila",
-  })
-    .format(value)
-    .toUpperCase()
-}
-
-const getDateRange = (start: Date, end: Date): Date[] => {
-  const startKey = toDateKey(start)
-  const endKey = toDateKey(end)
-  const [sY, sM, sD] = startKey.split("-").map(Number)
-  const [eY, eM, eD] = endKey.split("-").map(Number)
-
-  const cursor = new Date(Date.UTC(sY, sM - 1, sD))
-  const last = new Date(Date.UTC(eY, eM - 1, eD))
-
-  const dates: Date[] = []
-  while (cursor <= last) {
-    dates.push(new Date(cursor))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  }
-  return dates
-}
-
-const toUtcDateOnly = (value: Date): Date => {
-  const [year, month, day] = toDateKey(value).split("-").map(Number)
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const getInclusiveDayCount = (start: Date, end: Date): number => {
-  const startUtc = toUtcDateOnly(start)
-  const endUtc = toUtcDateOnly(end)
-  if (endUtc < startUtc) {
-    return 0
-  }
-
-  const diffMs = endUtc.getTime() - startUtc.getTime()
-  return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1
 }
 
 const roundCurrency = (value: number): number => Math.round(value * 100) / 100

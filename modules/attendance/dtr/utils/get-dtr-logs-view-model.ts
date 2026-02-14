@@ -1,10 +1,9 @@
 import { Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { parsePhDateInputToUtcDateOnly, toPhDateInputValue, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
-
-const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
 type DateRangeInput = {
   startDate?: string
@@ -55,43 +54,6 @@ export type DtrLogsViewModel = {
   rows: DtrLogRow[]
 }
 
-const toPhDateOnlyUtc = (value: Date = new Date()): Date => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(value)
-
-  const year = Number(parts.find((part) => part.type === "year")?.value ?? "1970")
-  const month = Number(parts.find((part) => part.type === "month")?.value ?? "01")
-  const day = Number(parts.find((part) => part.type === "day")?.value ?? "01")
-
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const toDateInputValue = (value: Date): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(value)
-}
-
-const toPhDateFromInput = (value: string): Date | null => {
-  if (!DATE_INPUT_PATTERN.test(value)) {
-    return null
-  }
-
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  if (!year || !month || !day) {
-    return null
-  }
-
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
 const formatDateLabel = (value: Date): string => {
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
@@ -136,8 +98,8 @@ const resolveDateRange = (input?: DateRangeInput): { startDate: Date; endDate: D
   const todayPh = toPhDateOnlyUtc()
   const defaultStart = new Date(todayPh.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-  const parsedStart = input?.startDate ? toPhDateFromInput(input.startDate) : null
-  const parsedEnd = input?.endDate ? toPhDateFromInput(input.endDate) : null
+  const parsedStart = input?.startDate ? parsePhDateInputToUtcDateOnly(input.startDate) : null
+  const parsedEnd = input?.endDate ? parsePhDateInputToUtcDateOnly(input.endDate) : null
 
   const startDate = parsedStart ?? defaultStart
   const endDate = parsedEnd ?? todayPh
@@ -146,16 +108,16 @@ const resolveDateRange = (input?: DateRangeInput): { startDate: Date; endDate: D
     return {
       startDate,
       endDate,
-      startLabel: toDateInputValue(startDate),
-      endLabel: toDateInputValue(endDate),
+      startLabel: toPhDateInputValue(startDate),
+      endLabel: toPhDateInputValue(endDate),
     }
   }
 
   return {
     startDate: endDate,
     endDate: startDate,
-    startLabel: toDateInputValue(endDate),
-    endLabel: toDateInputValue(startDate),
+    startLabel: toPhDateInputValue(endDate),
+    endLabel: toPhDateInputValue(startDate),
   }
 }
 
@@ -169,7 +131,7 @@ const countDaysInclusive = (startDate: Date, endDate: Date): number => {
 export async function getDtrLogsViewModel(companyId: string, range?: DateRangeInput): Promise<DtrLogsViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     throw new Error("ACCESS_DENIED")
   }
 
@@ -231,7 +193,7 @@ export async function getDtrLogsViewModel(companyId: string, range?: DateRangeIn
   const rows: DtrLogRow[] = logs.map((log) => ({
     id: log.id,
     attendanceDate: formatDateLabel(log.attendanceDate),
-    attendanceDateValue: toDateInputValue(log.attendanceDate),
+    attendanceDateValue: toPhDateInputValue(log.attendanceDate),
     employeeId: log.employee.id,
     employeeNumber: log.employee.employeeNumber,
     employeeName: toFullName(log.employee.firstName, log.employee.lastName),

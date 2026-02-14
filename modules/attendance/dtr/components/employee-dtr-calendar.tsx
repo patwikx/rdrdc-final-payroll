@@ -36,6 +36,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { getDtrEmployeesAction } from "@/modules/attendance/dtr/actions/get-dtr-employees-action"
 import { getEmployeeDtrLogsAction } from "@/modules/attendance/dtr/actions/get-employee-dtr-logs-action"
@@ -210,11 +211,13 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
     if (!selectedEmployee) return null
 
     const dateKey = toLocalDateString(day)
+    const attendanceDate = toPhDayStartUtcInstant(dateKey)
+    if (!attendanceDate) return null
 
     return {
       id: `draft-${selectedEmployee.id}-${dateKey}`,
       employeeId: selectedEmployee.id,
-      attendanceDate: new Date(`${dateKey}T00:00:00Z`).toISOString(),
+      attendanceDate: attendanceDate.toISOString(),
       actualTimeIn: null,
       actualTimeOut: null,
       hoursWorked: 0,

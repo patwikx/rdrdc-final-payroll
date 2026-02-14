@@ -42,5 +42,15 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
     approverEmployeeId: context.employee?.id,
   })
 
-  return <LeaveApprovalClient companyId={context.companyId} isHR={isHR} rows={leaveApprovalData.rows} historyRows={leaveApprovalData.historyRows} />
+  return (
+    <LeaveApprovalClient
+      companyId={context.companyId}
+      isHR={isHR}
+      rows={leaveApprovalData.rows}
+      historyRows={leaveApprovalData.historyRows}
+      initialHistoryTotal={leaveApprovalData.historyTotal}
+      initialHistoryPage={leaveApprovalData.historyPage}
+      initialHistoryPageSize={leaveApprovalData.historyPageSize}
+    />
+  )
 }

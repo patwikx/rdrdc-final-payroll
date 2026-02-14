@@ -185,3 +185,23 @@ Use this section as the single running log for implementation lessons/progress n
 - Added report-scoped print behavior so statutory print actions render report HTML only (not full application page chrome).
 - Updated annual withholding projection to include YTD pre-tax recurring deductions in annual taxable projection math.
 - Updated movement history capture to include null-transition events (status/position/rank clear/unassign), with nullable `new*Id` history fields.
+
+### Cross-Module Progress Notes (2026-02-14)
+
+- Expanded Material Requests end-to-end in employee portal with dedicated request create/detail pages, configurable department-driven `1..4` approval steps, and request-level selected approvers.
+- Added custom material-request step names in settings and propagated those labels across request forms, approval views, request logs/details, and print outputs.
+- Implemented Material Request processing and posting lifecycle:
+  - processing states (`PENDING_PURCHASER`, `IN_PROGRESS`, `COMPLETED`)
+  - posting states (`PENDING_POSTING`, `POSTED`)
+  - serve-batch tracking with partial-serve support and multi-entry serving history
+- Reworked Material Request processing UX from modal-only flow to dedicated detail page with table-based item display and print-ready document output.
+- Added Material Request posting workspace and posting action flow for completed served requests, with posting reference currently optional.
+- Expanded employee user-access management with multi-company assignment editing and company-level purchaser/poster flags.
+- Added Material Request legacy-sync unmatched-row workspace hardening:
+  - row-level save and selected-rows save
+  - selectable columns, search/filters, pagination
+  - bulk department apply for selected rows
+  - legacy reconciliation columns (legacy department, recommending/final approvers + statuses, mapped new status)
+- Tightened legacy requester resolution to legacy requester employee-id/number matching against new `employeeNumber` (no name fallback).
+- Updated employee-portal material-request ownership visibility to `requesterUserId` so cross-company-access users can see/create/edit their requests in accessible companies even without a local employee row in that company.
+- Added server-side paginated approval history + animated accordion expansion for Material Requests, and applied the same server-driven history pattern to Leave and Overtime approvals.

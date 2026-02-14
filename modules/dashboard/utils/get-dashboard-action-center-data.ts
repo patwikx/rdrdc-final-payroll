@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { getPhDateParts, toPhDateOnlyUtc } from "@/lib/ph-time"
 
 type ApprovalQueueItem = {
   ref: string
@@ -61,21 +62,6 @@ const toCurrency = (value: Prisma.Decimal | number | null | undefined): string =
 }
 
 const fullName = (firstName: string, lastName: string): string => `${firstName} ${lastName}`
-
-const toPhDateOnlyUtc = (value: Date = new Date()): Date => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(value)
-
-  const year = Number(parts.find((part) => part.type === "year")?.value ?? "1970")
-  const month = Number(parts.find((part) => part.type === "month")?.value ?? "01")
-  const day = Number(parts.find((part) => part.type === "day")?.value ?? "01")
-
-  return new Date(Date.UTC(year, month - 1, day))
-}
 
 const daysBetweenInclusive = (start: Date, end: Date): number => {
   if (end.getTime() < start.getTime()) {
@@ -141,15 +127,7 @@ export async function getDashboardActionCenterData(
   }
 
   if (cycleMode === "month") {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(todayPh)
-
-    const year = Number(parts.find((part) => part.type === "year")?.value ?? "1970")
-    const month = Number(parts.find((part) => part.type === "month")?.value ?? "01")
+    const { year, month } = getPhDateParts(todayPh)
     periodStart = new Date(Date.UTC(year, month - 1, 1))
     periodEnd = new Date(Date.UTC(year, month, 0))
   }

@@ -16,12 +16,116 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
 
 - Multi-tenant by company (`companyId`-scoped reads/writes)
 - Company-aware routing (`/[companyId]/...`)
-- Employee portal routing (`/[companyId]/employee-portal/...`) with EMPLOYEE-only workspace enforcement
+- Employee portal routing (`/[companyId]/employee-portal/...`) with role-guarded workspaces
 - Company-scoped role access (`UserCompanyAccess.role`)
 - Module/domain-based organization (`modules/*`)
 - Typed server actions + Zod validation
 
+## Changelog
+
+- 2026-02-14 (Extended):
+  - Expanded Material Requests with serving/posting lifecycle, partial-serve tracking, and print-ready processing outputs.
+  - Added Material Request legacy-sync unmatched-row editor with row/bulk save, filters, pagination, and status mapping controls.
+  - Completed cross-company requester behavior so shared users can view and create requests in companies they can access.
+  - Details: see `Session Updates (2026-02-14 - Extended)`.
+- 2026-02-14:
+  - Added Material Request Purchaser workflow for approved-request processing.
+  - Added purchaser assignment flag in user access management.
+  - Details: see `Session Updates (2026-02-14)`.
+- 2026-02-13:
+  - Launched Material Requests module (employee portal + settings).
+  - Added server-side approval history pagination/filtering and animated accordion details for material requests.
+  - Applied the same server-side history + accordion pattern to leave and overtime approvals.
+  - Details: see `Session Updates (2026-02-13)`.
+- 2026-02-09:
+  - Delivered payroll workflow hardening and reporting improvements.
+  - Expanded employee portal approval UX and domain-module organization.
+  - Details: see `Session Updates (2026-02-09)`.
+
 ## What Is Implemented So Far
+
+### Session Updates (2026-02-14 - Extended)
+
+- Material Request processing/posting lifecycle expansion:
+  - Added serve-batch tracking model and posting-stage model usage for processing auditability.
+  - Added partial serving support so purchaser can serve remaining quantities across multiple entries.
+  - Added posting workspace route:
+    - `/${"{companyId}"}/employee-portal/material-request-posting`
+  - Added posting transition flow for completed served requests (`PENDING_POSTING` -> `POSTED`), with posting reference currently optional.
+- Material Request processing UX upgrades:
+  - Replaced processing detail dialog with dedicated request detail page.
+  - Reworked requested-items display into full table layout in detail view.
+  - Added request print action in detail page and request-log action menus.
+  - Updated print output to document-style white background/black text with compact header fields and approval trail formatting.
+- Material Request settings + approval naming alignment:
+  - Added custom step-name support in department approval flow management.
+  - Propagated custom step names through request form selection fields, request details, approval pages, and print output.
+  - Removed legacy fixed labels from employee-facing request/approval logs in favor of configured step names.
+- Material Request legacy sync hardening:
+  - Added full unmatched-row editor table with:
+    - row-level save
+    - selected-rows save
+    - department bulk-apply to selected rows
+    - column visibility controls
+    - search + reason/status/legacy-department filters
+    - pagination + page size controls
+  - Added legacy context columns for reconciliation:
+    - legacy department name
+    - recommending/final legacy approvers + statuses
+    - mapped new status and pending step
+  - Added corrected status mapping for legacy processing states:
+    - `FOR_SERVING` -> `PENDING_PURCHASER`
+    - `FOR_POSTING` -> `PENDING_POSTING`
+  - Tightened requester matching to employee-number matching from legacy requester employee-id fields only.
+- Multi-company access + cross-company requester support:
+  - Expanded User Access management to support per-user multi-company access assignment and company-level purchaser/poster flags.
+  - Updated material-request employee-portal ownership reads to use `requesterUserId` for visibility across accessible companies.
+  - Enabled create/edit request flows for multi-company users even when selected company has no local employee profile row, while keeping company-role access checks.
+
+### Session Updates (2026-02-14)
+
+- Material request approved-processing workflow is now active:
+  - Added employee portal route:
+    - `/${"{companyId}"}/employee-portal/material-request-processing`
+  - Added purchaser queue/list with server-side paging/search/status filter.
+  - Added request-detail viewer (items + totals + approval trail) inside processing workspace.
+  - Added processing state transitions:
+    - `PENDING_PURCHASER` -> `IN_PROGRESS` -> `COMPLETED`
+- Added purchaser data model and lifecycle fields:
+  - `UserCompanyAccess.isMaterialRequestPurchaser` (company-scoped purchaser assignment)
+  - `MaterialRequest.processingStatus`, `processingStartedAt`, `processingCompletedAt`, `processingRemarks`, `processedByUserId`
+  - Final approval now auto-queues request into purchaser processing (`processingStatus = PENDING_PURCHASER`).
+- Added admin-side purchaser assignment in employee user access:
+  - Create/link/edit linked users now support `Material Request Purchaser` toggle.
+  - Employee and system-user access grids now display purchaser status.
+
+### Session Updates (2026-02-13)
+
+- Material Requests module (employee portal + settings) is now active:
+  - Added employee portal routes:
+    - `/${"{companyId}"}/employee-portal/material-requests`
+    - `/${"{companyId}"}/employee-portal/material-request-approvals`
+  - Added admin/settings route for department approval-flow management:
+    - `/${"{companyId}"}/settings/material-requests`
+  - Added Prisma models + migrations for:
+    - material requests, line items, and per-step approval records
+    - department-scoped approval flow definitions
+    - selected approver fields per request step
+- Material request workflow enhancements:
+  - Department-driven 1 to 4-step approval flow with support for multiple approvers per step.
+  - Request creator can select approver per configured step; same user can be selected across multiple steps.
+  - Material request draft/create moved to dedicated page flow (not dialog), including line-item persistence.
+  - Submit action transitions requests into approval queue (kept as explicit submit, not save-draft auto-submit).
+- Material request approvals UX:
+  - Added decision dialog detail payload with request items and pagination.
+  - Added approval history row accordion details with item list + approval trail.
+  - Added server-side approval-history pagination/search/filter action.
+  - Added responsive dialog/table behavior for desktop and mobile review.
+- Leave and overtime approvals history hardening:
+  - Added server-side approval-history pagination/search/filter/date-range actions.
+  - Replaced client-side full-array filtering with paged history loading.
+  - Added animated accordion expansion (Framer Motion) for history rows.
+  - Preserved existing fixed two-stage leave/overtime approval behavior (Supervisor -> HR).
 
 ### Session Updates (2026-02-09)
 

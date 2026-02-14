@@ -1,6 +1,6 @@
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
 const WORK_DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const
 
@@ -96,7 +96,7 @@ const getRestDays = (value: unknown): Set<string> => {
 export async function getAttendanceSchedulesViewModel(companyId: string): Promise<AttendanceSchedulesViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     throw new Error("ACCESS_DENIED")
   }
 

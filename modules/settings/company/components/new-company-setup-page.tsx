@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { createCompanySetupAction } from "@/modules/settings/company/actions/create-company-setup-action"
 import {
@@ -111,30 +112,8 @@ const createDefaultForm = (sourceCompanyId: string): CreateCompanySetupInput => 
   },
 })
 
-const parsePhDateInput = (value: string): Date | undefined => {
-  if (!value) {
-    return undefined
-  }
-
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) {
-    return ""
-  }
-
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
-}
-
 const formatPhDateLabel = (value: string): string => {
-  const parsed = parsePhDateInput(value)
+  const parsed = parsePhDateInputToPhDate(value)
 
   if (!parsed) {
     return "Select date"
@@ -535,7 +514,7 @@ export function NewCompanySetupPage({
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
-                        selected={parsePhDateInput(form.company.dateOfIncorporation ?? "")}
+                        selected={parsePhDateInputToPhDate(form.company.dateOfIncorporation ?? "") ?? undefined}
                         onSelect={(date) => {
                           updateCompanyField("dateOfIncorporation", toPhDateInputValue(date))
                         }}

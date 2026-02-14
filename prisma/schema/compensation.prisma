@@ -23,7 +23,7 @@ model EarningType {
 
   // Calculation
   calculationMethodCode EarningCalculationMethod?
-  calculationFormula    String?      @db.Text
+  calculationFormula    String?                   @db.Text
 
   // Frequency
   frequencyCode EarningFrequency?
@@ -71,8 +71,8 @@ model DeductionType {
 
   // Calculation
   calculationMethodCode DeductionCalculationMethod?
-  calculationFormula    String?      @db.Text
-  percentageBase      String       @default("GROSS") // GROSS, BASIC, NET - base amount for percentage calculations
+  calculationFormula    String?                     @db.Text
+  percentageBase        String                      @default("GROSS") // GROSS, BASIC, NET - base amount for percentage calculations
 
   priority          Int      @default(0)
   maxDeductionLimit Decimal? @db.Decimal(15, 2)
@@ -108,8 +108,8 @@ model EmployeeSalary {
   employeeId String   @unique
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  baseSalary         Decimal      @db.Decimal(15, 2)
-  currency           String       @default("PHP")
+  baseSalary         Decimal        @db.Decimal(15, 2)
+  currency           String         @default("PHP")
   salaryRateTypeCode SalaryRateType @default(MONTHLY)
   salaryGrade        String?
   salaryBand         String?
@@ -140,7 +140,7 @@ model EmployeeEarning {
   earningTypeId String
   earningType   EarningType @relation(fields: [earningTypeId], references: [id])
 
-  amount    Decimal @db.Decimal(15, 2)
+  amount    Decimal          @db.Decimal(15, 2)
   frequency EarningFrequency
 
   // Proration
@@ -228,20 +228,20 @@ model PagIBIGContributionTable {
 }
 
 model TaxTable {
-  id               String      @id @default(uuid())
+  id               String       @id @default(uuid())
   version          String
   taxTableTypeCode TaxTableType
-  bracketOver      Decimal     @db.Decimal(15, 2)
-  bracketNotOver   Decimal     @db.Decimal(15, 2)
-  baseTax          Decimal     @db.Decimal(15, 2)
-  taxRatePercent   Decimal     @db.Decimal(5, 4) // e.g., 0.20 for 20%
-  excessOver       Decimal     @db.Decimal(15, 2)
+  bracketOver      Decimal      @db.Decimal(15, 2)
+  bracketNotOver   Decimal      @db.Decimal(15, 2)
+  baseTax          Decimal      @db.Decimal(15, 2)
+  taxRatePercent   Decimal      @db.Decimal(5, 4) // e.g., 0.20 for 20%
+  excessOver       Decimal      @db.Decimal(15, 2)
   effectiveYear    Int
   effectiveFrom    DateTime
   effectiveTo      DateTime?
-  isActive         Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([version])
   @@index([taxTableTypeCode])
@@ -251,16 +251,16 @@ model TaxTable {
 }
 
 model EmployeeYTDContribution {
-  id                String   @id @default(uuid())
+  id                String           @id @default(uuid())
   employeeId        String
-  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee          Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   year              Int
   contributionType  ContributionType
-  totalEmployee     Decimal  @default(0) @db.Decimal(15, 2)
-  totalEmployer     Decimal  @default(0) @db.Decimal(15, 2)
-  totalContribution Decimal  @default(0) @db.Decimal(15, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  totalEmployee     Decimal          @default(0) @db.Decimal(15, 2)
+  totalEmployer     Decimal          @default(0) @db.Decimal(15, 2)
+  totalContribution Decimal          @default(0) @db.Decimal(15, 2)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@unique([employeeId, year, contributionType])
   @@index([employeeId])

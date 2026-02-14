@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
+import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { exportDtrCsvAction } from "@/modules/attendance/dtr/actions/export-dtr-csv-action"
 import { EmployeeDtrCalendar } from "@/modules/attendance/dtr/components/employee-dtr-calendar"
@@ -112,8 +113,8 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
   const startParam = searchParams.get("startDate")
   const endParam = searchParams.get("endDate")
   const [date, setDate] = useState<DateRange | undefined>({
-    from: startParam ? new Date(startParam) : subDays(new Date(), 30),
-    to: endParam ? new Date(endParam) : new Date(),
+    from: startParam ? (toPhDayStartUtcInstant(startParam) ?? subDays(new Date(), 30)) : subDays(new Date(), 30),
+    to: endParam ? (toPhDayStartUtcInstant(endParam) ?? new Date()) : new Date(),
   })
 
   const updateParams = useCallback((updates: Record<string, string | null>) => {
@@ -171,11 +172,13 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
       days.forEach((day) => {
         const dateKey = toLocalDateString(day)
         if (logDateKeys.has(`${leave.employeeId}-${dateKey}`)) return
+        const attendanceDate = toPhDayStartUtcInstant(dateKey)
+        if (!attendanceDate) return
 
         rows.push({
           id: `leave-${leave.id}-${dateKey}`,
           employeeId: leave.employeeId,
-          attendanceDate: new Date(`${dateKey}T00:00:00Z`).toISOString(),
+          attendanceDate: attendanceDate.toISOString(),
           actualTimeIn: null,
           actualTimeOut: null,
           hoursWorked: 0,

@@ -1,6 +1,7 @@
 import { OvertimeTypeCode } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { toPhDateInputValue } from "@/lib/ph-time"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 
 export type LeaveOtPoliciesViewModel = {
@@ -41,15 +42,6 @@ export type LeaveOtPoliciesViewModel = {
     isActive: boolean
     effectiveFrom: string
   }>
-}
-
-const toPhDateInputValue = (value: Date): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(value)
 }
 
 const toNumber = (value: { toString(): string } | null): number | null => {

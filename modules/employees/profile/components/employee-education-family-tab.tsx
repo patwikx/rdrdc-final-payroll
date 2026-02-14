@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import {
   createBeneficiaryAction,
   createDependentAction,
@@ -88,18 +89,9 @@ const emptyEducationForm = (): EducationForm => ({
   yearGraduated: "",
 })
 
-const toDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
-}
-
 const toDateLabel = (value: string): string => {
-  const date = new Date(`${value}T00:00:00+08:00`)
+  const date = parsePhDateInputToPhDate(value)
+  if (!date) return "Select date"
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
     day: "2-digit",
@@ -129,8 +121,8 @@ function DateField({ label, value, onChange }: { label: string; value: string; o
         <PopoverContent className="w-auto p-0" align="start">
           <Calendar
             mode="single"
-            selected={value ? new Date(`${value}T00:00:00+08:00`) : undefined}
-            onSelect={(date) => onChange(toDateInputValue(date))}
+            selected={value ? (parsePhDateInputToPhDate(value) ?? undefined) : undefined}
+            onSelect={(date) => onChange(toPhDateInputValue(date))}
             initialFocus
           />
         </PopoverContent>

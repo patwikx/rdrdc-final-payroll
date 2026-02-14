@@ -18,7 +18,7 @@ model LoanType {
   maxTermMonths Int?
 
   interestTypeCode    LoanInterestType @default(FIXED)
-  defaultInterestRate Decimal?     @db.Decimal(5, 4)
+  defaultInterestRate Decimal?         @db.Decimal(5, 4)
 
   requiresCollateral Boolean @default(false)
   requiresCoMaker    Boolean @default(false)
@@ -156,15 +156,15 @@ model LoanPayment {
 }
 
 model LoanDocument {
-  id           String   @id @default(uuid())
+  id           String           @id @default(uuid())
   loanId       String
-  loan         Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loan         Loan             @relation(fields: [loanId], references: [id], onDelete: Cascade)
   documentType LoanDocumentType
   fileName     String
   fileType     String
   fileSize     Int
   fileUrl      String
-  uploadedAt   DateTime @default(now())
+  uploadedAt   DateTime         @default(now())
 
   @@index([loanId])
 }
@@ -175,7 +175,7 @@ model RecurringDeduction {
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   deductionTypeId   String
-  deductionType     DeductionType @relation(fields: [deductionTypeId], references: [id])
+  deductionType     DeductionType          @relation(fields: [deductionTypeId], references: [id])
   deductionTypeCode RecurringDeductionType
 
   description    String?
@@ -191,9 +191,9 @@ model RecurringDeduction {
 
   totalDeducted Decimal @default(0) @db.Decimal(15, 2)
 
-  remarks       String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  remarks   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
   @@index([deductionTypeCode])

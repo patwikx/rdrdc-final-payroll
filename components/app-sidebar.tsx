@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   IconBuilding,
   IconCalendarTime,
+  IconChecklist,
   IconChartBar,
   IconChevronRight,
   IconClipboardList,
@@ -110,6 +111,15 @@ const subItemIconMap: Record<string, ReactNode> = {
   "settings-attendance": <IconClock className="size-3.5" />,
   "settings-leave-ot": <IconCalendarTime className="size-3.5" />,
   "settings-statutory": <IconScale className="size-3.5" />,
+  "settings-material-requests": <IconChecklist className="size-3.5" />,
+  "settings-audit-logs": <IconFileText className="size-3.5" />,
+  "settings-legacy-employee-sync": <IconClipboardList className="size-3.5" />,
+  "settings-legacy-leave-ot-sync": <IconClipboardList className="size-3.5" />,
+  "settings-legacy-material-requests-sync": <IconClipboardList className="size-3.5" />,
+}
+
+const isLegacySyncItemId = (itemId: string): boolean => {
+  return itemId.startsWith("settings-legacy-")
 }
 
 // ── Animation Variants ─────────────────────────────────────────────────────
@@ -180,6 +190,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
 
   // ── Nav items ─────────────────────────────────────────────────────────
   const navItems = getSidebarModulesForRole(activeCompany?.role).map((module) => ({
+    id: module.id,
     title: module.label,
     icon: moduleIconMap[module.icon],
     url:
@@ -251,55 +262,86 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
         <SidebarGroup>
           <SidebarGroupLabel>Modules</SidebarGroupLabel>
           <SidebarMenu>
-            {navItems.map((item) => (
-              <Collapsible
-                key={item.title}
-                asChild
-                open={openSection === item.title}
-                onOpenChange={(open) => handleToggle(item.title, open)}
-                className="group/collapsible"
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton tooltip={item.title} isActive={item.isActive}>
-                      {item.icon}
-                      <span>{item.title}</span>
-                      <IconChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
+            {navItems.map((item) => {
+              const legacySyncItems =
+                item.id === "system-settings"
+                  ? item.items.filter((sub) => isLegacySyncItemId(sub.id))
+                  : []
+              const primaryItems =
+                item.id === "system-settings"
+                  ? item.items.filter((sub) => !isLegacySyncItemId(sub.id))
+                  : item.items
 
-                  <AnimatePresence initial={false}>
-                    {openSection === item.title && (
-                      <CollapsibleContent forceMount asChild>
-                        <motion.div
-                          variants={collapsibleVariants}
-                          initial="hidden"
-                          animate="visible"
-                          exit="exit"
-                          style={{ overflow: "hidden" }}
-                        >
-                          <SidebarMenuSub>
-                            {item.items.map((sub) => (
-                              <SidebarMenuSubItem key={sub.id}>
-                                <SidebarMenuSubButton
-                                  asChild
-                                  isActive={sub.isActive}
-                                >
-                                  <Link href={sub.url}>
-                                    {sub.icon}
-                                    <span>{sub.title}</span>
-                                  </Link>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </motion.div>
-                      </CollapsibleContent>
-                    )}
-                  </AnimatePresence>
-                </SidebarMenuItem>
-              </Collapsible>
-            ))}
+              return (
+                <Collapsible
+                  key={item.title}
+                  asChild
+                  open={openSection === item.title}
+                  onOpenChange={(open) => handleToggle(item.title, open)}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton tooltip={item.title} isActive={item.isActive}>
+                        {item.icon}
+                        <span>{item.title}</span>
+                        <IconChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+
+                    <AnimatePresence initial={false}>
+                      {openSection === item.title && (
+                        <CollapsibleContent forceMount asChild>
+                          <motion.div
+                            variants={collapsibleVariants}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            style={{ overflow: "hidden" }}
+                          >
+                            <SidebarMenuSub>
+                              {primaryItems.map((sub) => (
+                                <SidebarMenuSubItem key={sub.id}>
+                                  <SidebarMenuSubButton
+                                    asChild
+                                    isActive={sub.isActive}
+                                  >
+                                    <Link href={sub.url}>
+                                      {sub.icon}
+                                      <span>{sub.title}</span>
+                                    </Link>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                              {legacySyncItems.length > 0 ? (
+                                <>
+                                  <SidebarMenuSubItem className="mt-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/60">
+                                    Legacy Sync
+                                  </SidebarMenuSubItem>
+                                  {legacySyncItems.map((sub) => (
+                                    <SidebarMenuSubItem key={sub.id}>
+                                      <SidebarMenuSubButton
+                                        asChild
+                                        isActive={sub.isActive}
+                                      >
+                                        <Link href={sub.url}>
+                                          {sub.icon}
+                                          <span>{sub.title}</span>
+                                        </Link>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  ))}
+                                </>
+                              ) : null}
+                            </SidebarMenuSub>
+                          </motion.div>
+                        </CollapsibleContent>
+                      )}
+                    </AnimatePresence>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )
+            })}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

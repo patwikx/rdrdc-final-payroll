@@ -20,6 +20,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Textarea } from "@/components/ui/textarea"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { archivePayrollYearAction } from "@/modules/settings/payroll/actions/archive-payroll-year-action"
 import { savePayrollPeriodRowsAction } from "@/modules/settings/payroll/actions/save-payroll-period-rows-action"
 import { updatePayrollPoliciesAction } from "@/modules/settings/payroll/actions/update-payroll-policies-action"
@@ -46,8 +47,8 @@ const statutoryTimingLabel: Record<(typeof STATUTORY_DEDUCTION_TIMING_OPTIONS)[n
 
 const formatDisplayDate = (value: string): string => {
   if (!value) return ""
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  if (Number.isNaN(parsed.getTime())) return ""
+  const parsed = parsePhDateInputToPhDate(value)
+  if (!parsed) return ""
 
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
@@ -57,28 +58,15 @@ const formatDisplayDate = (value: string): string => {
   }).format(parsed)
 }
 
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  })
-
-  return formatter.format(date)
-}
-
 const computeWorkingDays = (start: string, end: string): number | undefined => {
   if (!start || !end) {
     return undefined
   }
 
-  const startDate = new Date(`${start}T00:00:00+08:00`)
-  const endDate = new Date(`${end}T00:00:00+08:00`)
+  const startDate = parsePhDateInputToPhDate(start)
+  const endDate = parsePhDateInputToPhDate(end)
 
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+  if (!startDate || !endDate) {
     return undefined
   }
 
@@ -415,7 +403,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
               <PopoverContent className="w-auto p-2" align="start">
                 <Calendar
                   mode="single"
-                  selected={form.effectiveFrom ? new Date(`${form.effectiveFrom}T00:00:00+08:00`) : undefined}
+                  selected={form.effectiveFrom ? (parsePhDateInputToPhDate(form.effectiveFrom) ?? undefined) : undefined}
                   onSelect={(date) => updateField("effectiveFrom", toPhDateInputValue(date))}
                 />
               </PopoverContent>
@@ -432,7 +420,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
               <PopoverContent className="w-auto p-2" align="start">
                 <Calendar
                   mode="single"
-                  selected={form.effectiveTo ? new Date(`${form.effectiveTo}T00:00:00+08:00`) : undefined}
+                  selected={form.effectiveTo ? (parsePhDateInputToPhDate(form.effectiveTo) ?? undefined) : undefined}
                   onSelect={(date) => updateField("effectiveTo", toPhDateInputValue(date) || undefined)}
                 />
               </PopoverContent>
@@ -648,7 +636,7 @@ function DateCell({
       <PopoverContent className="w-auto p-2" align="start">
         <Calendar
           mode="single"
-          selected={value ? new Date(`${value}T00:00:00+08:00`) : undefined}
+          selected={value ? (parsePhDateInputToPhDate(value) ?? undefined) : undefined}
           onSelect={(date) => onChange(toPhDateInputValue(date))}
         />
       </PopoverContent>

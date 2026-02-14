@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs"
 import { revalidatePath } from "next/cache"
 
 import { db } from "@/lib/db"
+import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import {
   initializeSystemSchema,
   type InitializeSystemInput,
@@ -343,15 +344,22 @@ export async function initializeSystemAction(
       }
 
       await tx.holiday.createMany({
-        data: setup.holidays.items.map((holiday) => ({
-          companyId: holiday.applicability === "COMPANY" ? company.id : null,
-          holidayDate: new Date(`${holiday.holidayDate}T00:00:00.000Z`),
-          name: holiday.name,
-          holidayTypeCode: holiday.holidayTypeCode,
-          payMultiplier: asDecimalText(holiday.payMultiplier),
-          applicability: holiday.applicability,
-          region: holiday.applicability === "REGIONAL" ? holiday.region : null,
-        })),
+        data: setup.holidays.items.map((holiday) => {
+          const holidayDate = toPhDayStartUtcInstant(holiday.holidayDate)
+          if (!holidayDate) {
+            throw new Error(`Invalid holiday date: ${holiday.holidayDate}`)
+          }
+
+          return {
+            companyId: holiday.applicability === "COMPANY" ? company.id : null,
+            holidayDate,
+            name: holiday.name,
+            holidayTypeCode: holiday.holidayTypeCode,
+            payMultiplier: asDecimalText(holiday.payMultiplier),
+            applicability: holiday.applicability,
+            region: holiday.applicability === "REGIONAL" ? holiday.region : null,
+          }
+        }),
       })
 
       await tx.loanType.createMany({

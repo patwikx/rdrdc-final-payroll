@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { db } from "@/lib/db"
+import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
@@ -28,7 +29,7 @@ const parsePhDate = (value: string | undefined): Date | null => {
     return null
   }
 
-  return new Date(`${value}T00:00:00+08:00`)
+  return parsePhDateInputToUtcDateOnly(value)
 }
 
 export async function updateCompanyProfileAction(

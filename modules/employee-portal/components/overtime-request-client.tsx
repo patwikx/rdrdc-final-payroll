@@ -7,8 +7,10 @@ import {
   IconCheck,
   IconClockHour4,
   IconClockPlay,
+  IconFilterOff,
   IconHourglass,
   IconPlus,
+  IconSearch,
   IconUser,
   IconX,
 } from "@tabler/icons-react"
@@ -39,6 +41,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { cancelOvertimeRequestAction, createOvertimeRequestAction } from "@/modules/employee-portal/actions/overtime-request-actions"
@@ -106,7 +109,10 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
   const [reason, setReason] = useState("")
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const ITEMS_PER_PAGE = 10
+  const [pageSize, setPageSize] = useState("10")
+  const [logSearch, setLogSearch] = useState("")
+  const [logStatus, setLogStatus] = useState("ALL")
+  const itemsPerPage = Number(pageSize)
 
   const requestedHours = useMemo(() => {
     const startMinutes = timeToMinutes(startTime)
@@ -133,6 +139,37 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
       ),
     [requests]
   )
+
+  const filteredRequests = useMemo(() => {
+    const query = logSearch.trim().toLowerCase()
+
+    return requests.filter((request) => {
+      if (logStatus !== "ALL" && request.statusCode !== logStatus) {
+        return false
+      }
+
+      if (!query) {
+        return true
+      }
+
+      const haystack = [
+        request.requestNumber,
+        request.overtimeDate,
+        request.reason ?? "",
+        request.statusCode,
+        statusLabel(request.statusCode),
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [logSearch, logStatus, requests])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage
+  const paginatedRequests = filteredRequests.slice(startIndex, startIndex + itemsPerPage)
 
   const submit = () => {
     if (!overtimeDate || !startTime || !endTime) {
@@ -299,6 +336,61 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={logSearch}
+                    onChange={(event) => {
+                      setLogSearch(event.target.value)
+                      setCurrentPage(1)
+                      setExpandedRequestId(null)
+                    }}
+                    placeholder="Search request #, reason, status"
+                    className="pl-9"
+                  />
+                </div>
+                <Select
+                  value={logStatus}
+                  onValueChange={(value) => {
+                    setLogStatus(value)
+                    setCurrentPage(1)
+                    setExpandedRequestId(null)
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Statuses</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
+                    <SelectItem value="APPROVED">Approved</SelectItem>
+                    <SelectItem value="REJECTED">Rejected</SelectItem>
+                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setLogSearch("")
+                    setLogStatus("ALL")
+                    setCurrentPage(1)
+                    setExpandedRequestId(null)
+                  }}
+                >
+                  <IconFilterOff className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+              </div>
+
+              {filteredRequests.length === 0 ? (
+                <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                  No overtime requests match the current filters.
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">OT Date</p>
@@ -308,13 +400,9 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
-              {(() => {
-                const totalPages = Math.ceil(requests.length / ITEMS_PER_PAGE)
-                const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-                const paginatedRequests = requests.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-                return (
-                  <>
-                    {paginatedRequests.map((request) => {
+              {filteredRequests.length > 0 ? (
+                <>
+                  {paginatedRequests.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       return (
                         <div key={request.id} className={cn("group border-b border-border/60 last:border-b-0 cursor-pointer transition-colors", isExpanded && "bg-primary/10")}>
@@ -381,36 +469,52 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                         </div>
                       )
                     })}
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
-                        <p className="text-xs text-muted-foreground">
-                          Page {currentPage} of {totalPages} • {requests.length} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={currentPage <= 1}
-                            onClick={() => { setCurrentPage(currentPage - 1); setExpandedRequestId(null) }}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => { setCurrentPage(currentPage + 1); setExpandedRequestId(null) }}
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )
-              })()}
+                  <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        Page {safeCurrentPage} of {totalPages} • {filteredRequests.length} records
+                      </p>
+                      <Select
+                        value={pageSize}
+                        onValueChange={(value) => {
+                          setPageSize(value)
+                          setCurrentPage(1)
+                          setExpandedRequestId(null)
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[112px] rounded-lg text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 / page</SelectItem>
+                          <SelectItem value="20">20 / page</SelectItem>
+                          <SelectItem value="30">30 / page</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={safeCurrentPage <= 1}
+                        onClick={() => { setCurrentPage(safeCurrentPage - 1); setExpandedRequestId(null) }}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={safeCurrentPage >= totalPages}
+                        onClick={() => { setCurrentPage(safeCurrentPage + 1); setExpandedRequestId(null) }}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </div>
           )}
         </div>

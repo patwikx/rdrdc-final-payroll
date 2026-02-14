@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { format } from "date-fns"
 import { useRouter } from "next/navigation"
 import { IconCalendarClock, IconCheck, IconPlus, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { getPhYear, parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { initializeLeaveBalancesForYearAction } from "@/modules/settings/leave-overtime/actions/initialize-leave-balances-for-year-action"
 import { upsertLeaveTypePolicySettingsAction } from "@/modules/settings/leave-overtime/actions/upsert-leave-type-policy-settings-action"
@@ -78,13 +78,12 @@ type PolicyTab = "leave" | "ot"
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const toDateValue = (date?: Date): string => {
-  if (!date) return ""
-  return format(date, "yyyy-MM-dd")
+  return toPhDateInputValue(date)
 }
 
 const fromDateValue = (value: string): Date | undefined => {
   if (!value) return undefined
-  return new Date(`${value}T00:00:00+08:00`)
+  return parsePhDateInputToPhDate(value) ?? undefined
 }
 
 const getOvertimeTypeLabel = (code: string): string => {
@@ -183,13 +182,7 @@ export function LeaveOtPoliciesPage({
   const [isInitializing, setIsInitializing] = useState(false)
   const [isSavingLeave, startSavingLeave] = useTransition()
   const [isSavingOt, startSavingOt] = useTransition()
-  const [initializationYear, setInitializationYear] = useState<number>(() => {
-    const value = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-    }).format(new Date())
-    return Number(value)
-  })
+  const [initializationYear, setInitializationYear] = useState<number>(() => getPhYear())
 
   const defaultEmploymentStatusId = employmentStatuses[0]?.id ?? ""
 

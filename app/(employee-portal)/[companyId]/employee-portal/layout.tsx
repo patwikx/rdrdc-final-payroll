@@ -15,13 +15,16 @@ type EmployeePortalLayoutProps = {
 }
 
 export default async function EmployeePortalLayout({ children, params }: EmployeePortalLayoutProps) {
-  const setupState = await getSetupState()
+  const { companyId } = await params
+
+  const [setupState, context] = await Promise.all([
+    getSetupState(),
+    getEmployeePortalContext(companyId),
+  ])
+
   if (!setupState.isInitialized) {
     redirect("/setup")
   }
-
-  const { companyId } = await params
-  const context = await getEmployeePortalContext(companyId)
 
   if (!context) {
     redirect("/login")

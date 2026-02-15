@@ -1,11 +1,12 @@
 import { db } from "@/lib/db"
+import { cache } from "react"
 
 export type SetupState = {
   hasRecord: boolean
   isInitialized: boolean
 }
 
-export async function getSetupState(): Promise<SetupState> {
+const readSetupState = cache(async (): Promise<SetupState> => {
   const setup = await db.systemSetup.findFirst({
     orderBy: { createdAt: "asc" },
     select: {
@@ -18,4 +19,8 @@ export async function getSetupState(): Promise<SetupState> {
     hasRecord: Boolean(setup?.id),
     isInitialized: setup?.isInitialized ?? false,
   }
+})
+
+export async function getSetupState(): Promise<SetupState> {
+  return readSetupState()
 }

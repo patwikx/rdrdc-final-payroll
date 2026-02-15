@@ -39,6 +39,9 @@ export default async function EmployeePortalLayout({ children, params }: Employe
   if (!allowedRoles.has(context.companyRole)) {
     redirect(`/${context.companyId}/dashboard`)
   }
+  const canSwitchToDashboard =
+    (context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN") &&
+    Boolean(context.employee?.id)
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -53,7 +56,10 @@ export default async function EmployeePortalLayout({ children, params }: Employe
           canPostMaterialRequests={Boolean(context.employee?.user?.isMaterialRequestPoster)}
         />
         <SidebarInset>
-          <EmployeePortalHeader companyName={context.companyName} />
+          <EmployeePortalHeader
+            companyName={context.companyName}
+            dashboardHref={canSwitchToDashboard ? `/${context.companyId}/dashboard` : null}
+          />
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>

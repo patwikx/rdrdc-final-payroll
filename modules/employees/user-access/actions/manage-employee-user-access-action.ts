@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import bcrypt from "bcryptjs"
 import { PlatformRole, type CompanyRole } from "@prisma/client"
+import { z } from "zod"
 
 import { db } from "@/lib/db"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
@@ -11,12 +12,14 @@ import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-con
 import { hasModuleAccess } from "@/modules/auth/utils/authorization-policy"
 import {
   createEmployeeSystemUserInputSchema,
+  createStandaloneSystemUserInputSchema,
   linkEmployeeToUserInputSchema,
   unlinkEmployeeUserInputSchema,
   updateEmployeeCompanyAccessInputSchema,
   updateLinkedUserCredentialsInputSchema,
   updateEmployeeRequestApproverInputSchema,
   type CreateEmployeeSystemUserInput,
+  type CreateStandaloneSystemUserInput,
   type LinkEmployeeToUserInput,
   type UnlinkEmployeeUserInput,
   type UpdateEmployeeCompanyAccessInput,
@@ -25,6 +28,21 @@ import {
 } from "@/modules/employees/user-access/schemas/user-access-actions-schema"
 
 type ManageEmployeeUserAccessResult = { ok: true; message: string } | { ok: false; error: string }
+type AvailableSystemUserOption = {
+  id: string
+  username: string
+  email: string
+  displayName: string
+  companyRole: string | null
+}
+type GetAvailableSystemUsersActionResult =
+  | { ok: true; data: AvailableSystemUserOption[] }
+  | { ok: false; error: string }
+
+const getAvailableSystemUsersInputSchema = z.object({
+  companyId: z.string().uuid(),
+  query: z.string().trim().max(120).optional(),
+})
 
 const applyApproverRoleFallback = async (
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
@@ -104,6 +122,72 @@ const applyApproverRoleFallback = async (
 
 const canManageEmployeeUsers = (companyRole: CompanyRole): boolean => {
   return hasModuleAccess(companyRole, "employees")
+}
+
+export async function getAvailableSystemUsersAction(input: {
+  companyId: string
+  query?: string
+}): Promise<GetAvailableSystemUsersActionResult> {
+  const parsed = getAvailableSystemUsersInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid available users payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const searchQuery = payload.query?.trim() ?? ""
+
+  const users = await db.user.findMany({
+    where: {
+      isActive: true,
+      employee: null,
+      ...(searchQuery
+        ? {
+            OR: [
+              { username: { contains: searchQuery, mode: "insensitive" } },
+              { email: { contains: searchQuery, mode: "insensitive" } },
+              { firstName: { contains: searchQuery, mode: "insensitive" } },
+              { lastName: { contains: searchQuery, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    take: 100,
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      companyAccess: {
+        where: {
+          companyId: context.companyId,
+          isActive: true,
+        },
+        select: {
+          role: true,
+        },
+        take: 1,
+      },
+    },
+  })
+
+  return {
+    ok: true,
+    data: users.map((user) => ({
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      displayName: `${user.lastName}, ${user.firstName}`,
+      companyRole: user.companyAccess[0]?.role ?? null,
+    })),
+  }
 }
 
 export async function createEmployeeSystemUserAction(
@@ -226,6 +310,102 @@ export async function createEmployeeSystemUserAction(
   revalidatePath(`/${context.companyId}/employees`)
 
   return { ok: true, message: `System user ${created.username} created and linked.` }
+}
+
+export async function createStandaloneSystemUserAction(
+  input: CreateStandaloneSystemUserInput
+): Promise<ManageEmployeeUserAccessResult> {
+  const parsed = createStandaloneSystemUserInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid create system account payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const existingUser = await db.user.findFirst({
+    where: {
+      OR: [{ username: payload.username }, { email: payload.email }],
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+    },
+  })
+
+  if (existingUser) {
+    return {
+      ok: false,
+      error:
+        existingUser.username.toLowerCase() === payload.username.toLowerCase()
+          ? "Username is already in use."
+          : "Email is already in use.",
+    }
+  }
+
+  const passwordHash = await bcrypt.hash(payload.password, 12)
+
+  const created = await db.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        username: payload.username,
+        email: payload.email,
+        passwordHash,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        role: PlatformRole.STANDARD,
+        isAdmin: payload.companyRole === "COMPANY_ADMIN",
+        isRequestApprover: payload.isRequestApprover,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+      },
+    })
+
+    await applyApproverRoleFallback(tx, {
+      userId: user.id,
+      companyId: context.companyId,
+      companyRole: payload.companyRole,
+      isRequestApprover: payload.isRequestApprover,
+      isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
+      isMaterialRequestPoster: payload.isMaterialRequestPoster,
+    })
+
+    await createAuditLog(
+      {
+        tableName: "User",
+        recordId: user.id,
+        action: "CREATE",
+        userId: context.userId,
+        reason: "CREATE_STANDALONE_SYSTEM_USER",
+        changes: [
+          { fieldName: "username", newValue: payload.username },
+          { fieldName: "email", newValue: payload.email },
+          { fieldName: "companyRole", newValue: payload.companyRole },
+          { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
+          { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
+          { fieldName: "isMaterialRequestPoster", newValue: payload.isMaterialRequestPoster },
+        ],
+      },
+      tx
+    )
+
+    return user
+  })
+
+  revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees`)
+
+  return { ok: true, message: `System account ${created.username} created.` }
 }
 
 export async function linkEmployeeToExistingUserAction(

@@ -21,13 +21,28 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { IconSelector, IconRosetteDiscountCheck, IconBell, IconLogout } from "@tabler/icons-react"
+import {
+  IconBell,
+  IconLayoutDashboard,
+  IconLogout,
+  IconRosetteDiscountCheck,
+  IconSelector,
+  IconUser,
+} from "@tabler/icons-react"
 import { signOut } from "next-auth/react"
 import { useTransition } from "react"
+
+type WorkspaceMenuItem = {
+  id: "dashboard" | "employee-portal"
+  label: string
+  href: string
+  isCurrent?: boolean
+}
 
 export function NavUser({
   user,
   inSidebar = true,
+  workspaceItems = [],
 }: {
   user: {
     name: string
@@ -35,6 +50,7 @@ export function NavUser({
     avatar?: string | null
   }
   inSidebar?: boolean
+  workspaceItems?: WorkspaceMenuItem[]
 }) {
   useSidebar()
   const [isLoggingOut, startLogoutTransition] = useTransition()
@@ -88,17 +104,35 @@ export function NavUser({
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <DropdownMenuItem>
-          <IconRosetteDiscountCheck
-          />
+          <IconRosetteDiscountCheck />
           Account
         </DropdownMenuItem>
         <DropdownMenuItem>
-          <IconBell
-          />
+          <IconBell />
           Notifications
         </DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
+      {workspaceItems.length > 0 ? (
+        <>
+          <DropdownMenuGroup>
+            {workspaceItems.map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                disabled={item.isCurrent}
+                onSelect={() => {
+                  if (item.isCurrent) return
+                  window.location.assign(item.href)
+                }}
+              >
+                {item.id === "dashboard" ? <IconLayoutDashboard /> : <IconUser />}
+                {item.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+        </>
+      ) : null}
       <DropdownMenuItem
         onSelect={handleLogout}
         disabled={isLoggingOut}

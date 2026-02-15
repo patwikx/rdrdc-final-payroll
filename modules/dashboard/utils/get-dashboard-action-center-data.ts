@@ -10,6 +10,7 @@ type ApprovalQueueItem = {
   owner: string
   amount: string
   priority: "Low" | "Medium" | "High" | "Critical"
+  reviewHref: string
 }
 
 type CriticalActionItem = {
@@ -211,6 +212,7 @@ export async function getDashboardActionCenterData(
       owner: item.statusCode === "SUPERVISOR_APPROVED" ? "HR" : "Supervisor",
       amount: "-",
       priority: item.statusCode === "SUPERVISOR_APPROVED" ? "High" as const : "Medium" as const,
+      reviewHref: `/${companyId}/approvals?kind=LEAVE&q=${encodeURIComponent(item.requestNumber)}`,
     })),
     ...overtimeApprovals.map((item) => ({
       ref: item.requestNumber,
@@ -219,6 +221,7 @@ export async function getDashboardActionCenterData(
       owner: item.statusCode === "SUPERVISOR_APPROVED" ? "Payroll" : "Supervisor",
       amount: `${item.hours.toString()} hrs`,
       priority: item.statusCode === "SUPERVISOR_APPROVED" ? "High" as const : "Medium" as const,
+      reviewHref: `/${companyId}/approvals?kind=OVERTIME&q=${encodeURIComponent(item.requestNumber)}`,
     })),
     ...dtrApprovals.map((item) => ({
       ref: `DTR-${item.id.slice(0, 6).toUpperCase()}`,
@@ -227,6 +230,7 @@ export async function getDashboardActionCenterData(
       owner: "HR",
       amount: "-",
       priority: "High" as const,
+      reviewHref: `/${companyId}/attendance/dtr`,
     })),
     ...payrollApprovals.map((item) => ({
       ref: item.runNumber,
@@ -235,6 +239,7 @@ export async function getDashboardActionCenterData(
       owner: "Super Admin",
       amount: toCurrency(item.totalNetPay),
       priority: "Critical" as const,
+      reviewHref: `/${companyId}/payroll/runs`,
     })),
   ]
 

@@ -12,6 +12,7 @@ import {
   IconLink,
   IconMail,
   IconPackage,
+  IconPlus,
   IconShieldCheck,
   IconUser,
   IconUserCheck,
@@ -41,6 +42,7 @@ export function UserAccessWorkspace({
   onLink,
   onUnlink,
   onEdit,
+  onCreateSystemAccount,
   isPending,
   employeePagination,
   systemUserPagination,
@@ -61,27 +63,41 @@ export function UserAccessWorkspace({
   return (
     <section className="border-b border-border/60">
       {/* ── Tab Bar ── */}
-      <div className="flex items-center gap-0 border-b border-border/60 px-4 sm:px-6">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
+      <div className="flex items-center justify-between border-b border-border/60 px-4 sm:px-6">
+        <div className="flex items-center gap-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors ${
+                activeTab === tab.key
+                  ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+              {tab.count != null ? (
+                <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-500">
+                  {tab.count}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        {activeTab === "accounts" ? (
+          <Button
             type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`relative inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors ${
-              activeTab === tab.key
-                ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            disabled={isPending}
+            onClick={onCreateSystemAccount}
           >
-            {tab.icon}
-            <span>{tab.label}</span>
-            {tab.count != null ? (
-              <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-500">
-                {tab.count}
-              </span>
-            ) : null}
-          </button>
-        ))}
+            <IconPlus className="size-3.5" />
+            Create System Account
+          </Button>
+        ) : null}
       </div>
 
       {/* ── Tab: Employee Roster ── */}

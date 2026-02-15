@@ -7,6 +7,7 @@ export type WorkspaceProps = {
   onLink: (row: UserAccessPreviewRow) => void
   onUnlink: (row: UserAccessPreviewRow) => void
   onEdit: (row: UserAccessPreviewRow) => void
+  onCreateSystemAccount: () => void
   isPending: boolean
   employeePagination: {
     page: number

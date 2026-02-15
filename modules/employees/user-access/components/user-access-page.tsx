@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useCallback, useEffect, useState, useTransition } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBuilding,
@@ -9,6 +9,8 @@ import { toast } from "sonner"
 
 import {
   createEmployeeSystemUserAction,
+  createStandaloneSystemUserAction,
+  getAvailableSystemUsersAction,
   linkEmployeeToExistingUserAction,
   unlinkEmployeeUserAction,
   updateEmployeeCompanyAccessAction,
@@ -42,7 +44,6 @@ type UserAccessPageProps = {
   companyId: string
   companyName: string
   rows: UserAccessPreviewRow[]
-  availableUsers: AvailableSystemUserOption[]
   systemUsers: SystemUserAccountRow[]
   companyOptions: UserAccessCompanyOption[]
   query: string
@@ -152,6 +153,7 @@ type ActionDialogState =
   | { type: "NONE" }
   | { type: "CREATE"; row: UserAccessPreviewRow }
   | { type: "LINK"; row: UserAccessPreviewRow }
+  | { type: "CREATE_SYSTEM" }
   | { type: "EDIT"; row: UserAccessPreviewRow }
 
 const resolveUnifiedLinkFilter = (
@@ -163,7 +165,6 @@ export function UserAccessPage({
   companyId,
   companyName,
   rows,
-  availableUsers,
   systemUsers,
   companyOptions,
   query,
@@ -183,7 +184,11 @@ export function UserAccessPage({
   const [roleFilterInput, setRoleFilterInput] = useState<UserAccessRoleFilter>(roleFilter)
 
   const [dialogState, setDialogState] = useState<ActionDialogState>({ type: "NONE" })
-  const [isPending, startTransition] = useTransition()
+  const [isMutationPending, startMutationTransition] = useTransition()
+  const [isRoutePending, startRouteTransition] = useTransition()
+  const [isAvailableUsersPending, startAvailableUsersTransition] = useTransition()
+  const isPending = isMutationPending || isRoutePending
+  const [availableUsers, setAvailableUsers] = useState<AvailableSystemUserOption[]>([])
 
   const [createUsername, setCreateUsername] = useState("")
   const [createEmail, setCreateEmail] = useState("")
@@ -204,6 +209,16 @@ export function UserAccessPage({
   const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
   const [editCompanyAccesses, setEditCompanyAccesses] = useState<EditableCompanyAccess[]>([])
+
+  const [systemFirstName, setSystemFirstName] = useState("")
+  const [systemLastName, setSystemLastName] = useState("")
+  const [systemUsername, setSystemUsername] = useState("")
+  const [systemEmail, setSystemEmail] = useState("")
+  const [systemPassword, setSystemPassword] = useState("")
+  const [systemRole, setSystemRole] = useState<EditableCompanyAccess["role"]>("EMPLOYEE")
+  const [systemApprover, setSystemApprover] = useState(false)
+  const [systemIsMaterialRequestPurchaser, setSystemIsMaterialRequestPurchaser] = useState(false)
+  const [systemIsMaterialRequestPoster, setSystemIsMaterialRequestPoster] = useState(false)
 
   useEffect(() => {
     setQueryInput(query)
@@ -248,7 +263,7 @@ export function UserAccessPage({
     return mapped
   }
 
-  const updateRoute = (updates: {
+  const buildRouteHref = useCallback((updates: {
     q?: string
     empLink?: UserAccessLinkFilter
     sysLink?: UserAccessLinkFilter
@@ -308,32 +323,77 @@ export function UserAccessPage({
     }
 
     const next = params.toString()
-    if (next === searchParams.toString()) {
-      return
-    }
+    return next ? `${pathname}?${next}` : pathname
+  }, [pathname, searchParams])
 
-    router.push(next ? `${pathname}?${next}` : pathname)
-  }
+  const updateRoute = useCallback((updates: {
+    q?: string
+    empLink?: UserAccessLinkFilter
+    sysLink?: UserAccessLinkFilter
+    role?: UserAccessRoleFilter
+    empPage?: number
+    sysPage?: number
+  }) => {
+    const nextUrl = buildRouteHref(updates)
+    const currentQuery = searchParams.toString()
+    const currentUrl = currentQuery ? `${pathname}?${currentQuery}` : pathname
 
-  const syncFiltersToRoute = () => {
-    updateRoute({
-      q: queryInput,
-      empLink: linkFilterInput,
-      sysLink: linkFilterInput,
-      role: roleFilterInput,
-      empPage: 1,
-      sysPage: 1,
+    if (nextUrl === currentUrl) return
+
+    startRouteTransition(() => {
+      router.replace(nextUrl, { scroll: false })
     })
-  }
+  }, [buildRouteHref, pathname, router, searchParams, startRouteTransition])
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      syncFiltersToRoute()
+      updateRoute({
+        q: queryInput,
+        empLink: linkFilterInput,
+        sysLink: linkFilterInput,
+        role: roleFilterInput,
+        empPage: 1,
+        sysPage: 1,
+      })
     }, 250)
 
     return () => clearTimeout(timeoutId)
+    // Only re-run when filter inputs change; pagination changes should not reset to page 1.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryInput, linkFilterInput, roleFilterInput])
+  }, [linkFilterInput, queryInput, roleFilterInput])
+
+  useEffect(() => {
+    const employeeNextPage =
+      employeePagination.page < employeePagination.totalPages
+        ? employeePagination.page + 1
+        : null
+    const employeePrevPage = employeePagination.page > 1 ? employeePagination.page - 1 : null
+    const systemNextPage =
+      systemUserPagination.page < systemUserPagination.totalPages
+        ? systemUserPagination.page + 1
+        : null
+    const systemPrevPage = systemUserPagination.page > 1 ? systemUserPagination.page - 1 : null
+
+    if (employeeNextPage) {
+      router.prefetch(buildRouteHref({ empPage: employeeNextPage }))
+    }
+    if (employeePrevPage) {
+      router.prefetch(buildRouteHref({ empPage: employeePrevPage }))
+    }
+    if (systemNextPage) {
+      router.prefetch(buildRouteHref({ sysPage: systemNextPage }))
+    }
+    if (systemPrevPage) {
+      router.prefetch(buildRouteHref({ sysPage: systemPrevPage }))
+    }
+  }, [
+    buildRouteHref,
+    employeePagination.page,
+    employeePagination.totalPages,
+    router,
+    systemUserPagination.page,
+    systemUserPagination.totalPages,
+  ])
 
   const resetFilters = () => {
     setQueryInput("")
@@ -366,6 +426,28 @@ export function UserAccessPage({
     setLinkUserId("")
     setLinkCompanyAccesses(buildDefaultCompanyAccesses(companyOptions, companyId))
     setDialogState({ type: "LINK", row })
+    startAvailableUsersTransition(async () => {
+      const result = await getAvailableSystemUsersAction({ companyId })
+      if (!result.ok) {
+        toast.error(result.error)
+        setAvailableUsers([])
+        return
+      }
+      setAvailableUsers(result.data)
+    })
+  }
+
+  const openCreateSystemAccount = () => {
+    setSystemFirstName("")
+    setSystemLastName("")
+    setSystemUsername("")
+    setSystemEmail("")
+    setSystemPassword("")
+    setSystemRole("EMPLOYEE")
+    setSystemApprover(false)
+    setSystemIsMaterialRequestPurchaser(false)
+    setSystemIsMaterialRequestPoster(false)
+    setDialogState({ type: "CREATE_SYSTEM" })
   }
 
   const openEdit = (row: UserAccessPreviewRow) => {
@@ -431,7 +513,7 @@ export function UserAccessPage({
   const submitCreate = () => {
     if (dialogState.type !== "CREATE") return
 
-    startTransition(async () => {
+    startMutationTransition(async () => {
       const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(createCompanyAccesses)
       if (normalizedCompanyAccesses.length === 0) {
         toast.error("Assign at least one company access.")
@@ -482,7 +564,7 @@ export function UserAccessPage({
       return
     }
 
-    startTransition(async () => {
+    startMutationTransition(async () => {
       const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(linkCompanyAccesses)
       if (normalizedCompanyAccesses.length === 0) {
         toast.error("Assign at least one company access.")
@@ -527,7 +609,7 @@ export function UserAccessPage({
   const submitEdit = () => {
     if (dialogState.type !== "EDIT") return
 
-    startTransition(async () => {
+    startMutationTransition(async () => {
       const normalizedCompanyAccesses = normalizeEnabledCompanyAccesses(editCompanyAccesses)
       if (normalizedCompanyAccesses.length === 0) {
         toast.error("Assign at least one company access.")
@@ -566,8 +648,36 @@ export function UserAccessPage({
     })
   }
 
+  const submitCreateSystemAccount = () => {
+    if (dialogState.type !== "CREATE_SYSTEM") return
+
+    startMutationTransition(async () => {
+      const result = await createStandaloneSystemUserAction({
+        companyId,
+        firstName: systemFirstName,
+        lastName: systemLastName,
+        username: systemUsername,
+        email: systemEmail,
+        password: systemPassword,
+        companyRole: systemRole,
+        isRequestApprover: systemApprover,
+        isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
+        isMaterialRequestPoster: systemIsMaterialRequestPoster,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setDialogState({ type: "NONE" })
+      router.refresh()
+    })
+  }
+
   const submitUnlink = (row: UserAccessPreviewRow) => {
-    startTransition(async () => {
+    startMutationTransition(async () => {
       const result = await unlinkEmployeeUserAction({
         companyId,
         employeeId: row.employeeId,
@@ -634,6 +744,7 @@ export function UserAccessPage({
         onLink={openLink}
         onUnlink={submitUnlink}
         onEdit={openEdit}
+        onCreateSystemAccount={openCreateSystemAccount}
         isPending={isPending}
         employeePagination={employeePagination}
         systemUserPagination={systemUserPagination}
@@ -769,12 +880,18 @@ export function UserAccessPage({
           <div className="grid gap-3">
             <div className="space-y-2">
               <Label>User Account<span className="ml-1 text-destructive">*</span></Label>
-              <Select value={linkUserId} onValueChange={setLinkUserId}>
-                <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
+              <Select value={linkUserId} onValueChange={setLinkUserId} disabled={isPending || isAvailableUsersPending}>
+                <SelectTrigger><SelectValue placeholder={isAvailableUsersPending ? "Loading users..." : "Select user"} /></SelectTrigger>
                 <SelectContent>
-                  {availableUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>{user.displayName} ({user.username})</SelectItem>
-                  ))}
+                  {isAvailableUsersPending ? (
+                    <SelectItem value="__loading__" disabled>Loading users...</SelectItem>
+                  ) : availableUsers.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No available users</SelectItem>
+                  ) : (
+                    availableUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>{user.displayName} ({user.username})</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -863,7 +980,80 @@ export function UserAccessPage({
 
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
-              <Button onClick={submitLink} disabled={isPending || !linkUserId}>Link Existing User</Button>
+              <Button onClick={submitLink} disabled={isPending || isAvailableUsersPending || !linkUserId}>Link Existing User</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogState.type === "CREATE_SYSTEM"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create System Account</DialogTitle>
+            <DialogDescription>Create an unlinked account for HR/Payroll staff use in {companyName}.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>First Name<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={systemFirstName} onChange={(event) => setSystemFirstName(event.target.value)} disabled={isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label>Last Name<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={systemLastName} onChange={(event) => setSystemLastName(event.target.value)} disabled={isPending} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Username<span className="ml-1 text-destructive">*</span></Label>
+              <Input value={systemUsername} onChange={(event) => setSystemUsername(event.target.value)} disabled={isPending} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
+              <Input value={systemEmail} onChange={(event) => setSystemEmail(event.target.value)} disabled={isPending} />
+            </div>
+            <div className="space-y-2">
+              <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
+              <Input type="password" value={systemPassword} onChange={(event) => setSystemPassword(event.target.value)} disabled={isPending} />
+            </div>
+            <div className="space-y-2">
+              <Label>Company Role<span className="ml-1 text-destructive">*</span></Label>
+              <Select value={systemRole} onValueChange={(value) => setSystemRole(value as EditableCompanyAccess["role"])}>
+                <SelectTrigger><SelectValue placeholder="Role" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                  <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                  <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                  <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+              <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
+              <Switch checked={systemApprover} onCheckedChange={setSystemApprover} disabled={isPending} />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">MRS Purchaser</span>
+                <Switch
+                  checked={systemIsMaterialRequestPurchaser}
+                  onCheckedChange={setSystemIsMaterialRequestPurchaser}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">MRS Poster</span>
+                <Switch
+                  checked={systemIsMaterialRequestPoster}
+                  onCheckedChange={setSystemIsMaterialRequestPoster}
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
+            <Button onClick={submitCreateSystemAccount} disabled={isPending}>Create System Account</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1028,4 +1218,3 @@ export function UserAccessPage({
     </main>
   )
 }
-

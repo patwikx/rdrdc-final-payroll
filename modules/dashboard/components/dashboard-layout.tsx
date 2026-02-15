@@ -204,7 +204,7 @@ export function DashboardLayout({ companyId, companyName, data }: Props) {
                         <td className="px-3 py-2.5"><Badge variant="outline">{row.owner}</Badge></td>
                         <td className="px-3 py-2.5"><Badge variant={priorityVariant(row.priority)}>{row.priority}</Badge></td>
                         <td className="px-3 py-2.5 text-right">
-                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => router.push(`/${companyId}/approvals`)}>Review</Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => router.push(row.reviewHref)}>Review</Button>
                         </td>
                       </tr>
                     ))}

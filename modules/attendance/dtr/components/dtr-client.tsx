@@ -11,7 +11,6 @@ import {
   IconCheckupList,
   IconClock,
   IconDownload,
-  IconDots,
   IconRefresh,
   IconSearch,
   IconUserCheck,
@@ -26,17 +25,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { exportDtrCsvAction } from "@/modules/attendance/dtr/actions/export-dtr-csv-action"
@@ -96,6 +88,12 @@ const getStatusColor = (status: string): string => {
   }
 }
 
+const formatOvertimeLabel = (hours: number): string => {
+  if (hours <= 0) return "0m"
+  if (hours < 1) return `${Math.round(hours * 60)}m`
+  return `${hours.toFixed(2)}h`
+}
+
 type DtrViewTab = "directory" | "calendar" | "workbench"
 type WorkbenchFilter = "ALL" | "PENDING" | "ANOMALY"
 
@@ -133,7 +131,6 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
     if (!range?.from || !range.to) return
     setCurrentPage(1)
     setWbPage(1)
-
     const params = new URLSearchParams()
     params.set("startDate", format(range.from, "yyyy-MM-dd"))
     params.set("endDate", format(range.to, "yyyy-MM-dd"))
@@ -444,20 +441,18 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                       <div className="col-span-2 text-center text-sm text-foreground/80">{Number(log.hoursWorked).toFixed(2)}</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.tardinessMins}m</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.undertimeMins}m</div>
-                      <div className="col-span-1 text-center text-sm text-foreground/70">{log.overtimeHours}h</div>
+                      <div className="col-span-1 text-center text-sm text-foreground/70">{formatOvertimeLabel(Number(log.overtimeHours))}</div>
                       <div className="col-span-1 flex justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm"><IconDots className="h-4 w-4 text-muted-foreground" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="border-border/60">
-                            <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1.5">Action</DropdownMenuLabel>
-                            <DropdownMenuSeparator className="bg-border/60" />
-                            <DropdownMenuItem className="cursor-pointer py-1.5" onClick={() => openModify(log)}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button size="sm" className="h-7" onClick={() => openModify(log)}>
                               Modify
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Modify record
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </div>
                   ))

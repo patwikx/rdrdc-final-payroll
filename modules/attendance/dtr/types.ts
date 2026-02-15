@@ -4,6 +4,8 @@ export type DtrLogItem = {
   id: string
   employeeId: string
   attendanceDate: string
+  scheduledTimeIn?: string | null
+  scheduledTimeOut?: string | null
   actualTimeIn: string | null
   actualTimeOut: string | null
   hoursWorked: number

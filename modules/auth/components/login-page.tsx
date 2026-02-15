@@ -1,7 +1,7 @@
 "use client"
 
 import { IconFingerprint, IconShieldCheck } from "@tabler/icons-react"
-import { getSession, signIn } from "next-auth/react"
+import { signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { type FormEvent, useState, useTransition } from "react"
 
@@ -52,11 +52,13 @@ export function LoginPage() {
     setErrorMessage(null)
 
     startTransition(async () => {
+      const callbackUrl = callbackPath ?? "/auth/post-login"
       let result: Awaited<ReturnType<typeof signIn>> | undefined
       try {
         result = await signIn("credentials", {
           identifier,
           password,
+          callbackUrl,
           redirect: false,
         })
       } catch (error) {
@@ -70,27 +72,7 @@ export function LoginPage() {
         return
       }
 
-      const session = await getSession()
-      const companyId = session?.user?.selectedCompanyId ?? session?.user?.defaultCompanyId
-      const role = session?.user?.companyRole ?? session?.user?.role ?? "COMPANY_ADMIN"
-
-      if (callbackPath) {
-        router.push(callbackPath)
-        router.refresh()
-        return
-      }
-
-      if (!companyId) {
-        router.push("/logout?reason=invalid-session")
-        router.refresh()
-        return
-      }
-
-      const destination =
-        role === "EMPLOYEE" ? `/${companyId}/employee-portal` : `/${companyId}/dashboard`
-
-      router.push(destination)
-      router.refresh()
+      router.replace(result.url ?? callbackUrl)
     })
   }
 

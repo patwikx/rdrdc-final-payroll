@@ -8,7 +8,7 @@ import { auth } from "@/auth"
 import { db } from "@/lib/db"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   updateDtrRecordInputSchema,
   type UpdateDtrRecordInput,
@@ -143,14 +143,13 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
   const session = await auth()
   const isSuperAdmin = session?.user?.role === "SUPER_ADMIN"
 
-  if (!hasModuleAccess(companyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(companyRole) && !isSuperAdmin) {
     return { ok: false, error: "You do not have permission to update DTR records." }
   }
 
-  const canManuallyApproveDtr =
-    companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN" || isSuperAdmin
+  const canManuallyApproveDtr = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || isSuperAdmin
   if (!canManuallyApproveDtr) {
-    return { ok: false, error: "Only Company Admin, HR Admin, Payroll Admin, or Super Admin can manually modify DTR records." }
+    return { ok: false, error: "Only Company Admin, HR Admin, or Super Admin can manually modify DTR records." }
   }
 
   const attendanceDate = parsePhDateInput(payload.attendanceDate)

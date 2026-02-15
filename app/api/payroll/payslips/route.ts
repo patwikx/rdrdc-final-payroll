@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { db } from "@/lib/db"
+import { resolvePayslipGeneratedAtRange } from "@/lib/payroll-payslip-date-range"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
@@ -43,16 +44,6 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   return Number(value.toString())
 }
 
-const toDateStart = (value: string): Date | null => {
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-const toDateEnd = (value: string): Date | null => {
-  const date = new Date(`${value}T23:59:59.999Z`)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const companyId = params.get("companyId")
@@ -66,12 +57,12 @@ export async function GET(request: NextRequest) {
   const search = (params.get("search") ?? "").trim()
   const selectedEmployeeIdParam = (params.get("selectedEmployeeId") ?? "").trim()
 
-  const startDate = toDateStart(params.get("startDate") ?? "")
-  const endDate = toDateEnd(params.get("endDate") ?? "")
+  const resolvedRange = resolvePayslipGeneratedAtRange(params.get("startDate"), params.get("endDate"))
 
-  if (!startDate || !endDate) {
-    return NextResponse.json({ error: "Invalid startDate or endDate." }, { status: 400 })
+  if (!resolvedRange.ok) {
+    return NextResponse.json({ error: resolvedRange.error }, { status: 400 })
   }
+  const { startDate, endDate } = resolvedRange
 
   const context = await getActiveCompanyContext({ companyId })
   if (!hasModuleAccess(context.companyRole as CompanyRole, "payroll")) {

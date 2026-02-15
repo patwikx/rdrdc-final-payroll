@@ -17,8 +17,10 @@ import {
 import {
   cancelOvertimeRequestInputSchema,
   createOvertimeRequestInputSchema,
+  updateOvertimeRequestInputSchema,
   type CancelOvertimeRequestInput,
   type CreateOvertimeRequestInput,
+  type UpdateOvertimeRequestInput,
 } from "@/modules/employee-portal/schemas/overtime-request-actions-schema"
 
 type OvertimeRequestActionResult =
@@ -68,12 +70,16 @@ export async function createOvertimeRequestAction(
   }
 
   const requestNumber = await generateOvertimeRequestNumber()
+  const overtimeDate = parseOvertimeDateInput(payload.overtimeDate)
+  if (!overtimeDate) {
+    return { ok: false, error: "Overtime date is invalid." }
+  }
 
   const created = await db.overtimeRequest.create({
     data: {
       requestNumber,
       employeeId: employee.id,
-      overtimeDate: parseOvertimeDateInput(payload.overtimeDate),
+      overtimeDate,
       startTime: parseOvertimeTimeInput(payload.startTime),
       endTime: parseOvertimeTimeInput(payload.endTime),
       hours,
@@ -189,4 +195,119 @@ export async function cancelOvertimeRequestAction(
   revalidatePath(`/${context.companyId}/dashboard`)
 
   return { ok: true, message: `Overtime request ${updated.requestNumber} cancelled.` }
+}
+
+export async function updateOvertimeRequestAction(
+  input: UpdateOvertimeRequestInput
+): Promise<OvertimeRequestActionResult> {
+  const parsed = updateOvertimeRequestInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid update payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const companyRole = context.companyRole as CompanyRole
+
+  if (companyRole !== "EMPLOYEE") {
+    return { ok: false, error: "Only employees can update overtime requests in this portal." }
+  }
+
+  const employee = await db.employee.findFirst({
+    where: {
+      userId: context.userId,
+      companyId: context.companyId,
+      deletedAt: null,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      reportingManagerId: true,
+    },
+  })
+
+  if (!employee) {
+    return { ok: false, error: "Employee profile not found for the active company." }
+  }
+
+  const request = await db.overtimeRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      employeeId: employee.id,
+      employee: { companyId: context.companyId },
+    },
+    select: {
+      id: true,
+      requestNumber: true,
+      statusCode: true,
+      overtimeDate: true,
+      startTime: true,
+      endTime: true,
+      hours: true,
+      reason: true,
+      supervisorApproverId: true,
+    },
+  })
+
+  if (!request) {
+    return { ok: false, error: "Overtime request not found." }
+  }
+
+  if (request.statusCode !== RequestStatus.PENDING) {
+    return { ok: false, error: "Only pending overtime requests can be edited." }
+  }
+
+  const hours = calculateOvertimeDurationHours(payload.startTime, payload.endTime)
+  if (hours <= 0) {
+    return { ok: false, error: "End time must be later than start time." }
+  }
+
+  if (hours < 1) {
+    return { ok: false, error: "Overtime requests must be at least 1 hour." }
+  }
+
+  const nextOvertimeDate = parseOvertimeDateInput(payload.overtimeDate)
+  if (!nextOvertimeDate) {
+    return { ok: false, error: "Overtime date is invalid." }
+  }
+  const nextStartTime = parseOvertimeTimeInput(payload.startTime)
+  const nextEndTime = parseOvertimeTimeInput(payload.endTime)
+  const nextReason = payload.reason?.trim() || null
+
+  const updated = await db.overtimeRequest.update({
+    where: { id: request.id },
+    data: {
+      overtimeDate: nextOvertimeDate,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      hours,
+      reason: nextReason,
+      supervisorApproverId: employee.reportingManagerId ?? request.supervisorApproverId,
+    },
+    select: {
+      id: true,
+      requestNumber: true,
+    },
+  })
+
+  await createAuditLog({
+    tableName: "OvertimeRequest",
+    recordId: updated.id,
+    action: "UPDATE",
+    userId: context.userId,
+    reason: "EMPLOYEE_UPDATE_OVERTIME_REQUEST",
+    changes: [
+      { fieldName: "overtimeDate", oldValue: request.overtimeDate.toISOString(), newValue: nextOvertimeDate.toISOString() },
+      { fieldName: "startTime", oldValue: request.startTime.toISOString(), newValue: nextStartTime.toISOString() },
+      { fieldName: "endTime", oldValue: request.endTime.toISOString(), newValue: nextEndTime.toISOString() },
+      { fieldName: "hours", oldValue: Number(request.hours), newValue: hours },
+      { fieldName: "reason", oldValue: request.reason, newValue: nextReason },
+    ],
+  })
+
+  revalidatePath(`/${context.companyId}/employee-portal`)
+  revalidatePath(`/${context.companyId}/employee-portal/overtime`)
+  revalidatePath(`/${context.companyId}/dashboard`)
+
+  return { ok: true, message: `Overtime request ${updated.requestNumber} updated.` }
 }

@@ -2,8 +2,12 @@
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
-import { formatWallClockTime } from "@/modules/attendance/dtr/utils/wall-clock"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import {
+  dtrEmployeeScheduleInputSchema,
+  type DtrEmployeeScheduleInput,
+} from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
+import { formatWallClockTime, parsePhDateInput } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type GetEmployeeScheduleActionResult =
   | { ok: true; data: { timeIn: string; timeOut: string; name: string } }
@@ -28,14 +32,20 @@ export async function getEmployeeScheduleAction(params: {
   employeeId: string
   attendanceDate: string
 }): Promise<GetEmployeeScheduleActionResult> {
-  const context = await getActiveCompanyContext({ companyId: params.companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  const parsed = dtrEmployeeScheduleInputSchema.safeParse(params)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid schedule request." }
+  }
+
+  const payload: DtrEmployeeScheduleInput = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to view work schedules." }
   }
 
   const employee = await db.employee.findFirst({
     where: {
-      id: params.employeeId,
+      id: payload.employeeId,
       companyId: context.companyId,
       deletedAt: null,
     },
@@ -56,8 +66,8 @@ export async function getEmployeeScheduleAction(params: {
     return { ok: false, error: "No work schedule assigned." }
   }
 
-  const attendanceDate = new Date(`${params.attendanceDate}T00:00:00Z`)
-  if (Number.isNaN(attendanceDate.getTime())) {
+  const attendanceDate = parsePhDateInput(payload.attendanceDate)
+  if (!attendanceDate) {
     return { ok: false, error: "Invalid attendance date." }
   }
 

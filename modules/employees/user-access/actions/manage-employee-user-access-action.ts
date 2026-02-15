@@ -13,11 +13,13 @@ import {
   createEmployeeSystemUserInputSchema,
   linkEmployeeToUserInputSchema,
   unlinkEmployeeUserInputSchema,
+  updateEmployeeCompanyAccessInputSchema,
   updateLinkedUserCredentialsInputSchema,
   updateEmployeeRequestApproverInputSchema,
   type CreateEmployeeSystemUserInput,
   type LinkEmployeeToUserInput,
   type UnlinkEmployeeUserInput,
+  type UpdateEmployeeCompanyAccessInput,
   type UpdateLinkedUserCredentialsInput,
   type UpdateEmployeeRequestApproverInput,
 } from "@/modules/employees/user-access/schemas/user-access-actions-schema"
@@ -31,6 +33,8 @@ const applyApproverRoleFallback = async (
     companyId: string
     companyRole: CompanyRole
     isRequestApprover: boolean
+    isMaterialRequestPurchaser: boolean
+    isMaterialRequestPoster: boolean
   }
 ): Promise<void> => {
   const normalizedRole: CompanyRole = params.companyRole === "APPROVER" ? "EMPLOYEE" : params.companyRole
@@ -67,6 +71,8 @@ const applyApproverRoleFallback = async (
       },
       data: {
         role: normalizedRole,
+        isMaterialRequestPurchaser: params.isMaterialRequestPurchaser,
+        isMaterialRequestPoster: params.isMaterialRequestPoster,
         isActive: true,
         isDefault: true,
       },
@@ -77,6 +83,8 @@ const applyApproverRoleFallback = async (
         userId: params.userId,
         companyId: params.companyId,
         role: normalizedRole,
+        isMaterialRequestPurchaser: params.isMaterialRequestPurchaser,
+        isMaterialRequestPoster: params.isMaterialRequestPoster,
         isActive: true,
         isDefault: true,
       },
@@ -184,6 +192,8 @@ export async function createEmployeeSystemUserAction(
       companyId: context.companyId,
       companyRole: payload.companyRole,
       isRequestApprover: payload.isRequestApprover,
+      isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
+      isMaterialRequestPoster: payload.isMaterialRequestPoster,
     })
 
     await tx.employee.update({
@@ -202,6 +212,8 @@ export async function createEmployeeSystemUserAction(
           { fieldName: "userId", oldValue: employee.userId, newValue: user.id },
           { fieldName: "linkedUsername", newValue: user.username },
           { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
+          { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
+          { fieldName: "isMaterialRequestPoster", newValue: payload.isMaterialRequestPoster },
         ],
       },
       tx
@@ -232,7 +244,7 @@ export async function linkEmployeeToExistingUserAction(
     return { ok: false, error: "You do not have access to manage employee user accounts." }
   }
 
-  const [employee, user, linkedEmployee] = await Promise.all([
+  const [employee, user, linkedEmployee, existingAccess] = await Promise.all([
     db.employee.findFirst({
       where: {
         id: payload.employeeId,
@@ -257,6 +269,18 @@ export async function linkEmployeeToExistingUserAction(
       where: { userId: payload.userId },
       select: { id: true, employeeNumber: true },
     }),
+    db.userCompanyAccess.findUnique({
+      where: {
+        userId_companyId: {
+          userId: payload.userId,
+          companyId: context.companyId,
+        },
+      },
+      select: {
+        isMaterialRequestPurchaser: true,
+        isMaterialRequestPoster: true,
+      },
+    }),
   ])
 
   if (!employee) {
@@ -278,6 +302,8 @@ export async function linkEmployeeToExistingUserAction(
       companyId: context.companyId,
       companyRole: payload.companyRole,
       isRequestApprover: payload.isRequestApprover,
+      isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
+      isMaterialRequestPoster: payload.isMaterialRequestPoster,
     })
 
     await tx.user.update({
@@ -307,6 +333,16 @@ export async function linkEmployeeToExistingUserAction(
           { fieldName: "userId", oldValue: employee.userId, newValue: user.id },
           { fieldName: "linkedUsername", newValue: user.username },
           { fieldName: "isRequestApprover", oldValue: user.isRequestApprover, newValue: payload.isRequestApprover },
+          {
+            fieldName: "isMaterialRequestPurchaser",
+            oldValue: existingAccess?.isMaterialRequestPurchaser ?? false,
+            newValue: payload.isMaterialRequestPurchaser,
+          },
+          {
+            fieldName: "isMaterialRequestPoster",
+            oldValue: existingAccess?.isMaterialRequestPoster ?? false,
+            newValue: payload.isMaterialRequestPoster,
+          },
         ],
       },
       tx
@@ -494,6 +530,152 @@ export async function updateEmployeeRequestApproverAction(
   }
 }
 
+export async function updateEmployeeCompanyAccessAction(
+  input: UpdateEmployeeCompanyAccessInput
+): Promise<ManageEmployeeUserAccessResult> {
+  const parsed = updateEmployeeCompanyAccessInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid company access payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const employee = await db.employee.findFirst({
+    where: {
+      id: payload.employeeId,
+      companyId: context.companyId,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      employeeNumber: true,
+      user: {
+        select: {
+          id: true,
+          selectedCompanyId: true,
+        },
+      },
+    },
+  })
+
+  if (!employee?.user?.id) {
+    return { ok: false, error: "Employee must be linked to a user account before assigning company access." }
+  }
+
+  const linkedUser = employee.user
+  const targetCompanyIds = payload.accesses.map((entry) => entry.companyId)
+  const activeCompanies = await db.company.findMany({
+    where: {
+      id: {
+        in: targetCompanyIds,
+      },
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  if (activeCompanies.length !== targetCompanyIds.length) {
+    return { ok: false, error: "Some selected companies are invalid or inactive." }
+  }
+
+  const explicitDefault = payload.accesses.find((entry) => entry.isDefault)?.companyId
+  const nextDefaultCompanyId = explicitDefault ?? (targetCompanyIds.includes(context.companyId) ? context.companyId : targetCompanyIds[0])
+
+  await db.$transaction(async (tx) => {
+    await tx.userCompanyAccess.updateMany({
+      where: {
+        userId: linkedUser.id,
+      },
+      data: {
+        isDefault: false,
+      },
+    })
+
+    for (const entry of payload.accesses) {
+      const normalizedRole: CompanyRole = entry.role === "APPROVER" ? "EMPLOYEE" : entry.role
+      await tx.userCompanyAccess.upsert({
+        where: {
+          userId_companyId: {
+            userId: linkedUser.id,
+            companyId: entry.companyId,
+          },
+        },
+        update: {
+          role: normalizedRole,
+          isActive: true,
+          isDefault: entry.companyId === nextDefaultCompanyId,
+          isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
+          isMaterialRequestPoster: entry.isMaterialRequestPoster,
+        },
+        create: {
+          userId: linkedUser.id,
+          companyId: entry.companyId,
+          role: normalizedRole,
+          isActive: true,
+          isDefault: entry.companyId === nextDefaultCompanyId,
+          isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
+          isMaterialRequestPoster: entry.isMaterialRequestPoster,
+        },
+      })
+    }
+
+    await tx.userCompanyAccess.updateMany({
+      where: {
+        userId: linkedUser.id,
+        companyId: {
+          notIn: targetCompanyIds,
+        },
+      },
+      data: {
+        isActive: false,
+        isDefault: false,
+      },
+    })
+
+    await tx.user.update({
+      where: {
+        id: linkedUser.id,
+      },
+      data: {
+        selectedCompanyId:
+          linkedUser.selectedCompanyId && targetCompanyIds.includes(linkedUser.selectedCompanyId)
+            ? linkedUser.selectedCompanyId
+            : nextDefaultCompanyId,
+        lastCompanySwitchedAt: new Date(),
+        isAdmin: payload.accesses.some((entry) => entry.role === "COMPANY_ADMIN"),
+      },
+    })
+
+    await createAuditLog(
+      {
+        tableName: "UserCompanyAccess",
+        recordId: linkedUser.id,
+        action: "UPDATE",
+        userId: context.userId,
+        reason: "UPDATE_MULTI_COMPANY_ACCESS",
+        changes: [
+          { fieldName: "accessCompanyIds", newValue: targetCompanyIds.join(",") },
+          { fieldName: "defaultCompanyId", newValue: nextDefaultCompanyId },
+        ],
+      },
+      tx
+    )
+  })
+
+  revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees`)
+
+  return { ok: true, message: `Updated company access assignments for employee ${employee.employeeNumber}.` }
+}
+
 export async function updateLinkedUserCredentialsAction(
   input: UpdateLinkedUserCredentialsInput
 ): Promise<ManageEmployeeUserAccessResult> {
@@ -527,6 +709,17 @@ export async function updateLinkedUserCredentialsAction(
           email: true,
           isActive: true,
           isRequestApprover: true,
+          companyAccess: {
+            where: {
+              companyId: context.companyId,
+              isActive: true,
+            },
+            select: {
+              isMaterialRequestPurchaser: true,
+              isMaterialRequestPoster: true,
+            },
+            take: 1,
+          },
         },
       },
     },
@@ -585,6 +778,29 @@ export async function updateLinkedUserCredentialsAction(
         companyId: context.companyId,
         companyRole: payload.companyRole,
         isRequestApprover: payload.isRequestApprover ?? linkedUser.isRequestApprover,
+        isMaterialRequestPurchaser:
+          payload.isMaterialRequestPurchaser ?? linkedUser.companyAccess[0]?.isMaterialRequestPurchaser ?? false,
+        isMaterialRequestPoster:
+          payload.isMaterialRequestPoster ?? linkedUser.companyAccess[0]?.isMaterialRequestPoster ?? false,
+      })
+    } else if (
+      typeof payload.isMaterialRequestPurchaser === "boolean" ||
+      typeof payload.isMaterialRequestPoster === "boolean"
+    ) {
+      await tx.userCompanyAccess.updateMany({
+        where: {
+          userId: linkedUser.id,
+          companyId: context.companyId,
+          isActive: true,
+        },
+        data: {
+          ...(typeof payload.isMaterialRequestPurchaser === "boolean"
+            ? { isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser }
+            : {}),
+          ...(typeof payload.isMaterialRequestPoster === "boolean"
+            ? { isMaterialRequestPoster: payload.isMaterialRequestPoster }
+            : {}),
+        },
       })
     }
 
@@ -609,6 +825,22 @@ export async function updateLinkedUserCredentialsAction(
         fieldName: "isRequestApprover",
         oldValue: linkedUser.isRequestApprover,
         newValue: payload.isRequestApprover,
+      })
+    }
+
+    if (typeof payload.isMaterialRequestPurchaser === "boolean") {
+      changes.push({
+        fieldName: "isMaterialRequestPurchaser",
+        oldValue: linkedUser.companyAccess[0]?.isMaterialRequestPurchaser ?? false,
+        newValue: payload.isMaterialRequestPurchaser,
+      })
+    }
+
+    if (typeof payload.isMaterialRequestPoster === "boolean") {
+      changes.push({
+        fieldName: "isMaterialRequestPoster",
+        oldValue: linkedUser.companyAccess[0]?.isMaterialRequestPoster ?? false,
+        newValue: payload.isMaterialRequestPoster,
       })
     }
 

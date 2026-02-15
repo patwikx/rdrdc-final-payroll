@@ -1,0 +1,305 @@
+// ============================================================================
+// MATERIAL REQUEST DOMAIN - Employee Portal Requisition + Configurable Approval
+// ============================================================================
+
+enum MaterialRequestSeries {
+  PO
+  JO
+  OTHERS
+}
+
+enum MaterialRequestType {
+  ITEM
+  SERVICE
+}
+
+enum MaterialRequestStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum MaterialRequestProcessingStatus {
+  PENDING_PURCHASER
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MaterialRequestPostingStatus {
+  PENDING_POSTING
+  POSTED
+}
+
+enum MaterialRequestStepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+}
+
+enum MaterialRequestItemSource {
+  MANUAL
+  CATALOG
+}
+
+model DepartmentMaterialRequestApprovalFlow {
+  id String @id @default(uuid())
+
+  companyId    String
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departmentId String     @unique
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  requiredSteps Int     @default(1)
+  isActive      Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  updatedById String?
+  createdBy   User?    @relation("DepartmentMaterialRequestApprovalFlowCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?    @relation("DepartmentMaterialRequestApprovalFlowUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  steps DepartmentMaterialRequestApprovalFlowStep[]
+
+  @@index([companyId])
+  @@index([isActive])
+}
+
+model DepartmentMaterialRequestApprovalFlowStep {
+  id String @id @default(uuid())
+
+  flowId String
+  flow   DepartmentMaterialRequestApprovalFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  stepNumber Int
+  stepName   String?
+
+  approverUserId String
+  approverUser   User   @relation("DepartmentMaterialRequestApprovalFlowStepApprover", fields: [approverUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([flowId, stepNumber, approverUserId])
+  @@index([flowId, stepNumber])
+  @@index([approverUserId])
+}
+
+model MaterialRequest {
+  id String @id @default(uuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  requestNumber String
+  series        MaterialRequestSeries
+  requestType   MaterialRequestType
+  status        MaterialRequestStatus @default(DRAFT)
+
+  requesterEmployeeId String
+  requesterEmployee   Employee @relation("MaterialRequestRequesterEmployee", fields: [requesterEmployeeId], references: [id], onDelete: Restrict)
+  requesterUserId     String
+  requesterUser       User     @relation("MaterialRequestRequesterUser", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  selectedInitialApproverUserId String?
+  selectedInitialApproverUser   User?   @relation("MaterialRequestSelectedInitialApproverUser", fields: [selectedInitialApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepTwoApproverUserId String?
+  selectedStepTwoApproverUser   User?   @relation("MaterialRequestSelectedStepTwoApproverUser", fields: [selectedStepTwoApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepThreeApproverUserId String?
+  selectedStepThreeApproverUser   User?   @relation("MaterialRequestSelectedStepThreeApproverUser", fields: [selectedStepThreeApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepFourApproverUserId String?
+  selectedStepFourApproverUser   User?   @relation("MaterialRequestSelectedStepFourApproverUser", fields: [selectedStepFourApproverUserId], references: [id], onDelete: SetNull)
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  datePrepared DateTime @db.Date
+  dateRequired DateTime @db.Date
+
+  chargeTo   String?
+  bldgCode   String?
+  purpose    String? @db.Text
+  remarks    String? @db.Text
+  deliverTo  String?
+  isStoreUse Boolean @default(false)
+
+  freight    Decimal @default(0) @db.Decimal(12, 2)
+  discount   Decimal @default(0) @db.Decimal(12, 2)
+  subTotal   Decimal @default(0) @db.Decimal(14, 2)
+  grandTotal Decimal @default(0) @db.Decimal(14, 2)
+
+  requiredSteps Int
+  currentStep   Int?
+
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  cancelledAt DateTime?
+  processingStatus      MaterialRequestProcessingStatus?
+  processingStartedAt   DateTime?
+  processingCompletedAt DateTime?
+  processingRemarks     String? @db.Text
+  processedByUserId     String?
+  processedByUser       User?   @relation("MaterialRequestProcessedByUser", fields: [processedByUserId], references: [id], onDelete: SetNull)
+  postingStatus         MaterialRequestPostingStatus?
+  postingReference      String?
+  postingRemarks        String? @db.Text
+  postedAt              DateTime?
+  postedByUserId        String?
+  postedByUser          User?   @relation("MaterialRequestPostedByUser", fields: [postedByUserId], references: [id], onDelete: SetNull)
+
+  finalDecisionByUserId String?
+  finalDecisionByUser   User?   @relation("MaterialRequestFinalDecisionByUser", fields: [finalDecisionByUserId], references: [id], onDelete: SetNull)
+  finalDecisionRemarks  String? @db.Text
+
+  cancellationReason String? @db.Text
+  cancelledByUserId  String?
+  cancelledByUser    User?   @relation("MaterialRequestCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  // Migration trace
+  legacySourceSystem   String?
+  legacyRecordId       String?
+  legacyBusinessUnitId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps MaterialRequestApprovalStep[]
+  items MaterialRequestItem[]
+  serveBatches MaterialRequestServeBatch[]
+  postings MaterialRequestPosting[]
+
+  @@unique([companyId, requestNumber])
+  @@unique([companyId, legacySourceSystem, legacyRecordId])
+  @@index([companyId, status])
+  @@index([departmentId])
+  @@index([requesterEmployeeId])
+  @@index([selectedInitialApproverUserId])
+  @@index([selectedStepTwoApproverUserId])
+  @@index([selectedStepThreeApproverUserId])
+  @@index([selectedStepFourApproverUserId])
+  @@index([processedByUserId])
+  @@index([postedByUserId])
+  @@index([processingStatus])
+  @@index([postingStatus])
+  @@index([companyId, status, processingStatus])
+  @@index([companyId, status, postingStatus])
+  @@index([submittedAt])
+}
+
+model MaterialRequestApprovalStep {
+  id String @id @default(uuid())
+
+  materialRequestId String
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  stepNumber Int
+  stepName   String?
+
+  approverUserId String
+  approverUser   User   @relation("MaterialRequestApprovalStepApprover", fields: [approverUserId], references: [id], onDelete: Restrict)
+
+  status        MaterialRequestStepStatus @default(PENDING)
+  actedAt       DateTime?
+  actedByUserId String?
+  actedByUser   User?                     @relation("MaterialRequestApprovalStepActor", fields: [actedByUserId], references: [id], onDelete: SetNull)
+  remarks       String?                   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materialRequestId, stepNumber, approverUserId])
+  @@index([approverUserId, status])
+  @@index([materialRequestId, stepNumber, status])
+  @@index([materialRequestId, status])
+}
+
+model MaterialRequestItem {
+  id String @id @default(uuid())
+
+  materialRequestId String
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  lineNumber Int
+  source     MaterialRequestItemSource @default(MANUAL)
+
+  itemCode    String?
+  description String
+  uom         String
+  quantity    Decimal  @db.Decimal(12, 3)
+  unitPrice   Decimal? @db.Decimal(12, 2)
+  lineTotal   Decimal? @db.Decimal(14, 2)
+  remarks     String?  @db.Text
+
+  legacyItemId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  serveBatchItems MaterialRequestServeBatchItem[]
+
+  @@unique([materialRequestId, lineNumber])
+  @@index([materialRequestId])
+  @@index([itemCode])
+}
+
+model MaterialRequestServeBatch {
+  id String @id @default(uuid())
+
+  materialRequestId String
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  poNumber      String
+  supplierName  String
+  notes         String? @db.Text
+  isFinalServe  Boolean @default(false)
+  servedAt      DateTime @default(now())
+  servedByUserId String
+  servedByUser   User    @relation("MaterialRequestServeBatchServedByUser", fields: [servedByUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MaterialRequestServeBatchItem[]
+
+  @@index([materialRequestId, servedAt])
+  @@index([servedByUserId])
+}
+
+model MaterialRequestServeBatchItem {
+  id String @id @default(uuid())
+
+  batchId String
+  batch   MaterialRequestServeBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  materialRequestItemId String
+  materialRequestItem   MaterialRequestItem @relation(fields: [materialRequestItemId], references: [id], onDelete: Restrict)
+
+  quantityServed Decimal @db.Decimal(12, 3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([batchId, materialRequestItemId])
+  @@index([materialRequestItemId])
+}
+
+model MaterialRequestPosting {
+  id String @id @default(uuid())
+
+  materialRequestId String
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  postingReference String
+  remarks          String?  @db.Text
+  postedAt         DateTime @default(now())
+  postedByUserId   String
+  postedByUser     User     @relation("MaterialRequestPostingPostedByUser", fields: [postedByUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([materialRequestId, postedAt])
+  @@index([postedByUserId])
+}

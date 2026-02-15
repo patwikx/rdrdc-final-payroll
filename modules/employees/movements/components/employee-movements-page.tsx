@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { createEmployeeMovementAction } from "@/modules/employees/movements/actions/create-employee-movement-action"
 import type { EmployeeMovementsViewModel } from "@/modules/employees/movements/utils/get-employee-movements-data"
 
@@ -26,14 +27,9 @@ const salaryAdjustmentOptions = ["INCREASE", "DECREASE", "PROMOTION", "DEMOTION"
 
 const formatDisplayDate = (value: string): string => {
   if (!value) return ""
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  if (Number.isNaN(parsed.getTime())) return ""
+  const parsed = parsePhDateInputToPhDate(value)
+  if (!parsed) return ""
   return new Intl.DateTimeFormat("en-PH", { month: "short", day: "2-digit", year: "numeric", timeZone: "Asia/Manila" }).format(parsed)
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Manila" }).format(date)
 }
 
 export function EmployeeMovementsPage({
@@ -139,7 +135,7 @@ export function EmployeeMovementsPage({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-2" align="start">
-          <Calendar mode="single" selected={effectiveDate ? new Date(`${effectiveDate}T00:00:00+08:00`) : undefined} onSelect={(d) => setEffectiveDate(toPhDateInputValue(d))} />
+          <Calendar mode="single" selected={effectiveDate ? (parsePhDateInputToPhDate(effectiveDate) ?? undefined) : undefined} onSelect={(d) => setEffectiveDate(toPhDateInputValue(d))} />
         </PopoverContent>
       </Popover>
     </div>

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
@@ -15,15 +16,14 @@ import {
 import {
   cancelLeaveRequestInputSchema,
   createLeaveRequestInputSchema,
+  updateLeaveRequestInputSchema,
   type CancelLeaveRequestInput,
   type CreateLeaveRequestInput,
+  type UpdateLeaveRequestInput,
 } from "@/modules/leave/schemas/leave-request-actions-schema"
 import type { LeaveActionResult } from "@/modules/leave/types/leave-action-result"
 
-const parseDateInput = (value: string): Date => {
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  return new Date(Date.UTC(year, month - 1, day))
-}
+const parseDateInput = (value: string): Date | null => parsePhDateInputToUtcDateOnly(value)
 
 const dayDiffInclusive = (start: Date, end: Date): number => {
   const ms = end.getTime() - start.getTime()
@@ -99,6 +99,9 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
 
   const startDate = parseDateInput(payload.startDate)
   const endDate = parseDateInput(payload.endDate)
+  if (!startDate || !endDate) {
+    return { ok: false, error: "Leave date is invalid." }
+  }
   const numberOfDays = payload.isHalfDay ? 0.5 : dayDiffInclusive(startDate, endDate)
 
   if (numberOfDays <= 0) {
@@ -308,5 +311,189 @@ export async function cancelLeaveRequestAction(input: CancelLeaveRequestInput): 
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to cancel leave request: ${message}` }
+  }
+}
+
+export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): Promise<LeaveActionResult> {
+  const parsed = updateLeaveRequestInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid leave update payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const companyRole = context.companyRole as CompanyRole
+
+  if (companyRole !== "EMPLOYEE") {
+    return { ok: false, error: "Only employees can update leave requests in this portal." }
+  }
+
+  const [employee, leaveType] = await Promise.all([
+    db.employee.findFirst({
+      where: {
+        userId: context.userId,
+        companyId: context.companyId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        reportingManagerId: true,
+      },
+    }),
+    db.leaveType.findFirst({
+      where: {
+        id: payload.leaveTypeId,
+        isActive: true,
+        OR: [{ companyId: context.companyId }, { companyId: null }],
+      },
+      select: { id: true, isPaid: true },
+    }),
+  ])
+
+  if (!employee) {
+    return { ok: false, error: "Employee profile not found for the active company." }
+  }
+
+  if (!leaveType) {
+    return { ok: false, error: "Leave type is not available for this company." }
+  }
+
+  const request = await db.leaveRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      employeeId: employee.id,
+      employee: { companyId: context.companyId },
+    },
+    select: {
+      id: true,
+      requestNumber: true,
+      leaveTypeId: true,
+      startDate: true,
+      endDate: true,
+      numberOfDays: true,
+      isHalfDay: true,
+      halfDayPeriod: true,
+      reason: true,
+      statusCode: true,
+      supervisorApproverId: true,
+      leaveType: { select: { isPaid: true } },
+    },
+  })
+
+  if (!request) {
+    return { ok: false, error: "Leave request not found." }
+  }
+
+  if (request.statusCode !== RequestStatus.PENDING) {
+    return { ok: false, error: "Only pending leave requests can be edited." }
+  }
+
+  const startDate = parseDateInput(payload.startDate)
+  const endDate = parseDateInput(payload.endDate)
+  if (!startDate || !endDate) {
+    return { ok: false, error: "Leave date is invalid." }
+  }
+  const numberOfDays = payload.isHalfDay ? 0.5 : dayDiffInclusive(startDate, endDate)
+
+  if (numberOfDays <= 0) {
+    return { ok: false, error: "Invalid leave duration." }
+  }
+
+  if (startDate.getUTCFullYear() !== endDate.getUTCFullYear()) {
+    return { ok: false, error: "Cross-year leave requests are not supported yet. Please submit separate requests per year." }
+  }
+
+  try {
+    const updated = await db.$transaction(async (tx) => {
+      if (request.leaveType.isPaid) {
+        const released = await releaseReservedLeaveBalanceForRequest(tx, {
+          employeeId: employee.id,
+          leaveTypeId: request.leaveTypeId,
+          requestId: request.id,
+          requestNumber: request.requestNumber,
+          requestStartDate: request.startDate,
+          numberOfDays: Number(request.numberOfDays),
+          processedById: context.userId,
+        })
+
+        if (!released.ok) {
+          throw new Error(released.error)
+        }
+      }
+
+      const updatedRequest = await tx.leaveRequest.update({
+        where: { id: request.id },
+        data: {
+          leaveTypeId: leaveType.id,
+          startDate,
+          endDate,
+          numberOfDays,
+          isHalfDay: Boolean(payload.isHalfDay),
+          halfDayPeriod: payload.isHalfDay ? payload.halfDayPeriod ?? null : null,
+          reason: payload.reason?.trim() || null,
+          supervisorApproverId: employee.reportingManagerId ?? request.supervisorApproverId,
+        },
+        select: {
+          id: true,
+          requestNumber: true,
+          leaveTypeId: true,
+          startDate: true,
+          endDate: true,
+          numberOfDays: true,
+          isHalfDay: true,
+          halfDayPeriod: true,
+          reason: true,
+          supervisorApproverId: true,
+        },
+      })
+
+      if (leaveType.isPaid) {
+        const reserveResult = await reserveLeaveBalanceForRequest(tx, {
+          employeeId: employee.id,
+          leaveTypeId: leaveType.id,
+          requestId: updatedRequest.id,
+          requestNumber: updatedRequest.requestNumber,
+          requestStartDate: updatedRequest.startDate,
+          numberOfDays: Number(updatedRequest.numberOfDays),
+          processedById: context.userId,
+        })
+
+        if (!reserveResult.ok) {
+          throw new Error(reserveResult.error)
+        }
+      }
+
+      await createAuditLog(
+        {
+          tableName: "LeaveRequest",
+          recordId: updatedRequest.id,
+          action: "UPDATE",
+          userId: context.userId,
+          reason: "EMPLOYEE_UPDATE_LEAVE_REQUEST",
+          changes: [
+            { fieldName: "leaveTypeId", oldValue: request.leaveTypeId, newValue: updatedRequest.leaveTypeId },
+            { fieldName: "startDate", oldValue: request.startDate, newValue: updatedRequest.startDate },
+            { fieldName: "endDate", oldValue: request.endDate, newValue: updatedRequest.endDate },
+            { fieldName: "numberOfDays", oldValue: Number(request.numberOfDays), newValue: Number(updatedRequest.numberOfDays) },
+            { fieldName: "isHalfDay", oldValue: request.isHalfDay, newValue: updatedRequest.isHalfDay },
+            { fieldName: "halfDayPeriod", oldValue: request.halfDayPeriod, newValue: updatedRequest.halfDayPeriod },
+            { fieldName: "reason", oldValue: request.reason, newValue: updatedRequest.reason },
+          ],
+        },
+        tx
+      )
+
+      return updatedRequest
+    })
+
+    revalidatePath(`/${context.companyId}/employee-portal`)
+    revalidatePath(`/${context.companyId}/employee-portal/leaves`)
+    revalidatePath(`/${context.companyId}/dashboard`)
+
+    return { ok: true, message: `Leave request ${updated.requestNumber} updated.` }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { ok: false, error: `Failed to update leave request: ${message}` }
   }
 }

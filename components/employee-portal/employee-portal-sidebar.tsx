@@ -10,6 +10,7 @@ import {
   IconFileText,
   IconHome2,
   IconLayoutRows,
+  IconPackage,
   IconUser,
   IconUserCheck,
   IconCommand,
@@ -47,6 +48,8 @@ type EmployeePortalSidebarProps = {
   activeCompanyId: string
   companyRole: PortalRole
   canApproveRequests: boolean
+  canProcessMaterialRequests: boolean
+  canPostMaterialRequests: boolean
 }
 
 const companyLogos = [IconLayoutRows, IconWaveSine, IconCommand]
@@ -77,6 +80,12 @@ const menuItems = [
     roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
   },
   {
+    title: "Material Requests",
+    href: "/employee-portal/material-requests",
+    icon: IconPackage,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
+  {
     title: "My Profile",
     href: "/employee-portal/profile",
     icon: IconUser,
@@ -97,6 +106,30 @@ const approverMenuItems = [
     icon: IconChecklist,
     roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
   },
+  {
+    title: "Material Request Approvals",
+    href: "/employee-portal/material-request-approvals",
+    icon: IconChecklist,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
+] as const
+
+const processingMenuItems = [
+  {
+    title: "Material Request Processing",
+    href: "/employee-portal/material-request-processing",
+    icon: IconPackage,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
+] as const
+
+const postingMenuItems = [
+  {
+    title: "Material Request Posting",
+    href: "/employee-portal/material-request-posting",
+    icon: IconPackage,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
 ] as const
 
 const adminMenuItems = [
@@ -108,7 +141,14 @@ const adminMenuItems = [
   },
 ] as const
 
-export function EmployeePortalSidebar({ companies, activeCompanyId, companyRole, canApproveRequests }: EmployeePortalSidebarProps) {
+export function EmployeePortalSidebar({
+  companies,
+  activeCompanyId,
+  companyRole,
+  canApproveRequests,
+  canProcessMaterialRequests,
+  canPostMaterialRequests,
+}: EmployeePortalSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -139,6 +179,12 @@ export function EmployeePortalSidebar({ companies, activeCompanyId, companyRole,
   const visibleMenuItems = menuItems.filter((item) => item.roles.includes(companyRole))
   const visibleApproverItems = (canApproveRequests || isAdminRole)
     ? approverMenuItems.filter((item) => item.roles.includes(companyRole))
+    : []
+  const visibleProcessingItems = (canProcessMaterialRequests || isAdminRole)
+    ? processingMenuItems.filter((item) => item.roles.includes(companyRole))
+    : []
+  const visiblePostingItems = (canPostMaterialRequests || isAdminRole)
+    ? postingMenuItems.filter((item) => item.roles.includes(companyRole))
     : []
   const visibleAdminItems = isAdminRole
     ? adminMenuItems.filter((item) => item.roles.includes(companyRole))
@@ -193,6 +239,28 @@ export function EmployeePortalSidebar({ companies, activeCompanyId, companyRole,
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1 px-2">{visibleApproverItems.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+
+        {visibleProcessingItems.length > 0 ? (
+          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
+            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+              Processing
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1 px-2">{visibleProcessingItems.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+
+        {visiblePostingItems.length > 0 ? (
+          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
+            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+              Posting
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1 px-2">{visiblePostingItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}

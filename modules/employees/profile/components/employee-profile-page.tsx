@@ -39,6 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
@@ -240,12 +241,7 @@ const dynamicSelectTargets: Record<DynamicOptionKey, DynamicCreateTarget> = {
 }
 
 const getTodayPhDateInput = (): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(new Date())
+  return toPhDateInputValue(new Date())
 }
 
 const buildInitialLifecycleDraft = (actionType: EmployeeLifecycleActionType): EmployeeLifecycleDraft => {
@@ -1488,7 +1484,7 @@ function DateField({
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="single"
-              selected={selectedDate ? new Date(`${selectedDate}T00:00:00+08:00`) : undefined}
+              selected={selectedDate ? (parsePhDateInputToPhDate(selectedDate) ?? undefined) : undefined}
               onSelect={(date) => onDateChange(toDateInputValue(date))}
               initialFocus
             />
@@ -1528,7 +1524,7 @@ function LifecycleDateField({
         <PopoverContent className="w-auto p-0" align="start">
           <Calendar
             mode="single"
-            selected={value ? new Date(`${value}T00:00:00+08:00`) : undefined}
+            selected={value ? (parsePhDateInputToPhDate(value) ?? undefined) : undefined}
             onSelect={(date) => onChange(toDateInputValue(date))}
             initialFocus
           />
@@ -1540,17 +1536,12 @@ function LifecycleDateField({
 
 function toDateInputValue(date: Date | undefined): string {
   if (!date) return ""
-
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
+  return toPhDateInputValue(date)
 }
 
 function formatDateLabelFromInput(value: string): string {
-  const date = new Date(`${value}T00:00:00+08:00`)
+  const date = parsePhDateInputToPhDate(value)
+  if (!date) return ""
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
     day: "2-digit",

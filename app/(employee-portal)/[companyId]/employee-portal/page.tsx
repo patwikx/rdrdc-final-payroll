@@ -10,6 +10,7 @@ import {
   IconClockHour4,
   IconFileText,
   IconGift,
+  IconPackage,
   IconWallet,
 } from "@tabler/icons-react"
 
@@ -178,6 +179,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
               <QuickActionCard href={`/${context.companyId}/employee-portal/payslips`} title="My Payslips" desc="Salary records" icon={IconWallet} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/leaves`} title="Leave" desc="Time off requests" icon={IconCalendarEvent} />
               <QuickActionCard href={`/${context.companyId}/employee-portal/overtime`} title="Overtime" desc="Extra hours" icon={IconClockHour4} />
+              <QuickActionCard href={`/${context.companyId}/employee-portal/material-requests`} title="Materials" desc="Requisition forms" icon={IconPackage} />
             </div>
           </div>
 

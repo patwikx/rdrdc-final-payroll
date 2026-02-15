@@ -73,31 +73,33 @@ model Company {
   updatedBy   User?     @relation("CompanyUpdatedBy", fields: [updatedById], references: [id])
 
   // Relations
-  addresses         CompanyAddress[]
-  contacts          CompanyContact[]
-  emails            CompanyEmail[]
-  employees         Employee[]
-  departments       Department[]
-  positions         Position[]
-  employmentStatuses EmploymentStatus[]
-  employmentTypes    EmploymentType[]
-  employmentClasses  EmploymentClass[]
-  branches          Branch[]
-  divisions         Division[]
-  ranks             Rank[]
-  accountCategories AccountCategory[]
-  glAccounts        GLAccount[]
-  earningTypes      EarningType[]
-  deductionTypes    DeductionType[]
-  leaveTypes        LeaveType[]
-  loanTypes         LoanType[]
-  workSchedules     WorkSchedule[]
-  holidays          Holiday[]
-  payPeriodPatterns PayPeriodPattern[]
-  payrollRuns       PayrollRun[]
-  userCompanyAccess UserCompanyAccess[]
-  selectedByUsers   User[]              @relation("UserSelectedCompany")
-  biometricDevices  BiometricDevice[]
+  addresses                              CompanyAddress[]
+  contacts                               CompanyContact[]
+  emails                                 CompanyEmail[]
+  employees                              Employee[]
+  departments                            Department[]
+  departmentMaterialRequestApprovalFlows DepartmentMaterialRequestApprovalFlow[]
+  positions                              Position[]
+  employmentStatuses                     EmploymentStatus[]
+  employmentTypes                        EmploymentType[]
+  employmentClasses                      EmploymentClass[]
+  branches                               Branch[]
+  divisions                              Division[]
+  ranks                                  Rank[]
+  accountCategories                      AccountCategory[]
+  glAccounts                             GLAccount[]
+  earningTypes                           EarningType[]
+  deductionTypes                         DeductionType[]
+  leaveTypes                             LeaveType[]
+  loanTypes                              LoanType[]
+  workSchedules                          WorkSchedule[]
+  holidays                               Holiday[]
+  payPeriodPatterns                      PayPeriodPattern[]
+  payrollRuns                            PayrollRun[]
+  materialRequests                       MaterialRequest[]
+  userCompanyAccess                      UserCompanyAccess[]
+  selectedByUsers                        User[]                                  @relation("UserSelectedCompany")
+  biometricDevices                       BiometricDevice[]
 
   @@index([code])
   @@index([companyGroupId])
@@ -146,31 +148,33 @@ model CompanyContact {
 }
 
 model CompanyEmail {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   companyId   String
-  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   emailTypeId EmailType
   email       String
-  isPrimary   Boolean     @default(false)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  isPrimary   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([companyId])
   @@index([email])
 }
 
 model UserCompanyAccess {
-  id        String   @id @default(uuid())
+  id        String      @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   role      CompanyRole @default(EMPLOYEE)
-  isDefault Boolean  @default(false)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isMaterialRequestPurchaser Boolean @default(false)
+  isMaterialRequestPoster    Boolean @default(false)
+  isDefault Boolean     @default(false)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@unique([userId, companyId])
   @@index([userId])

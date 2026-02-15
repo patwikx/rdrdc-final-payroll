@@ -1,8 +1,20 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconBriefcase, IconChartBar, IconEdit, IconGitBranch, IconMapPin, IconPlus, IconRefresh, IconSitemap } from "@tabler/icons-react"
+import {
+  IconBriefcase,
+  IconChartBar,
+  IconChevronLeft,
+  IconChevronRight,
+  IconEdit,
+  IconGitBranch,
+  IconMapPin,
+  IconPlus,
+  IconRefresh,
+  IconSitemap,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +48,7 @@ type OrganizationSetupPageProps = {
 }
 
 const tableClass = "text-xs"
+const TABLE_PAGE_SIZE = 5
 
 type DepartmentForm = {
   id?: string
@@ -382,6 +395,12 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           <div className="flex items-center gap-2">
             <Badge variant="outline">{data.companyCode}</Badge>
             <Badge variant="outline">Role: {roleLabel}</Badge>
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link href={`/${data.companyId}/settings/material-requests`}>
+                <IconGitBranch className="size-4" />
+                Material Request Approvals
+              </Link>
+            </Button>
             <Button type="button" variant="ghost" onClick={resetForms} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset Forms
@@ -537,6 +556,11 @@ function EntityTableCard({
   onEdit: (id: string) => void
   dialog: React.ReactNode
 }) {
+  const totalPages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE))
+  const [currentPage, setCurrentPage] = useState(1)
+  const safePage = Math.min(currentPage, totalPages)
+  const pagedRows = rows.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE)
+
   return (
     <section className={cn("border border-border/60 bg-background", className)}>
       <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
@@ -569,7 +593,7 @@ function EntityTableCard({
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pagedRows.map((row) => (
                   <tr key={row.id} className="border-t border-border/50">
                     {row.values.map((value, valueIndex) => (
                       <td key={valueIndex} className="px-3 py-2 text-foreground">
@@ -588,6 +612,37 @@ function EntityTableCard({
             </tbody>
           </table>
         </div>
+        {rows.length > 0 ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Page {safePage} of {totalPages} • {rows.length} records
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              >
+                <IconChevronLeft className="size-3.5" />
+                Prev
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              >
+                Next
+                <IconChevronRight className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )

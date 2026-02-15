@@ -36,6 +36,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   deleteEmployeeAction,
@@ -414,29 +415,42 @@ export function EmployeeMasterlistPage({
 
                   <div className="flex justify-end">
                     <div className="flex items-center gap-2">
-                      <Link href={`/${companyId}/employees/${employee.id}`}>
-                        <Button variant="outline" size="sm" className="gap-1 border-border/60">
-                          <IconEye className="h-3.5 w-3.5" />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild variant="outline" size="sm" className="gap-1 border-border/60">
+                            <Link href={`/${companyId}/employees/${employee.id}`}>
+                              <IconEye className="h-3.5 w-3.5" />
+                              View Profile
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
                           View Profile
-                        </Button>
-                      </Link>
+                        </TooltipContent>
+                      </Tooltip>
                       {canDeleteEmployees ? (
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          onClick={() =>
-                            setDeleteTarget({
-                              id: employee.id,
-                              employeeNumber: employee.employeeNumber,
-                              fullName: employee.fullName,
-                              isActive: employee.isActive,
-                            })
-                          }
-                          aria-label={`Delete ${employee.fullName}`}
-                          title={`Delete ${employee.fullName}`}
-                        >
-                          <IconTrash className="h-3.5 w-3.5" />
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() =>
+                                setDeleteTarget({
+                                  id: employee.id,
+                                  employeeNumber: employee.employeeNumber,
+                                  fullName: employee.fullName,
+                                  isActive: employee.isActive,
+                                })
+                              }
+                              aria-label={`Delete ${employee.fullName}`}
+                            >
+                              <IconTrash className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Delete Employee
+                          </TooltipContent>
+                        </Tooltip>
                       ) : null}
                     </div>
                   </div>

@@ -9,6 +9,7 @@ export type ApprovalQueueItem = {
   requestId: string
   kind: "LEAVE" | "OVERTIME"
   requestNumber: string
+  leaveTypeName: string | null
   employeeId: string
   employeeName: string
   employeeNumber: string
@@ -28,6 +29,16 @@ export type ApprovalQueueData = {
   companyId: string
   companyName: string
   items: ApprovalQueueItem[]
+  filters: {
+    query: string
+    kind: ApprovalQueueKindFilter
+  }
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
   summary: {
     total: number
     leave: number
@@ -35,6 +46,18 @@ export type ApprovalQueueData = {
     highPriority: number
   }
 }
+
+export type ApprovalQueueKindFilter = "ALL" | "LEAVE" | "OVERTIME"
+
+export type ApprovalQueueQuery = {
+  query?: string
+  kind?: ApprovalQueueKindFilter
+  page?: number
+  pageSize?: number
+}
+
+const DEFAULT_PAGE_SIZE = 10
+const MAX_PAGE_SIZE = 50
 
 const toDateLabel = (value: Date): string => {
   return new Intl.DateTimeFormat("en-PH", {
@@ -84,7 +107,25 @@ const getPriority = (approvedAt: Date | null): "HIGH" | "MEDIUM" | "LOW" => {
   return "LOW"
 }
 
-export async function getApprovalQueueData(companyId: string): Promise<ApprovalQueueData> {
+const normalizePage = (value: number | undefined): number => {
+  if (!Number.isFinite(value)) return 1
+  const parsed = Math.floor(value as number)
+  return parsed > 0 ? parsed : 1
+}
+
+const normalizePageSize = (value: number | undefined): number => {
+  if (!Number.isFinite(value)) return DEFAULT_PAGE_SIZE
+  const parsed = Math.floor(value as number)
+  if (parsed < 1) return DEFAULT_PAGE_SIZE
+  return Math.min(parsed, MAX_PAGE_SIZE)
+}
+
+const normalizeKind = (value: ApprovalQueueQuery["kind"]): ApprovalQueueKindFilter => {
+  if (value === "LEAVE" || value === "OVERTIME") return value
+  return "ALL"
+}
+
+export async function getApprovalQueueData(companyId: string, options: ApprovalQueueQuery = {}): Promise<ApprovalQueueData> {
   const context = await getActiveCompanyContext({ companyId })
   const role = context.companyRole as CompanyRole
 
@@ -95,82 +136,159 @@ export async function getApprovalQueueData(companyId: string): Promise<ApprovalQ
     throw new Error("ACCESS_DENIED")
   }
 
-  const [leaveRequests, overtimeRequests] = await Promise.all([
-    db.leaveRequest.findMany({
-      where: {
-        employee: { companyId: context.companyId },
-        statusCode: RequestStatus.SUPERVISOR_APPROVED,
-      },
-      orderBy: [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }],
-      select: {
-        id: true,
-        requestNumber: true,
-        startDate: true,
-        endDate: true,
-        numberOfDays: true,
-        reason: true,
-        submittedAt: true,
-        supervisorApprovedAt: true,
-        supervisorApprovalRemarks: true,
-        employee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            employeeNumber: true,
-            department: { select: { name: true } },
-          },
-        },
-        supervisorApprover: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    }),
-    db.overtimeRequest.findMany({
-      where: {
-        employee: { companyId: context.companyId },
-        statusCode: RequestStatus.SUPERVISOR_APPROVED,
-      },
-      orderBy: [{ supervisorApprovedAt: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        requestNumber: true,
-        overtimeDate: true,
-        startTime: true,
-        endTime: true,
-        hours: true,
-        reason: true,
-        createdAt: true,
-        supervisorApprovedAt: true,
-        supervisorApprovalRemarks: true,
-        employee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            employeeNumber: true,
-            isOvertimeEligible: true,
-            department: { select: { name: true } },
-          },
-        },
-        supervisorApprover: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    }),
-  ])
+  const query = options.query?.trim() ?? ""
+  const kind = normalizeKind(options.kind)
+  const page = normalizePage(options.page)
+  const pageSize = normalizePageSize(options.pageSize)
+
+  const leaveFilterEnabled = hasLeaveAccess && (kind === "ALL" || kind === "LEAVE")
+  const overtimeFilterEnabled = hasOvertimeAccess && (kind === "ALL" || kind === "OVERTIME")
+
+  const leaveBaseWhere = {
+    employee: { companyId: context.companyId },
+    statusCode: RequestStatus.SUPERVISOR_APPROVED,
+  } as const
+
+  const overtimeBaseWhere = {
+    employee: { companyId: context.companyId },
+    statusCode: RequestStatus.SUPERVISOR_APPROVED,
+  } as const
+
+  const leaveSearchWhere = query
+    ? {
+        OR: [
+          { requestNumber: { contains: query, mode: "insensitive" as const } },
+          { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
+          { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
+          { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
+          { employee: { department: { is: { name: { contains: query, mode: "insensitive" as const } } } } },
+        ],
+      }
+    : {}
+
+  const overtimeSearchWhere = query
+    ? {
+        OR: [
+          { requestNumber: { contains: query, mode: "insensitive" as const } },
+          { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
+          { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
+          { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
+          { employee: { department: { is: { name: { contains: query, mode: "insensitive" as const } } } } },
+        ],
+      }
+    : {}
+
+  const staleThreshold = new Date(Date.now() - 72 * 60 * 60 * 1000)
+
+  const [summaryLeaveCount, summaryOvertimeCount, summaryHighLeaveCount, summaryHighOvertimeCount, leaveRequests, overtimeRequests] =
+    await Promise.all([
+      hasLeaveAccess
+        ? db.leaveRequest.count({
+            where: leaveBaseWhere,
+          })
+        : Promise.resolve(0),
+      hasOvertimeAccess
+        ? db.overtimeRequest.count({
+            where: overtimeBaseWhere,
+          })
+        : Promise.resolve(0),
+      hasLeaveAccess
+        ? db.leaveRequest.count({
+            where: {
+              ...leaveBaseWhere,
+              supervisorApprovedAt: { lte: staleThreshold },
+            },
+          })
+        : Promise.resolve(0),
+      hasOvertimeAccess
+        ? db.overtimeRequest.count({
+            where: {
+              ...overtimeBaseWhere,
+              supervisorApprovedAt: { lte: staleThreshold },
+            },
+          })
+        : Promise.resolve(0),
+      leaveFilterEnabled
+        ? db.leaveRequest.findMany({
+            where: {
+              ...leaveBaseWhere,
+              ...leaveSearchWhere,
+            },
+            orderBy: [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }],
+            select: {
+              id: true,
+              requestNumber: true,
+              leaveType: { select: { name: true } },
+              startDate: true,
+              endDate: true,
+              numberOfDays: true,
+              reason: true,
+              submittedAt: true,
+              supervisorApprovedAt: true,
+              supervisorApprovalRemarks: true,
+              employee: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  employeeNumber: true,
+                  department: { select: { name: true } },
+                },
+              },
+              supervisorApprover: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      overtimeFilterEnabled
+        ? db.overtimeRequest.findMany({
+            where: {
+              ...overtimeBaseWhere,
+              ...overtimeSearchWhere,
+            },
+            orderBy: [{ supervisorApprovedAt: "asc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              requestNumber: true,
+              overtimeDate: true,
+              startTime: true,
+              endTime: true,
+              hours: true,
+              reason: true,
+              createdAt: true,
+              supervisorApprovedAt: true,
+              supervisorApprovalRemarks: true,
+              employee: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  employeeNumber: true,
+                  isOvertimeEligible: true,
+                  department: { select: { name: true } },
+                },
+              },
+              supervisorApprover: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+    ])
 
   const leaveItems: ApprovalQueueItem[] = leaveRequests.map((item) => ({
     id: `LEAVE-${item.id}`,
     requestId: item.id,
     kind: "LEAVE",
     requestNumber: item.requestNumber,
+    leaveTypeName: item.leaveType.name,
     employeeId: item.employee.id,
     employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
     employeeNumber: item.employee.employeeNumber,
@@ -217,6 +335,7 @@ export async function getApprovalQueueData(companyId: string): Promise<ApprovalQ
     requestId: item.id,
     kind: "OVERTIME",
     requestNumber: item.requestNumber,
+    leaveTypeName: null,
     employeeId: item.employee.id,
     employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
     employeeNumber: item.employee.employeeNumber,
@@ -233,20 +352,36 @@ export async function getApprovalQueueData(companyId: string): Promise<ApprovalQ
     priority: getPriority(item.supervisorApprovedAt),
   }))
 
-  const items = [...leaveItems, ...overtimeItems].sort((a, b) => {
+  const filteredItems = [...leaveItems, ...overtimeItems].sort((a, b) => {
     const rank = { HIGH: 3, MEDIUM: 2, LOW: 1 }
     return rank[b.priority] - rank[a.priority]
   })
 
+  const totalItems = filteredItems.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const startIndex = (safePage - 1) * pageSize
+  const items = filteredItems.slice(startIndex, startIndex + pageSize)
+
   return {
     companyId: context.companyId,
     companyName: context.companyName,
+    filters: {
+      query,
+      kind,
+    },
+    pagination: {
+      page: safePage,
+      pageSize,
+      totalItems,
+      totalPages,
+    },
     items,
     summary: {
-      total: items.length,
-      leave: leaveItems.length,
-      overtime: overtimeItems.length,
-      highPriority: items.filter((item) => item.priority === "HIGH").length,
+      total: summaryLeaveCount + summaryOvertimeCount,
+      leave: summaryLeaveCount,
+      overtime: summaryOvertimeCount,
+      highPriority: summaryHighLeaveCount + summaryHighOvertimeCount,
     },
   }
 }

@@ -10,7 +10,9 @@ import {
   consumeReservedLeaveBalanceForRequest,
   releaseReservedLeaveBalanceForRequest,
 } from "@/modules/leave/utils/leave-balance-ledger"
-import type { LeaveActionResult } from "@/modules/leave/types/leave-action-result"
+import type { LeaveActionDataResult, LeaveActionResult } from "@/modules/leave/types/leave-action-result"
+import type { EmployeePortalLeaveApprovalHistoryPage } from "@/modules/leave/types/employee-portal-leave-types"
+import { getEmployeePortalLeaveApprovalHistoryPageReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
 
 const pagingSchema = z.object({
   companyId: z.string().uuid(),
@@ -22,6 +24,16 @@ const decisionSchema = z.object({
   companyId: z.string().uuid(),
   requestId: z.string().uuid(),
   remarks: z.string().trim().max(1000).optional(),
+})
+
+const historyPageSchema = z.object({
+  companyId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  search: z.string().trim().max(120).default(""),
+  status: z.enum(["ALL", "APPROVED", "REJECTED", "SUPERVISOR_APPROVED"]).default("ALL"),
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
+  toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
 })
 
 const hasHrPrivileges = (role: CompanyRole): boolean => {
@@ -154,6 +166,39 @@ export async function getLeaveRequestsForHrApprovalAction(input: z.input<typeof 
   ])
 
   return { ok: true as const, data: { data, total } }
+}
+
+export async function getLeaveApprovalHistoryPageAction(
+  input: z.input<typeof historyPageSchema>
+): Promise<LeaveActionDataResult<EmployeePortalLeaveApprovalHistoryPage>> {
+  const parsed = historyPageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Invalid approval history payload." }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const isHR = hasHrPrivileges(context.companyRole as CompanyRole)
+  const actor = await findActorEmployee(context.userId, context.companyId)
+
+  if (!isHR && !actor) {
+    return { ok: false, error: "Employee profile not found." }
+  }
+
+  const historyPage = await getEmployeePortalLeaveApprovalHistoryPageReadModel({
+    companyId: context.companyId,
+    isHR,
+    approverEmployeeId: actor?.id,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    search: payload.search,
+    status: payload.status,
+    fromDate: payload.fromDate,
+    toDate: payload.toDate,
+  })
+
+  return {
+    ok: true,
+    data: historyPage,
+  }
 }
 
 export async function approveLeaveBySupervisorAction(input: z.input<typeof decisionSchema>): Promise<LeaveActionResult> {

@@ -13,8 +13,8 @@ model PayPeriodPattern {
   name        String
   description String?
 
-  payFrequencyCode   PayFrequencyType @default(SEMI_MONTHLY)
-  periodsPerYear     Int          @default(24)
+  payFrequencyCode PayFrequencyType @default(SEMI_MONTHLY)
+  periodsPerYear   Int              @default(24)
 
   // Statutory deduction timing policy per pay period cycle
   statutoryDeductionSchedule Json?
@@ -148,7 +148,7 @@ model PayrollProcessStep {
   stepDescription String?
 
   status        PayrollProcessStepStatus @default(PENDING)
-  isCompleted   Boolean   @default(false)
+  isCompleted   Boolean                  @default(false)
   completedAt   DateTime?
   completedById String?
 

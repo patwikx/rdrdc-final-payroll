@@ -1,14 +1,16 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { IconDotsVertical, IconDownload, IconEye, IconFileText, IconReceipt2, IconWallet } from "@tabler/icons-react"
+import { IconDownload, IconEye, IconFileText, IconFilterOff, IconReceipt2, IconSearch, IconWallet } from "@tabler/icons-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 type PayslipLineItem = {
@@ -71,14 +73,43 @@ const pageSize = 10
 export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
   const [selectedPayslip, setSelectedPayslip] = useState<PayslipRow | null>(null)
   const [page, setPage] = useState(1)
+  const [logSearch, setLogSearch] = useState("")
+  const [logStatus, setLogStatus] = useState<"ALL" | "RELEASED" | "PENDING">("ALL")
 
-  const totalPages = Math.max(1, Math.ceil(payslips.length / pageSize))
+  const filteredPayslips = useMemo(() => {
+    const query = logSearch.trim().toLowerCase()
+
+    return payslips.filter((payslip) => {
+      const status = payslip.releasedAt ? "RELEASED" : "PENDING"
+      if (logStatus !== "ALL" && status !== logStatus) {
+        return false
+      }
+
+      if (!query) {
+        return true
+      }
+
+      const haystack = [
+        payslip.payslipNumber,
+        String(payslip.periodNumber),
+        formatDate(payslip.cutoffStartDate),
+        formatDate(payslip.cutoffEndDate),
+        payslip.releasedAt ? "released" : "pending",
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [logSearch, logStatus, payslips])
+
+  const totalPages = Math.max(1, Math.ceil(filteredPayslips.length / pageSize))
   const safePage = Math.min(Math.max(1, page), totalPages)
 
   const paged = useMemo(() => {
     const start = (safePage - 1) * pageSize
-    return payslips.slice(start, start + pageSize)
-  }, [payslips, safePage])
+    return filteredPayslips.slice(start, start + pageSize)
+  }, [filteredPayslips, safePage])
 
   const latest = payslips[0]
 
@@ -129,10 +160,54 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
           {paged.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 py-14 text-center">
               <p className="text-sm font-semibold text-foreground">No Records</p>
-              <p className="text-sm text-muted-foreground">No payslips available yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {payslips.length === 0 ? "No payslips available yet." : "No payslips match the current filters."}
+              </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="overflow-hidden border border-border/60 bg-card">
+              <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex-row sm:items-center">
+                <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+                  <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={logSearch}
+                    onChange={(event) => {
+                      setLogSearch(event.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Search payslip #, period, status"
+                    className="rounded-lg pl-8"
+                  />
+                </div>
+                <Select
+                  value={logStatus}
+                  onValueChange={(value: "ALL" | "RELEASED" | "PENDING") => {
+                    setLogStatus(value)
+                    setPage(1)
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Statuses</SelectItem>
+                    <SelectItem value="RELEASED">Released</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setLogSearch("")
+                    setLogStatus("ALL")
+                    setPage(1)
+                  }}
+                >
+                  <IconFilterOff className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+              </div>
               <Table>
                 <TableHeader className="bg-muted/30">
                   <TableRow className="border-border/60 hover:bg-transparent">
@@ -148,47 +223,64 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
                 <TableBody>
                   {paged.map((payslip) => (
                     <TableRow key={payslip.id} className="group border-border/60 hover:bg-muted/30">
-                      <TableCell className="py-3 text-sm">
+                      <TableCell className="py-3 text-xs">
                         {formatDate(payslip.cutoffStartDate)} <span className="mx-1 text-muted-foreground">-</span> {formatDate(payslip.cutoffEndDate)}
                       </TableCell>
-                      <TableCell className="py-3 text-sm text-muted-foreground">{payslip.payslipNumber}</TableCell>
-                      <TableCell className="py-3 text-right text-sm">{money(payslip.grossPay)}</TableCell>
-                      <TableCell className="py-3 text-right text-sm text-destructive">-{money(payslip.totalDeductions)}</TableCell>
-                      <TableCell className="py-3 text-right text-sm font-semibold text-primary">{money(payslip.netPay)}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{payslip.payslipNumber}</TableCell>
+                      <TableCell className="py-3 text-right text-xs">{money(payslip.grossPay)}</TableCell>
+                      <TableCell className="py-3 text-right text-xs text-destructive">-{money(payslip.totalDeductions)}</TableCell>
+                      <TableCell className="py-3 text-right text-xs font-semibold text-primary">{money(payslip.netPay)}</TableCell>
                       <TableCell className="py-3">
                         {payslip.releasedAt ? (
-                          <Badge variant="default" className="rounded-full border border-emerald-600/20 bg-emerald-600/10 text-xs text-emerald-600 shadow-none hover:bg-emerald-600/20">Released</Badge>
+                          <Badge variant="default" className="w-full justify-center text-xs font-normal">Released</Badge>
                         ) : (
-                          <Badge variant="secondary" className="rounded-full text-xs shadow-none">Pending</Badge>
+                          <Badge variant="secondary" className="w-full justify-center text-xs font-normal">Pending</Badge>
                         )}
                       </TableCell>
                       <TableCell className="py-3 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg p-0" aria-label="Open payslip actions">
-                              <IconDotsVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem onClick={() => setSelectedPayslip(payslip)}>
-                              <IconEye className="mr-2 h-3.5 w-3.5" />
-                              View details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDownload(payslip.id)}>
-                              <IconDownload className="mr-2 h-3.5 w-3.5" />
+                        <div className="flex justify-end gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg px-2 text-xs"
+                                onClick={() => setSelectedPayslip(payslip)}
+                              >
+                                <IconEye className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
+                              View Details
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg px-2 text-xs"
+                                onClick={() => handleDownload(payslip.id)}
+                              >
+                                <IconDownload className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
                               Download PDF
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              {payslips.length > pageSize ? (
+              {filteredPayslips.length > pageSize ? (
                 <div className="flex items-center justify-between border-t border-border/60 px-3 py-3">
                   <p className="text-xs text-muted-foreground">
-                    Page {safePage} of {totalPages} - {payslips.length} Records
+                    Page {safePage} of {totalPages} - {filteredPayslips.length} Records
                   </p>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" className="h-8 rounded-lg border-border/60 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>Prev</Button>

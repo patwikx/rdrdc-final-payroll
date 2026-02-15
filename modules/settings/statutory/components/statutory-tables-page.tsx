@@ -20,6 +20,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { upsertStatutoryTablesAction } from "@/modules/settings/statutory/actions/upsert-statutory-tables-action"
 import type { StatutoryTablesInput } from "@/modules/settings/statutory/schemas/statutory-tables-schema"
 
@@ -79,23 +80,8 @@ const roundUp2 = (value: number): number => {
   return Math.ceil((value + Number.EPSILON) * 100) / 100
 }
 
-const toPhDateInputValue = (date?: Date): string => {
-  if (!date) return ""
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
-}
-
-const parsePhDateInputValue = (value: string): Date | undefined => {
-  if (!value) return undefined
-  return new Date(`${value}T00:00:00+08:00`)
-}
-
 const formatDisplayDate = (value: string): string => {
-  const parsed = parsePhDateInputValue(value)
+  const parsed = parsePhDateInputToPhDate(value)
   if (!parsed) return "Select date"
 
   return new Intl.DateTimeFormat("en-PH", {
@@ -107,7 +93,7 @@ const formatDisplayDate = (value: string): string => {
 }
 
 const getEffectiveYearFromDateInput = (value: string): number => {
-  const parsed = parsePhDateInputValue(value)
+  const parsed = parsePhDateInputToPhDate(value)
   if (!parsed) {
     return Number(
       new Intl.DateTimeFormat("en-CA", {
@@ -633,7 +619,7 @@ function EffectiveFromPicker({ value, onChange }: { value: string; onChange: (va
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-2" align="start">
-        <Calendar mode="single" selected={parsePhDateInputValue(value)} onSelect={(date) => onChange(toPhDateInputValue(date))} />
+        <Calendar mode="single" selected={parsePhDateInputToPhDate(value) ?? undefined} onSelect={(date) => onChange(toPhDateInputValue(date))} />
       </PopoverContent>
     </Popover>
   )

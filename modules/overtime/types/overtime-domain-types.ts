@@ -2,6 +2,7 @@ export type EmployeePortalOvertimeRequestRow = {
   id: string
   requestNumber: string
   overtimeDate: string
+  overtimeDateInput: string
   startTime: string
   endTime: string
   hours: number
@@ -32,4 +33,11 @@ export type EmployeePortalOvertimeApprovalRow = {
 export type EmployeePortalOvertimeApprovalHistoryRow = EmployeePortalOvertimeApprovalRow & {
   decidedAtIso: string
   decidedAtLabel: string
+}
+
+export type EmployeePortalOvertimeApprovalHistoryPage = {
+  rows: EmployeePortalOvertimeApprovalHistoryRow[]
+  total: number
+  page: number
+  pageSize: number
 }

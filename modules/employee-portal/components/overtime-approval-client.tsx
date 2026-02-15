@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useRef, useState, useTransition } from "react"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   IconCalendarEvent,
   IconCheck,
@@ -17,6 +18,7 @@ import { toast } from "sonner"
 
 import {
   approveOvertimeByHrAction,
+  getOvertimeApprovalHistoryPageAction,
   approveOvertimeBySupervisorAction,
   rejectOvertimeBySupervisorAction,
   rejectOvertimeByHrAction,
@@ -30,31 +32,24 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
-
-export type OvertimeApprovalRow = {
-  id: string
-  requestNumber: string
-  overtimeDate: string
-  hours: number
-  reason: string | null
-  statusCode: string
-  employeeName: string
-  employeeNumber: string
-  ctoConversionPreview: boolean
-}
+import type {
+  EmployeePortalOvertimeApprovalHistoryRow,
+  EmployeePortalOvertimeApprovalRow,
+} from "@/modules/overtime/types/overtime-domain-types"
 
 type OvertimeApprovalClientProps = {
   companyId: string
   isHR: boolean
-  rows: OvertimeApprovalRow[]
-  historyRows: OvertimeApprovalHistoryRow[]
+  rows: EmployeePortalOvertimeApprovalRow[]
+  historyRows: EmployeePortalOvertimeApprovalHistoryRow[]
+  initialHistoryTotal: number
+  initialHistoryPage: number
+  initialHistoryPageSize: number
 }
 
-export type OvertimeApprovalHistoryRow = OvertimeApprovalRow & {
-  decidedAtIso: string
-  decidedAtLabel: string
-}
+type HistoryStatusFilter = "ALL" | "APPROVED" | "REJECTED" | "SUPERVISOR_APPROVED"
 
 const toLabel = (statusCode: string): string => {
   if (statusCode === "SUPERVISOR_APPROVED") return "Supervisor Approved"
@@ -62,22 +57,38 @@ const toLabel = (statusCode: string): string => {
 }
 
 const toDateValue = (date?: Date): string => (date ? format(date, "yyyy-MM-dd") : "")
-const fromDateValue = (value: string): Date | undefined => (value ? new Date(`${value}T00:00:00`) : undefined)
+const fromDateValue = (value: string): Date | undefined => (value ? (toPhDayStartUtcInstant(value) ?? undefined) : undefined)
 
-export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: OvertimeApprovalClientProps) {
+export function OvertimeApprovalClient({
+  companyId,
+  isHR,
+  rows,
+  historyRows,
+  initialHistoryTotal,
+  initialHistoryPage,
+  initialHistoryPageSize,
+}: OvertimeApprovalClientProps) {
   const router = useRouter()
+  const historyRequestTokenRef = useRef(0)
   const [open, setOpen] = useState(false)
   const [actionType, setActionType] = useState<"approve" | "reject">("approve")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
   const [historySearch, setHistorySearch] = useState("")
-  const [historyStatus, setHistoryStatus] = useState("ALL")
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
   const [isPending, startTransition] = useTransition()
+  const [isHistoryPending, startHistoryTransition] = useTransition()
   const [rowsPage, setRowsPage] = useState(1)
-  const [historyPage, setHistoryPage] = useState(1)
+  const [historyRowsState, setHistoryRowsState] = useState(historyRows)
+  const [historyTotal, setHistoryTotal] = useState(initialHistoryTotal)
+  const [historyPage, setHistoryPage] = useState(initialHistoryPage)
+  const [historyPageSize, setHistoryPageSize] = useState(String(initialHistoryPageSize))
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
+  const [expandedHistoryRequestId, setExpandedHistoryRequestId] = useState<string | null>(null)
   const ITEMS_PER_PAGE = 10
+  const historyItemsPerPage = Number(historyPageSize)
 
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId])
   const stats = useMemo(() => {
@@ -89,24 +100,48 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
       employeeCount,
     }
   }, [rows])
-  const filteredHistoryRows = useMemo(() => {
-    const search = historySearch.trim().toLowerCase()
-    return historyRows.filter((row) => {
-      if (historyStatus !== "ALL" && row.statusCode !== historyStatus) return false
-      if (historyFromDate && row.decidedAtIso.slice(0, 10) < historyFromDate) return false
-      if (historyToDate && row.decidedAtIso.slice(0, 10) > historyToDate) return false
-      if (!search) return true
-
-      return (
-        row.requestNumber.toLowerCase().includes(search) ||
-        row.employeeName.toLowerCase().includes(search) ||
-        row.employeeNumber.toLowerCase().includes(search) ||
-        row.overtimeDate.toLowerCase().includes(search) ||
-        (row.reason ?? "").toLowerCase().includes(search)
-      )
-    })
-  }, [historyFromDate, historyRows, historySearch, historyStatus, historyToDate])
+  const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
+  const activeHistoryPage = Math.min(historyPage, historyTotalPages)
   const hasActiveHistoryFilters = historySearch.trim().length > 0 || historyStatus !== "ALL" || Boolean(historyFromDate) || Boolean(historyToDate)
+
+  const loadHistoryPage = (params: {
+    page: number
+    pageSize: number
+    search: string
+    status: HistoryStatusFilter
+    fromDate: string
+    toDate: string
+  }) => {
+    const token = historyRequestTokenRef.current + 1
+    historyRequestTokenRef.current = token
+    setHistoryLoadError(null)
+
+    startHistoryTransition(async () => {
+      const response = await getOvertimeApprovalHistoryPageAction({
+        companyId,
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        status: params.status,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+      })
+
+      if (historyRequestTokenRef.current !== token) {
+        return
+      }
+
+      if (!response.ok) {
+        setHistoryLoadError(response.error)
+        return
+      }
+
+      setHistoryRowsState(response.data.rows)
+      setHistoryTotal(response.data.total)
+      setHistoryPage(response.data.page)
+      setHistoryPageSize(String(response.data.pageSize))
+    })
+  }
 
   const openDecision = (rowId: string, type: "approve" | "reject") => {
     setSelectedId(rowId)
@@ -189,7 +224,9 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                 <>
                   {paginatedRows.map((row) => (
                     <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                      <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
+                      <div className="col-span-1 min-w-0">
+                        <p className="truncate text-xs text-muted-foreground" title={row.requestNumber}>{row.requestNumber}</p>
+                      </div>
                       <div className="col-span-2">
                         <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
                         <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
@@ -255,15 +292,49 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval History</h2>
-            <span className="text-xs text-muted-foreground">{filteredHistoryRows.length} records</span>
+            <span className="text-xs text-muted-foreground">
+              {historyTotal} records{isHistoryPending ? " • Loading..." : ""}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search employee/request..." value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} className="rounded-lg pl-8" />
+              <Input
+                placeholder="Search employee/request..."
+                value={historySearch}
+                onChange={(event) => {
+                  const nextSearch = event.target.value
+                  setHistorySearch(nextSearch)
+                  setExpandedHistoryRequestId(null)
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: nextSearch,
+                    status: historyStatus,
+                    fromDate: historyFromDate,
+                    toDate: historyToDate,
+                  })
+                }}
+                className="rounded-lg pl-8"
+              />
             </div>
-            <Select value={historyStatus} onValueChange={setHistoryStatus}>
+            <Select
+              value={historyStatus}
+              onValueChange={(value) => {
+                const nextStatus = value as HistoryStatusFilter
+                setHistoryStatus(nextStatus)
+                setExpandedHistoryRequestId(null)
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: historySearch,
+                  status: nextStatus,
+                  fromDate: historyFromDate,
+                  toDate: historyToDate,
+                })
+              }}
+            >
               <SelectTrigger className="rounded-lg">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -287,10 +358,20 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                   selected={fromDateValue(historyFromDate)}
                   onSelect={(date) => {
                     const nextFrom = toDateValue(date)
+                    const nextTo = historyToDate && nextFrom && historyToDate < nextFrom ? "" : historyToDate
                     setHistoryFromDate(nextFrom)
-                    if (historyToDate && nextFrom && historyToDate < nextFrom) {
-                      setHistoryToDate("")
+                    if (nextTo !== historyToDate) {
+                      setHistoryToDate(nextTo)
                     }
+                    setExpandedHistoryRequestId(null)
+                    loadHistoryPage({
+                      page: 1,
+                      pageSize: historyItemsPerPage,
+                      search: historySearch,
+                      status: historyStatus,
+                      fromDate: nextFrom,
+                      toDate: nextTo,
+                    })
                   }}
                   captionLayout="dropdown"
                 />
@@ -307,10 +388,24 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                 <Calendar
                   mode="single"
                   selected={fromDateValue(historyToDate)}
-                  onSelect={(date) => setHistoryToDate(toDateValue(date))}
+                  onSelect={(date) => {
+                    const nextTo = toDateValue(date)
+                    setHistoryToDate(nextTo)
+                    setExpandedHistoryRequestId(null)
+                    loadHistoryPage({
+                      page: 1,
+                      pageSize: historyItemsPerPage,
+                      search: historySearch,
+                      status: historyStatus,
+                      fromDate: historyFromDate,
+                      toDate: nextTo,
+                    })
+                  }}
                   disabled={(date) => {
                     if (!historyFromDate) return false
-                    return date < new Date(`${historyFromDate}T00:00:00`)
+                    const fromDate = fromDateValue(historyFromDate)
+                    if (!fromDate) return false
+                    return date < fromDate
                   }}
                   captionLayout="dropdown"
                 />
@@ -325,6 +420,15 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                 setHistoryStatus("ALL")
                 setHistoryFromDate("")
                 setHistoryToDate("")
+                setExpandedHistoryRequestId(null)
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: "",
+                  status: "ALL",
+                  fromDate: "",
+                  toDate: "",
+                })
               }}
               disabled={!hasActiveHistoryFilters}
             >
@@ -333,7 +437,13 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
             </Button>
           </div>
 
-          {filteredHistoryRows.length === 0 ? (
+          {historyLoadError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {historyLoadError}
+            </div>
+          ) : null}
+
+          {historyRowsState.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-8 text-center text-sm text-muted-foreground">
               No approval history found for the selected filters.
             </div>
@@ -348,68 +458,150 @@ export function OvertimeApprovalClient({ companyId, isHR, rows, historyRows }: O
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">CTO</p>
               </div>
-              {(() => {
-                const totalPages = Math.ceil(filteredHistoryRows.length / ITEMS_PER_PAGE)
-                const startIndex = (historyPage - 1) * ITEMS_PER_PAGE
-                const paginatedHistory = filteredHistoryRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+              {historyRowsState.map((row) => {
+                const isExpanded = expandedHistoryRequestId === row.id
                 return (
-                  <>
-                    {paginatedHistory.map((row) => (
-                      <div key={`history-${row.id}`} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                        <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
-                        <div className="col-span-2">
-                          <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
-                          <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
-                        </div>
-                        <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
-                        <div className="col-span-1">
-                          <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
-                          {isHR && row.ctoConversionPreview ? (
-                            <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
-                          ) : null}
-                        </div>
-                        <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
-                        <div className="col-span-2 space-y-1">
-                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
-                            {toLabel(row.statusCode)}
-                          </Badge>
-                          <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
-                        </div>
-                        <div className="col-span-2 text-right text-xs text-muted-foreground">
-                          {isHR && row.ctoConversionPreview ? "CTO 1:1" : "-"}
-                        </div>
+                  <div key={`history-${row.id}`} className={cn("group border-b border-border/60 last:border-b-0 transition-colors", isExpanded && "bg-primary/10")}>
+                    <div
+                      className="grid cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20"
+                      onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
+                    >
+                      <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
+                      <div className="col-span-2">
+                        <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
+                        <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>
                       </div>
-                    ))}
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
-                        <p className="text-xs text-muted-foreground">
-                          Page {historyPage} of {totalPages} • {filteredHistoryRows.length} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={historyPage <= 1}
-                            onClick={() => setHistoryPage(historyPage - 1)}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={historyPage >= totalPages}
-                            onClick={() => setHistoryPage(historyPage + 1)}
-                          >
-                            Next
-                          </Button>
-                        </div>
+                      <div className="col-span-2 text-sm text-foreground">{row.overtimeDate}</div>
+                      <div className="col-span-1">
+                        <p className="text-sm text-foreground">{row.hours.toFixed(2)}h</p>
+                        {isHR && row.ctoConversionPreview ? (
+                          <Badge className="mt-1 bg-primary text-primary-foreground">CTO 1:1</Badge>
+                        ) : null}
                       </div>
-                    )}
-                  </>
+                      <div className="col-span-2 text-xs text-muted-foreground line-clamp-2">{row.reason ?? "-"}</div>
+                      <div className="col-span-2 space-y-1">
+                        <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
+                          {toLabel(row.statusCode)}
+                        </Badge>
+                        <p className="text-center text-[11px] text-muted-foreground">{row.decidedAtLabel}</p>
+                      </div>
+                      <div className="col-span-2 text-right text-xs text-muted-foreground">
+                        {isHR && row.ctoConversionPreview ? "CTO 1:1" : "-"}
+                      </div>
+                    </div>
+
+                    <AnimatePresence initial={false}>
+                      {isExpanded ? (
+                        <motion.div
+                          key={`${row.id}-details`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <motion.div
+                            initial={{ y: -6, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: -6, opacity: 0 }}
+                            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                            className="grid grid-cols-1 gap-2 border-t border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground md:grid-cols-3"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">Overtime Date</p>
+                              <p>{row.overtimeDate}</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">Hours</p>
+                              <p>{row.hours.toFixed(2)} hour(s)</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">Decided At</p>
+                              <p>{row.decidedAtLabel}</p>
+                            </div>
+                            <div className="md:col-span-3">
+                              <p className="font-medium text-foreground">Reason</p>
+                              <p>{row.reason ?? "-"}</p>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
                 )
-              })()}
+              })}
+
+              <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Page {activeHistoryPage} of {historyTotalPages} • {historyTotal} records
+                  </p>
+                  <Select
+                    value={historyPageSize}
+                    onValueChange={(value) => {
+                      setExpandedHistoryRequestId(null)
+                      loadHistoryPage({
+                        page: 1,
+                        pageSize: Number(value),
+                        search: historySearch,
+                        status: historyStatus,
+                        fromDate: historyFromDate,
+                        toDate: historyToDate,
+                      })
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[112px] rounded-lg text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-lg">
+                      <SelectItem value="10">10 / page</SelectItem>
+                      <SelectItem value="20">20 / page</SelectItem>
+                      <SelectItem value="50">50 / page</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs"
+                    disabled={activeHistoryPage <= 1 || isHistoryPending}
+                    onClick={() => {
+                      setExpandedHistoryRequestId(null)
+                      loadHistoryPage({
+                        page: Math.max(1, activeHistoryPage - 1),
+                        pageSize: historyItemsPerPage,
+                        search: historySearch,
+                        status: historyStatus,
+                        fromDate: historyFromDate,
+                        toDate: historyToDate,
+                      })
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs"
+                    disabled={activeHistoryPage >= historyTotalPages || isHistoryPending}
+                    onClick={() => {
+                      setExpandedHistoryRequestId(null)
+                      loadHistoryPage({
+                        page: Math.min(historyTotalPages, activeHistoryPage + 1),
+                        pageSize: historyItemsPerPage,
+                        search: historySearch,
+                        status: historyStatus,
+                        fromDate: historyFromDate,
+                        toDate: historyToDate,
+                      })
+                    }}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </div>

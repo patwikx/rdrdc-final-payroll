@@ -20,7 +20,12 @@ export type EmployeePortalContext = {
     position: { name: string } | null
     employmentStatus: { name: string } | null
     employmentType: { name: string } | null
-    user: { email: string; isRequestApprover: boolean } | null
+    user: {
+      email: string
+      isRequestApprover: boolean
+      isMaterialRequestPurchaser: boolean
+      isMaterialRequestPoster: boolean
+    } | null
   } | null
 }
 
@@ -35,7 +40,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     getUserCompanyOptions(session.user.id),
   ])
 
-  const employee = await db.employee.findFirst({
+  const employeeRecord = await db.employee.findFirst({
     where: {
       userId: session.user.id,
       companyId: activeCompany.companyId,
@@ -53,9 +58,40 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
       position: { select: { name: true } },
       employmentStatus: { select: { name: true } },
       employmentType: { select: { name: true } },
-      user: { select: { email: true, isRequestApprover: true } },
+      user: {
+        select: {
+          email: true,
+          isRequestApprover: true,
+          companyAccess: {
+            where: {
+              companyId: activeCompany.companyId,
+              isActive: true,
+            },
+            select: {
+              isMaterialRequestPurchaser: true,
+              isMaterialRequestPoster: true,
+            },
+            take: 1,
+          },
+        },
+      },
     },
   })
+
+  const employee = employeeRecord
+    ? {
+        ...employeeRecord,
+        user: employeeRecord.user
+          ? {
+              email: employeeRecord.user.email,
+              isRequestApprover: employeeRecord.user.isRequestApprover,
+              isMaterialRequestPurchaser:
+                employeeRecord.user.companyAccess[0]?.isMaterialRequestPurchaser ?? false,
+              isMaterialRequestPoster: employeeRecord.user.companyAccess[0]?.isMaterialRequestPoster ?? false,
+            }
+          : null,
+      }
+    : null
 
   return {
     userId: session.user.id,

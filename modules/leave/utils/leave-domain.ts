@@ -1,7 +1,7 @@
 import { RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
-import { getPhYear } from "@/lib/ph-time"
+import { getPhYear, toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { leaveDateRangeSchema, leaveYearSchema } from "@/modules/leave/schemas/leave-query-schemas"
 import type {
   LeaveBalanceSummaryReportEmployeeRow,
@@ -46,8 +46,12 @@ export async function getLeaveBalanceWorkspaceData(params: {
   historyRows: LeaveBalanceWorkspaceHistoryRow[]
 }> {
   const year = leaveYearSchema.parse(params.year)
-  const yearStart = new Date(`${year}-01-01T00:00:00.000Z`)
-  const yearEnd = new Date(`${year}-12-31T23:59:59.999Z`)
+  const yearStart = toPhDayStartUtcInstant(`${year}-01-01`)
+  const yearEnd = toPhDayEndUtcInstant(`${year}-12-31`)
+
+  if (!yearStart || !yearEnd) {
+    throw new Error(`Invalid leave year range: ${year}`)
+  }
 
   const [balanceRowsRaw, historyRowsRaw, yearRows] = await Promise.all([
     db.leaveBalance.findMany({

@@ -10,3 +10,8 @@ export const leaveDateRangeSchema = z.object({
   startDate: z.date(),
   endDate: z.date(),
 })
+
+export const leaveBalanceWorkspaceInputSchema = z.object({
+  companyId: z.string().uuid(),
+  year: leaveYearSchema.optional(),
+})

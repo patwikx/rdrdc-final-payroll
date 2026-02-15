@@ -1,9 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState, useTransition } from "react"
-import { format } from "date-fns"
 import { useRouter } from "next/navigation"
-import { IconCalendarClock, IconCheck, IconPlus, IconX } from "@tabler/icons-react"
+import { IconCalendarClock, IconCheck, IconChevronLeft, IconChevronRight, IconPlus, IconX } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { getPhYear, parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { initializeLeaveBalancesForYearAction } from "@/modules/settings/leave-overtime/actions/initialize-leave-balances-for-year-action"
 import { upsertLeaveTypePolicySettingsAction } from "@/modules/settings/leave-overtime/actions/upsert-leave-type-policy-settings-action"
@@ -74,17 +74,17 @@ type LeaveOtPoliciesPageProps = {
 }
 
 type PolicyTab = "leave" | "ot"
+const TABLE_PAGE_SIZE = 10
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const toDateValue = (date?: Date): string => {
-  if (!date) return ""
-  return format(date, "yyyy-MM-dd")
+  return toPhDateInputValue(date)
 }
 
 const fromDateValue = (value: string): Date | undefined => {
   if (!value) return undefined
-  return new Date(`${value}T00:00:00+08:00`)
+  return parsePhDateInputToPhDate(value) ?? undefined
 }
 
 const getOvertimeTypeLabel = (code: string): string => {
@@ -180,16 +180,12 @@ export function LeaveOtPoliciesPage({
   const [tab, setTab] = useState<PolicyTab>("leave")
   const [selectedLeaveTypeId, setSelectedLeaveTypeId] = useState<string | null>(leaveTypes[0]?.id ?? null)
   const [selectedOvertimeRateId, setSelectedOvertimeRateId] = useState<string | null>(overtimeRates[0]?.id ?? null)
+  const [leavePage, setLeavePage] = useState(1)
+  const [otPage, setOtPage] = useState(1)
   const [isInitializing, setIsInitializing] = useState(false)
   const [isSavingLeave, startSavingLeave] = useTransition()
   const [isSavingOt, startSavingOt] = useTransition()
-  const [initializationYear, setInitializationYear] = useState<number>(() => {
-    const value = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-    }).format(new Date())
-    return Number(value)
-  })
+  const [initializationYear, setInitializationYear] = useState<number>(() => getPhYear())
 
   const defaultEmploymentStatusId = employmentStatuses[0]?.id ?? ""
 
@@ -202,6 +198,14 @@ export function LeaveOtPoliciesPage({
     () => overtimeRates.find((item) => item.id === selectedOvertimeRateId),
     [overtimeRates, selectedOvertimeRateId]
   )
+
+  const leaveTotalPages = Math.max(1, Math.ceil(leaveTypes.length / TABLE_PAGE_SIZE))
+  const safeLeavePage = Math.min(leavePage, leaveTotalPages)
+  const pagedLeaveTypes = leaveTypes.slice((safeLeavePage - 1) * TABLE_PAGE_SIZE, safeLeavePage * TABLE_PAGE_SIZE)
+
+  const otTotalPages = Math.max(1, Math.ceil(overtimeRates.length / TABLE_PAGE_SIZE))
+  const safeOtPage = Math.min(otPage, otTotalPages)
+  const pagedOvertimeRates = overtimeRates.slice((safeOtPage - 1) * TABLE_PAGE_SIZE, safeOtPage * TABLE_PAGE_SIZE)
 
   const [leaveForm, setLeaveForm] = useState<UpsertLeaveTypePolicySettingsInput>(
     createLeaveForm(companyId, defaultEmploymentStatusId, selectedLeaveType)
@@ -345,7 +349,7 @@ export function LeaveOtPoliciesPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {leaveTypes.map((row) => (
+                      {pagedLeaveTypes.map((row) => (
                         <tr
                           key={row.id}
                           className={cn(
@@ -366,36 +370,100 @@ export function LeaveOtPoliciesPage({
                     </tbody>
                   </table>
                 </div>
+                {leaveTypes.length > 0 ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Page {safeLeavePage} of {leaveTotalPages} • {leaveTypes.length} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={safeLeavePage <= 1}
+                        onClick={() => setLeavePage((prev) => Math.max(1, prev - 1))}
+                      >
+                        <IconChevronLeft className="size-3.5" />
+                        Prev
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={safeLeavePage >= leaveTotalPages}
+                        onClick={() => setLeavePage((prev) => Math.min(leaveTotalPages, prev + 1))}
+                      >
+                        Next
+                        <IconChevronRight className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="overflow-x-auto border border-border/60">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Type</th>
-                      <th className="px-3 py-2 text-left">Multiplier</th>
-                      <th className="px-3 py-2 text-left">Effective</th>
-                      <th className="px-3 py-2 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overtimeRates.map((row) => (
-                      <tr
-                        key={row.id}
-                        className={cn(
-                          "cursor-pointer border-t border-border/50 hover:bg-muted/30",
-                          selectedOvertimeRateId === row.id ? "bg-primary text-primary-foreground hover:bg-primary" : ""
-                        )}
-                        onClick={() => setSelectedOvertimeRateId(row.id)}
-                      >
-                        <td className="px-3 py-2">{getOvertimeTypeLabel(row.overtimeTypeCode)}</td>
-                        <td className="px-3 py-2">{row.rateMultiplier.toFixed(2)}x</td>
-                        <td className="px-3 py-2">{row.effectiveFrom}</td>
-                        <td className="px-3 py-2"><StatusBadge active={row.isActive} /></td>
+              <div className="space-y-3">
+                <div className="overflow-x-auto border border-border/60">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Type</th>
+                        <th className="px-3 py-2 text-left">Multiplier</th>
+                        <th className="px-3 py-2 text-left">Effective</th>
+                        <th className="px-3 py-2 text-left">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {pagedOvertimeRates.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={cn(
+                            "cursor-pointer border-t border-border/50 hover:bg-muted/30",
+                            selectedOvertimeRateId === row.id ? "bg-primary text-primary-foreground hover:bg-primary" : ""
+                          )}
+                          onClick={() => setSelectedOvertimeRateId(row.id)}
+                        >
+                          <td className="px-3 py-2">{getOvertimeTypeLabel(row.overtimeTypeCode)}</td>
+                          <td className="px-3 py-2">{row.rateMultiplier.toFixed(2)}x</td>
+                          <td className="px-3 py-2">{row.effectiveFrom}</td>
+                          <td className="px-3 py-2"><StatusBadge active={row.isActive} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {overtimeRates.length > 0 ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Page {safeOtPage} of {otTotalPages} • {overtimeRates.length} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={safeOtPage <= 1}
+                        onClick={() => setOtPage((prev) => Math.max(1, prev - 1))}
+                      >
+                        <IconChevronLeft className="size-3.5" />
+                        Prev
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={safeOtPage >= otTotalPages}
+                        onClick={() => setOtPage((prev) => Math.min(otTotalPages, prev + 1))}
+                      >
+                        Next
+                        <IconChevronRight className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

@@ -78,15 +78,15 @@ model Holiday {
 }
 
 model OvertimeRate {
-  id               String      @id @default(uuid())
+  id               String           @id @default(uuid())
   overtimeTypeCode OvertimeTypeCode
   description      String?
-  rateMultiplier   Decimal     @db.Decimal(4, 2) // e.g., 1.25, 1.30, 1.50, 2.0, 2.6
+  rateMultiplier   Decimal          @db.Decimal(4, 2) // e.g., 1.25, 1.30, 1.50, 2.0, 2.6
   effectiveFrom    DateTime
   effectiveTo      DateTime?
-  isActive         Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([overtimeTypeCode])
   @@index([effectiveFrom])
@@ -146,7 +146,7 @@ model BiometricDevice {
   updatedById String?
 
   // Relations
-  syncLogs      BiometricSyncLog[]
+  syncLogs BiometricSyncLog[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -284,16 +284,16 @@ model OvertimeRequest {
 
 // Tardiness/Undertime Deduction Rules
 model AttendanceDeductionRule {
-  id               String    @id @default(uuid())
+  id               String                      @id @default(uuid())
   ruleType         AttendanceDeductionRuleType
   calculationBasis AttendanceDeductionBasis
-  thresholdMins    Int       @default(0) // Minutes before deduction applies
-  deductionRate    Decimal   @db.Decimal(10, 4) // Rate per unit
+  thresholdMins    Int                         @default(0) // Minutes before deduction applies
+  deductionRate    Decimal                     @db.Decimal(10, 4) // Rate per unit
   effectiveFrom    DateTime
   effectiveTo      DateTime?
-  isActive         Boolean   @default(true)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  isActive         Boolean                     @default(true)
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
 
   @@index([ruleType])
   @@index([effectiveFrom])

@@ -51,20 +51,20 @@ model Employee {
   employmentType     EmploymentType?   @relation(fields: [employmentTypeId], references: [id])
 
   // Employment Dates
-  applicationDate      DateTime? @db.Date
-  interviewDate        DateTime? @db.Date
-  jobOfferDate         DateTime? @db.Date
-  hireDate             DateTime  @db.Date
-  probationStartDate   DateTime? @db.Date
-  probationEndDate     DateTime? @db.Date
-  regularizationDate   DateTime? @db.Date
-  contractStartDate    DateTime? @db.Date
-  contractEndDate      DateTime? @db.Date
-  separationDate       DateTime? @db.Date
-  lastWorkingDay       DateTime? @db.Date
+  applicationDate      DateTime?             @db.Date
+  interviewDate        DateTime?             @db.Date
+  jobOfferDate         DateTime?             @db.Date
+  hireDate             DateTime              @db.Date
+  probationStartDate   DateTime?             @db.Date
+  probationEndDate     DateTime?             @db.Date
+  regularizationDate   DateTime?             @db.Date
+  contractStartDate    DateTime?             @db.Date
+  contractEndDate      DateTime?             @db.Date
+  separationDate       DateTime?             @db.Date
+  lastWorkingDay       DateTime?             @db.Date
   separationReasonCode SeparationReasonCode?
-  isRehireEligible   Boolean?
-  rehireNotes        String?      @db.Text
+  isRehireEligible     Boolean?
+  rehireNotes          String?               @db.Text
 
   // Organizational Assignment
   positionId     String?
@@ -114,11 +114,11 @@ model Employee {
 
   // Tax Information
   taxStatusId                 TaxStatus?
-  numberOfDependents          Int          @default(0)
+  numberOfDependents          Int                 @default(0)
   taxExemptionStatusCode      TaxExemptionStatus?
-  isSubstitutedFiling         Boolean      @default(false)
-  previousEmployerIncome      Decimal?     @db.Decimal(15, 2)
-  previousEmployerTaxWithheld Decimal?     @db.Decimal(15, 2)
+  isSubstitutedFiling         Boolean             @default(false)
+  previousEmployerIncome      Decimal?            @db.Decimal(15, 2)
+  previousEmployerTaxWithheld Decimal?            @db.Decimal(15, 2)
 
   // Soft Delete & Audit
   isActive    Boolean   @default(true)
@@ -161,6 +161,7 @@ model Employee {
   leaveRequestsApproved           LeaveRequest[]            @relation("LeaveApprover")
   leaveRequestsSupervisorApproved LeaveRequest[]            @relation("LeaveSupervisorApprover")
   leaveRequestsHRApproved         LeaveRequest[]            @relation("LeaveHRApprover")
+  materialRequestsRequested       MaterialRequest[]         @relation("MaterialRequestRequesterEmployee")
   loans                           Loan[]
   loanCoMaker                     Loan[]                    @relation("LoanCoMaker")
   recurringDeductions             RecurringDeduction[]
@@ -235,54 +236,54 @@ model EmployeeContact {
 }
 
 model EmployeeEmail {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   employeeId  String
-  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   emailTypeId EmailType
   email       String
-  isPrimary   Boolean     @default(false)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  isPrimary   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([employeeId])
   @@index([email])
 }
 
 model EmployeeSocialMedia {
-  id             String      @id @default(uuid())
-  employeeId     String
-  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  platformCode   SocialMediaPlatform
-  handle         String
-  profileUrl     String?
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id           String              @id @default(uuid())
+  employeeId   String
+  employee     Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  platformCode SocialMediaPlatform
+  handle       String
+  profileUrl   String?
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([employeeId])
 }
 
 model EmployeeGovernmentId {
-  id               String      @id @default(uuid())
-  employeeId       String
-  employee         Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  idTypeId           IdType
-  idNumberEncrypted  String
-  idNumberMasked     String?
-  issueDate          DateTime? @db.Date
-  expiryDate         DateTime? @db.Date
-  issuingAuthority String?
-  placeOfIssue     String?
-  documentUrl      String?
-  isActive         Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  idTypeId          IdType
+  idNumberEncrypted String
+  idNumberMasked    String?
+  issueDate         DateTime? @db.Date
+  expiryDate        DateTime? @db.Date
+  issuingAuthority  String?
+  placeOfIssue      String?
+  documentUrl       String?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
+  @@unique([employeeId, idTypeId])
   @@index([employeeId])
   @@index([idTypeId])
   @@index([expiryDate])
-  @@unique([employeeId, idTypeId])
 }
 
 // ============================================================================
@@ -290,27 +291,27 @@ model EmployeeGovernmentId {
 // ============================================================================
 
 model EmployeeBank {
-  id                String       @id @default(uuid())
-  employeeId        String
-  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  bankName          String
-  bankCode          String? // SWIFT/BIC
-  branchName        String?
-  branchCode        String?
+  id                     String          @id @default(uuid())
+  employeeId             String
+  employee               Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  bankName               String
+  bankCode               String? // SWIFT/BIC
+  branchName             String?
+  branchCode             String?
   accountNumberEncrypted String
   accountNumberMasked    String?
-  accountName       String
-  accountTypeId     BankAccountType
-  currencyCode      CurrencyCode @default(PHP)
-  isPrimary         Boolean      @default(false)
-  allocationPercent Decimal?     @db.Decimal(5, 2)
-  allocationAmount  Decimal?     @db.Decimal(15, 2)
-  isVerified        Boolean      @default(false)
-  verifiedAt        DateTime?
-  verifiedBy        String?
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  accountName            String
+  accountTypeId          BankAccountType
+  currencyCode           CurrencyCode    @default(PHP)
+  isPrimary              Boolean         @default(false)
+  allocationPercent      Decimal?        @db.Decimal(5, 2)
+  allocationAmount       Decimal?        @db.Decimal(15, 2)
+  isVerified             Boolean         @default(false)
+  verifiedAt             DateTime?
+  verifiedBy             String?
+  isActive               Boolean         @default(true)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   @@index([employeeId])
   @@index([isPrimary])
@@ -323,16 +324,16 @@ model EmployeeBank {
 // ============================================================================
 
 model EmployeeDependent {
-  id              String      @id @default(uuid())
+  id              String           @id @default(uuid())
   employeeId      String
-  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   relationshipId  RelationshipType
   firstName       String
   middleName      String?
   lastName        String
   suffix          String?
   maidenName      String?
-  birthDate       DateTime? @db.Date
+  birthDate       DateTime?        @db.Date
   birthPlace      String?
   gender          String?
   occupation      String?
@@ -341,27 +342,27 @@ model EmployeeDependent {
   contactNumber   String?
   email           String?
   tin             String?
-  monthlyIncome   Decimal?    @db.Decimal(15, 2)
-  marriageDate    DateTime? @db.Date
+  monthlyIncome   Decimal?         @db.Decimal(15, 2)
+  marriageDate    DateTime?        @db.Date
   marriagePlace   String?
   schoolName      String?
   schoolLevel     String?
-  isTaxDependent  Boolean     @default(false)
-  isPwd           Boolean     @default(false)
+  isTaxDependent  Boolean          @default(false)
+  isPwd           Boolean          @default(false)
   pwdId           String?
-  isLiving        Boolean     @default(true)
-  isActive        Boolean     @default(true)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  isLiving        Boolean          @default(true)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([employeeId])
   @@index([relationshipId])
 }
 
 model EmployeeEmergencyContact {
-  id             String      @id @default(uuid())
+  id             String           @id @default(uuid())
   employeeId     String
-  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee       Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   name           String
   relationshipId RelationshipType
   street         String?
@@ -371,10 +372,10 @@ model EmployeeEmergencyContact {
   mobileNumber   String?
   landlineNumber String?
   email          String?
-  priority       Int         @default(1)
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  priority       Int              @default(1)
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([employeeId])
   @@index([priority])
@@ -382,21 +383,21 @@ model EmployeeEmergencyContact {
 }
 
 model EmployeeBeneficiary {
-  id             String      @id @default(uuid())
+  id             String           @id @default(uuid())
   employeeId     String
-  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee       Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   name           String
   relationshipId RelationshipType
-  birthDate      DateTime? @db.Date
-  percentage     Decimal     @db.Decimal(5, 2)
+  birthDate      DateTime?        @db.Date
+  percentage     Decimal          @db.Decimal(5, 2)
   street         String?
   city           String?
   province       String?
   contactNumber  String?
   benefitType    String? // Life insurance, retirement, etc.
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([employeeId])
   @@index([relationshipId])
@@ -407,9 +408,9 @@ model EmployeeBeneficiary {
 // ============================================================================
 
 model EmployeeEducation {
-  id               String      @id @default(uuid())
+  id               String         @id @default(uuid())
   employeeId       String
-  employee         Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee         Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   educationLevelId EducationLevel
   schoolName       String
   schoolAddress    String?
@@ -417,30 +418,30 @@ model EmployeeEducation {
   major            String?
   yearStarted      Int?
   yearGraduated    Int?
-  isGraduated      Boolean     @default(false)
-  isOngoing        Boolean     @default(false)
+  isGraduated      Boolean        @default(false)
+  isOngoing        Boolean        @default(false)
   honors           String?
-  isActive         Boolean     @default(true)
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([employeeId])
   @@index([educationLevelId])
 }
 
 model EmployeeLicense {
-  id            String      @id @default(uuid())
-  employeeId    String
-  employee      Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id              String      @id @default(uuid())
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   licenseTypeCode LicenseType
-  licenseNumber String
-  issuingBody   String?
-  issueDate     DateTime? @db.Date
-  expiryDate    DateTime? @db.Date
-  documentUrl   String?
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  licenseNumber   String
+  issuingBody     String?
+  issueDate       DateTime?   @db.Date
+  expiryDate      DateTime?   @db.Date
+  documentUrl     String?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([employeeId])
   @@index([expiryDate])
@@ -498,26 +499,26 @@ model EmployeeSkill {
 }
 
 model EmployeePreviousEmployment {
-  id                   String       @id @default(uuid())
+  id                   String         @id @default(uuid())
   employeeId           String
-  employee             Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee             Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   companyName          String
   companyAddress       String?
   industryCode         IndustryType?
   position             String?
   department           String?
-  startDate            DateTime? @db.Date
-  endDate              DateTime? @db.Date
+  startDate            DateTime?      @db.Date
+  endDate              DateTime?      @db.Date
   reasonForLeavingCode LeavingReason?
-  lastSalary           Decimal?     @db.Decimal(15, 2)
+  lastSalary           Decimal?       @db.Decimal(15, 2)
   lastBenefits         String?
   supervisorName       String?
   supervisorContact    String?
   referenceCheckStatus String?
-  referenceCheckNotes  String?      @db.Text
-  isActive             Boolean      @default(true)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  referenceCheckNotes  String?        @db.Text
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@index([employeeId])
   @@index([industryCode])
@@ -549,28 +550,28 @@ model EmployeeStatusHistory {
 }
 
 model EmployeePositionHistory {
-  id                   String      @id @default(uuid())
+  id                   String               @id @default(uuid())
   employeeId           String
-  employee             Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee             Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   previousPositionId   String?
-  previousPosition     Position?   @relation("PreviousPosition", fields: [previousPositionId], references: [id])
+  previousPosition     Position?            @relation("PreviousPosition", fields: [previousPositionId], references: [id])
   newPositionId        String?
-  newPosition          Position?   @relation("NewPosition", fields: [newPositionId], references: [id])
+  newPosition          Position?            @relation("NewPosition", fields: [newPositionId], references: [id])
   previousDepartmentId String?
-  previousDepartment   Department? @relation("PreviousDepartment", fields: [previousDepartmentId], references: [id])
+  previousDepartment   Department?          @relation("PreviousDepartment", fields: [previousDepartmentId], references: [id])
   newDepartmentId      String?
-  newDepartment        Department? @relation("NewDepartment", fields: [newDepartmentId], references: [id])
+  newDepartment        Department?          @relation("NewDepartment", fields: [newDepartmentId], references: [id])
   previousBranchId     String?
-  previousBranch       Branch?     @relation("PreviousBranch", fields: [previousBranchId], references: [id])
+  previousBranch       Branch?              @relation("PreviousBranch", fields: [previousBranchId], references: [id])
   newBranchId          String?
-  newBranch            Branch?     @relation("NewBranch", fields: [newBranchId], references: [id])
+  newBranch            Branch?              @relation("NewBranch", fields: [newBranchId], references: [id])
   movementType         EmployeeMovementType
   effectiveDate        DateTime             @db.Date
   reason               String?
-  remarks              String?     @db.Text
+  remarks              String?              @db.Text
   approvedById         String?
   approvedAt           DateTime?
-  createdAt            DateTime    @default(now())
+  createdAt            DateTime             @default(now())
 
   @@index([employeeId])
   @@index([effectiveDate])
@@ -583,21 +584,21 @@ model EmployeePositionHistory {
 }
 
 model EmployeeSalaryHistory {
-  id                String       @id @default(uuid())
-  employeeId        String
-  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  previousSalary    Decimal?     @db.Decimal(15, 2)
-  newSalary         Decimal      @db.Decimal(15, 2)
+  id                 String                @id @default(uuid())
+  employeeId         String
+  employee           Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  previousSalary     Decimal?              @db.Decimal(15, 2)
+  newSalary          Decimal               @db.Decimal(15, 2)
   adjustmentTypeCode SalaryAdjustmentType?
-  adjustmentPercent Decimal?     @db.Decimal(5, 2)
-  adjustmentAmount  Decimal?     @db.Decimal(15, 2)
-  effectiveDate     DateTime             @db.Date
-  reason            String?
-  remarks           String?      @db.Text
-  approvalStatus    String?
-  approvedById      String?
-  approvedAt        DateTime?
-  createdAt         DateTime     @default(now())
+  adjustmentPercent  Decimal?              @db.Decimal(5, 2)
+  adjustmentAmount   Decimal?              @db.Decimal(15, 2)
+  effectiveDate      DateTime              @db.Date
+  reason             String?
+  remarks            String?               @db.Text
+  approvalStatus     String?
+  approvedById       String?
+  approvedAt         DateTime?
+  createdAt          DateTime              @default(now())
 
   @@index([employeeId])
   @@index([effectiveDate])
@@ -619,20 +620,20 @@ model EmployeeScheduleHistory {
 }
 
 model EmployeeRankHistory {
-  id             String    @id @default(uuid())
+  id             String               @id @default(uuid())
   employeeId     String
-  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee       Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   previousRankId String?
-  previousRank   Rank?     @relation("PreviousRank", fields: [previousRankId], references: [id])
+  previousRank   Rank?                @relation("PreviousRank", fields: [previousRankId], references: [id])
   newRankId      String?
-  newRank        Rank?     @relation("NewRank", fields: [newRankId], references: [id])
+  newRank        Rank?                @relation("NewRank", fields: [newRankId], references: [id])
   movementType   EmployeeMovementType
   effectiveDate  DateTime             @db.Date
   reason         String?
-  remarks        String?   @db.Text
+  remarks        String?              @db.Text
   approvedById   String?
   approvedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime             @default(now())
 
   @@index([employeeId])
   @@index([effectiveDate])

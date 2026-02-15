@@ -1,8 +1,9 @@
 import { AttendanceStatus, RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { parsePhDateInputToUtcDateOnly, toPhDateInputValue, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import type { DtrLogItem, LeaveOverlayItem, WorkbenchItem, WorkbenchStats } from "@/modules/attendance/dtr/types"
 
 type DateRangeInput = {
@@ -30,46 +31,22 @@ export type DtrPageData = {
   }
 }
 
-const toDateInputValue = (value: Date): string =>
-  new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(value)
-
-const toPhDateOnlyUtc = (value: Date = new Date()): Date => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(value)
-
-  const year = Number(parts.find((part) => part.type === "year")?.value ?? "1970")
-  const month = Number(parts.find((part) => part.type === "month")?.value ?? "01")
-  const day = Number(parts.find((part) => part.type === "day")?.value ?? "01")
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
-const fromDateInput = (value: string | undefined): Date | null => {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
-  const [year, month, day] = value.split("-").map((part) => Number(part))
-  return new Date(Date.UTC(year, month - 1, day))
-}
-
 const toIsoOrNull = (value: Date | null): string | null => (value ? value.toISOString() : null)
 
 export async function getDtrPageData(companyId: string, range?: DateRangeInput): Promise<DtrPageData> {
   const context = await getActiveCompanyContext({ companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     throw new Error("ACCESS_DENIED")
   }
 
   const todayPh = toPhDateOnlyUtc()
   const defaultStart = new Date(todayPh.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const startDate = fromDateInput(range?.startDate) ?? defaultStart
-  const endDate = fromDateInput(range?.endDate) ?? todayPh
+  const parsedStart = range?.startDate ? parsePhDateInputToUtcDateOnly(range.startDate) : null
+  const parsedEnd = range?.endDate ? parsePhDateInputToUtcDateOnly(range.endDate) : null
+
+  const rawStart = parsedStart ?? defaultStart
+  const rawEnd = parsedEnd ?? todayPh
+  const [startDate, endDate] = rawStart.getTime() <= rawEnd.getTime() ? [rawStart, rawEnd] : [rawEnd, rawStart]
 
   const [logs, leaves, activeEmployees, presentToday, pendingLeaves, pendingOTs, anomalies] = await Promise.all([
     db.dailyTimeRecord.findMany({
@@ -298,8 +275,8 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
     },
     leaveOverlays: mappedLeaves,
     filters: {
-      startDate: toDateInputValue(startDate),
-      endDate: toDateInputValue(endDate),
+      startDate: toPhDateInputValue(startDate),
+      endDate: toPhDateInputValue(endDate),
     },
   }
 }

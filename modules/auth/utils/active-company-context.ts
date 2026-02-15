@@ -120,12 +120,14 @@ export async function persistSelectedCompanyForUser(params: {
 
   const switchedAt = new Date()
 
-  await db.$executeRawUnsafe(
-    'UPDATE "User" SET "selectedCompanyId" = $1, "lastCompanySwitchedAt" = $2, "updatedAt" = $2 WHERE "id" = $3',
-    params.companyId,
-    switchedAt,
-    params.userId
-  )
+  await db.user.update({
+    where: { id: params.userId },
+    data: {
+      selectedCompanyId: params.companyId,
+      lastCompanySwitchedAt: switchedAt,
+      updatedAt: switchedAt,
+    },
+  })
 }
 
 export async function getUserCompanyOptions(userId: string): Promise<UserCompanyOption[]> {

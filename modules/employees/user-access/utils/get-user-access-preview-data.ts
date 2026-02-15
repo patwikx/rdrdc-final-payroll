@@ -5,6 +5,7 @@ const DEFAULT_SYSTEM_USER_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 100
 
 export type UserAccessLinkFilter = "ALL" | "LINKED" | "UNLINKED"
+export type UserAccessRoleFilter = "ALL" | "EMPLOYEE" | "HR_ADMIN" | "PAYROLL_ADMIN" | "COMPANY_ADMIN"
 
 export type UserAccessPreviewRow = {
   employeeId: string
@@ -20,6 +21,23 @@ export type UserAccessPreviewRow = {
   linkedUserActive: boolean
   linkedCompanyRole: string | null
   requestApprover: boolean
+  materialRequestPurchaser: boolean
+  materialRequestPoster: boolean
+  linkedCompanyAccesses: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
+    role: string
+    isDefault: boolean
+    isMaterialRequestPurchaser: boolean
+    isMaterialRequestPoster: boolean
+  }>
+}
+
+export type UserAccessCompanyOption = {
+  companyId: string
+  companyCode: string
+  companyName: string
 }
 
 export type AvailableSystemUserOption = {
@@ -38,6 +56,8 @@ export type SystemUserAccountRow = {
   companyRole: string
   isActive: boolean
   isRequestApprover: boolean
+  isMaterialRequestPurchaser: boolean
+  isMaterialRequestPoster: boolean
   isLinked: boolean
   linkedEmployeeNumber: string | null
   linkedEmployeeName: string | null
@@ -48,6 +68,7 @@ export type UserAccessPreviewQuery = {
   employeePage?: number
   employeePageSize?: number
   employeeLinkFilter?: UserAccessLinkFilter
+  roleFilter?: UserAccessRoleFilter
   systemUserPage?: number
   systemUserPageSize?: number
   systemLinkFilter?: UserAccessLinkFilter
@@ -57,9 +78,11 @@ export type UserAccessPreviewData = {
   rows: UserAccessPreviewRow[]
   availableUsers: AvailableSystemUserOption[]
   systemUsers: SystemUserAccountRow[]
+  companyOptions: UserAccessCompanyOption[]
   query: string
   employeeLinkFilter: UserAccessLinkFilter
   systemLinkFilter: UserAccessLinkFilter
+  roleFilter: UserAccessRoleFilter
   employeePagination: {
     page: number
     pageSize: number
@@ -94,6 +117,18 @@ const normalizeLinkFilter = (value: UserAccessPreviewQuery["employeeLinkFilter"]
   return "ALL"
 }
 
+const normalizeRoleFilter = (value: UserAccessPreviewQuery["roleFilter"]): UserAccessRoleFilter => {
+  if (
+    value === "EMPLOYEE" ||
+    value === "HR_ADMIN" ||
+    value === "PAYROLL_ADMIN" ||
+    value === "COMPANY_ADMIN"
+  ) {
+    return value
+  }
+  return "ALL"
+}
+
 export async function getUserAccessPreviewData(
   companyId: string,
   options: UserAccessPreviewQuery = {}
@@ -105,12 +140,28 @@ export async function getUserAccessPreviewData(
   const systemUserPageSize = normalizePageSize(options.systemUserPageSize, DEFAULT_SYSTEM_USER_PAGE_SIZE)
   const employeeLinkFilter = normalizeLinkFilter(options.employeeLinkFilter)
   const systemLinkFilter = normalizeLinkFilter(options.systemLinkFilter)
+  const roleFilter = normalizeRoleFilter(options.roleFilter)
 
   const employeeWhere = {
     companyId,
     deletedAt: null,
     ...(employeeLinkFilter === "LINKED" ? { user: { isNot: null } } : {}),
     ...(employeeLinkFilter === "UNLINKED" ? { user: null } : {}),
+    ...(roleFilter !== "ALL"
+      ? {
+          user: {
+            is: {
+              companyAccess: {
+                some: {
+                  companyId,
+                  isActive: true,
+                  role: roleFilter,
+                },
+              },
+            },
+          },
+        }
+      : {}),
     ...(normalizedQuery
       ? {
           OR: [
@@ -130,6 +181,7 @@ export async function getUserAccessPreviewData(
     companyId,
     ...(systemLinkFilter === "LINKED" ? { user: { employee: { isNot: null } } } : {}),
     ...(systemLinkFilter === "UNLINKED" ? { user: { employee: null } } : {}),
+    ...(roleFilter !== "ALL" ? { role: roleFilter } : {}),
     ...(normalizedQuery
       ? {
           OR: [
@@ -143,7 +195,7 @@ export async function getUserAccessPreviewData(
       : {}),
   }
 
-  const [employeeTotalItems, systemUserTotalItems, employees, users, companyUsers] = await Promise.all([
+  const [employeeTotalItems, systemUserTotalItems, employees, users, companyUsers, companyOptions] = await Promise.all([
     db.employee.count({
       where: employeeWhere,
     }),
@@ -170,13 +222,24 @@ export async function getUserAccessPreviewData(
             isRequestApprover: true,
             companyAccess: {
               where: {
-                companyId,
                 isActive: true,
+                company: {
+                  isActive: true,
+                },
               },
               select: {
+                companyId: true,
                 role: true,
+                isDefault: true,
+                isMaterialRequestPurchaser: true,
+                isMaterialRequestPoster: true,
+                company: {
+                  select: {
+                    code: true,
+                    name: true,
+                  },
+                },
               },
-              take: 1,
             },
           },
         },
@@ -213,6 +276,8 @@ export async function getUserAccessPreviewData(
       orderBy: [{ user: { lastName: "asc" } }, { user: { firstName: "asc" } }],
       select: {
         role: true,
+        isMaterialRequestPurchaser: true,
+        isMaterialRequestPoster: true,
         user: {
           select: {
             id: true,
@@ -235,12 +300,32 @@ export async function getUserAccessPreviewData(
       skip: (systemUserPage - 1) * systemUserPageSize,
       take: systemUserPageSize,
     }),
+    db.company.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: [{ name: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    }),
   ])
 
   const employeeTotalPages = Math.max(1, Math.ceil(employeeTotalItems / employeePageSize))
   const systemUserTotalPages = Math.max(1, Math.ceil(systemUserTotalItems / systemUserPageSize))
 
   const rows: UserAccessPreviewRow[] = employees.map((employee) => ({
+    // The first block is current-company scoped summary for table columns.
+    ...(() => {
+      const currentCompanyAccess = employee.user?.companyAccess.find((access) => access.companyId === companyId)
+      return {
+        linkedCompanyRole: currentCompanyAccess?.role ?? null,
+        materialRequestPurchaser: currentCompanyAccess?.isMaterialRequestPurchaser ?? false,
+        materialRequestPoster: currentCompanyAccess?.isMaterialRequestPoster ?? false,
+      }
+    })(),
     employeeId: employee.id,
     employeeNumber: employee.employeeNumber,
     fullName: `${employee.lastName}, ${employee.firstName}`,
@@ -252,8 +337,16 @@ export async function getUserAccessPreviewData(
     linkedUsername: employee.user?.username ?? null,
     linkedEmail: employee.user?.email ?? null,
     linkedUserActive: employee.user?.isActive ?? false,
-    linkedCompanyRole: employee.user?.companyAccess[0]?.role ?? null,
     requestApprover: employee.user?.isRequestApprover ?? false,
+    linkedCompanyAccesses: (employee.user?.companyAccess ?? []).map((access) => ({
+      companyId: access.companyId,
+      companyCode: access.company.code,
+      companyName: access.company.name,
+      role: access.role,
+      isDefault: access.isDefault,
+      isMaterialRequestPurchaser: access.isMaterialRequestPurchaser,
+      isMaterialRequestPoster: access.isMaterialRequestPoster,
+    })),
   }))
 
   const availableUsers: AvailableSystemUserOption[] = users.map((user) => ({
@@ -272,6 +365,8 @@ export async function getUserAccessPreviewData(
     companyRole: record.role,
     isActive: record.user.isActive,
     isRequestApprover: record.user.isRequestApprover,
+    isMaterialRequestPurchaser: record.isMaterialRequestPurchaser,
+    isMaterialRequestPoster: record.isMaterialRequestPoster,
     isLinked: Boolean(record.user.employee?.employeeNumber),
     linkedEmployeeNumber: record.user.employee?.employeeNumber ?? null,
     linkedEmployeeName: record.user.employee
@@ -283,9 +378,15 @@ export async function getUserAccessPreviewData(
     rows,
     availableUsers,
     systemUsers,
+    companyOptions: companyOptions.map((company) => ({
+      companyId: company.id,
+      companyCode: company.code,
+      companyName: company.name,
+    })),
     query: normalizedQuery,
     employeeLinkFilter,
     systemLinkFilter,
+    roleFilter,
     employeePagination: {
       page: Math.min(employeePage, employeeTotalPages),
       pageSize: employeePageSize,

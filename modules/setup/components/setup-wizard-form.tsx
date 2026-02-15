@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { setupDraftSchema, type SetupDraftInput } from "@/modules/setup/schemas/initialize-system-schema"
 
 const SETUP_DRAFT_STORAGE_KEY = "setupDraftV1"
@@ -199,25 +200,8 @@ type StepProps = {
   setDraft: Dispatch<SetStateAction<SetupDraftInput>>
 }
 
-const parsePhDateInput = (value: string): Date | undefined => {
-  if (!value) return undefined
-  const parsed = new Date(`${value}T00:00:00+08:00`)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed
-}
-
-const toPhDateInputValue = (date: Date | undefined): string => {
-  if (!date) return ""
-
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date)
-}
-
 const formatPhDateLabel = (value: string): string => {
-  const parsed = parsePhDateInput(value)
+  const parsed = parsePhDateInputToPhDate(value)
   if (!parsed) return ""
 
   return new Intl.DateTimeFormat("en-PH", {
@@ -757,7 +741,7 @@ function HolidaysStep({ draft, setDraft }: StepProps) {
               <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
-                  selected={parsePhDateInput(item.holidayDate)}
+                  selected={parsePhDateInputToPhDate(item.holidayDate) ?? undefined}
                   onSelect={(date) =>
                     setDraft((d) => ({
                       ...d,

@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { dtrEmployeeDateRangeInputSchema, type DtrEmployeeDateRangeInput } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
 import type { DtrLogItem } from "@/modules/attendance/dtr/types"
 
 type GetEmployeeDtrLogsActionResult =
@@ -20,14 +21,20 @@ export async function getEmployeeDtrLogsAction(params: {
   startDate: string
   endDate: string
 }): Promise<GetEmployeeDtrLogsActionResult> {
-  const context = await getActiveCompanyContext({ companyId: params.companyId })
-  if (!hasModuleAccess(context.companyRole as CompanyRole, "attendance")) {
+  const parsed = dtrEmployeeDateRangeInputSchema.safeParse(params)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid DTR filters." }
+  }
+
+  const payload: DtrEmployeeDateRangeInput = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
     return { ok: false, error: "You do not have permission to view DTR logs." }
   }
 
   const employee = await db.employee.findFirst({
     where: {
-      id: params.employeeId,
+      id: payload.employeeId,
       companyId: context.companyId,
       deletedAt: null,
     },
@@ -40,10 +47,10 @@ export async function getEmployeeDtrLogsAction(params: {
 
   const logs = await db.dailyTimeRecord.findMany({
     where: {
-      employeeId: params.employeeId,
+      employeeId: payload.employeeId,
       attendanceDate: {
-        gte: toPhDate(params.startDate),
-        lte: toPhDate(params.endDate),
+        gte: toPhDate(payload.startDate),
+        lte: toPhDate(payload.endDate),
       },
     },
     orderBy: [{ attendanceDate: "asc" }],

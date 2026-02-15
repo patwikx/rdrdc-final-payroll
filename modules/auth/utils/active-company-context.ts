@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { db } from "@/lib/db"
+import { cache } from "react"
 
 export type ActiveCompanyContext = {
   userId: string
@@ -7,6 +8,7 @@ export type ActiveCompanyContext = {
   companyCode: string
   companyName: string
   companyRole: string
+  userRole: string | null
   isDefaultCompany: boolean
 }
 
@@ -29,76 +31,106 @@ type ActiveCompanyResolverOptions = {
   companyId?: string | null
 }
 
-export async function getActiveCompanyContext(
-  options?: ActiveCompanyResolverOptions
-): Promise<ActiveCompanyContext> {
+type ActiveCompanySession = {
+  userId: string
+  defaultCompanyId: string | null
+  userRole: string | null
+}
+
+const getActiveCompanySession = cache(async (): Promise<ActiveCompanySession> => {
   const session = await auth()
 
   if (!session?.user?.id) {
     throw new ActiveCompanyContextError("Unauthorized: no authenticated user")
   }
 
-  const userPreference = await db.user.findUnique({
-    where: { id: session.user.id },
+  return {
+    userId: session.user.id,
+    defaultCompanyId: session.user.defaultCompanyId ?? null,
+    userRole: session.user.role ?? null,
+  }
+})
+
+const getUserPreference = cache(async (userId: string) => {
+  return db.user.findUnique({
+    where: { id: userId },
     select: { selectedCompanyId: true },
   })
+})
 
-  const requestedCompanyId =
-    options?.companyId ?? userPreference?.selectedCompanyId ?? session.user.defaultCompanyId ?? null
+const resolveActiveCompanyContext = cache(
+  async (requestedCompanyIdInput: string | null): Promise<ActiveCompanyContext> => {
+    const session = await getActiveCompanySession()
+    const userPreference = await getUserPreference(session.userId)
 
-  const commonQuery = {
-    userId: session.user.id,
-    isActive: true,
-  }
+    const requestedCompanyId =
+      requestedCompanyIdInput ??
+      userPreference?.selectedCompanyId ??
+      session.defaultCompanyId ??
+      null
 
-  const includeCompany = {
-    company: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        isActive: true,
-      },
-    },
-  }
+    const commonQuery = {
+      userId: session.userId,
+      isActive: true,
+    }
 
-  const orderBy = [{ isDefault: "desc" as const }, { createdAt: "asc" as const }]
-
-  let companyAccess = requestedCompanyId
-    ? await db.userCompanyAccess.findFirst({
-        where: {
-          ...commonQuery,
-          companyId: requestedCompanyId,
+    const includeCompany = {
+      company: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          isActive: true,
         },
+      },
+    }
+
+    const orderBy = [{ isDefault: "desc" as const }, { createdAt: "asc" as const }]
+
+    let companyAccess = requestedCompanyId
+      ? await db.userCompanyAccess.findFirst({
+          where: {
+            ...commonQuery,
+            companyId: requestedCompanyId,
+          },
+          include: includeCompany,
+          orderBy,
+        })
+      : null
+
+    if (!companyAccess) {
+      companyAccess = await db.userCompanyAccess.findFirst({
+        where: commonQuery,
         include: includeCompany,
         orderBy,
       })
-    : null
+    }
 
-  if (!companyAccess) {
-    companyAccess = await db.userCompanyAccess.findFirst({
-      where: commonQuery,
-      include: includeCompany,
-      orderBy,
-    })
-  }
+    if (!companyAccess) {
+      throw new ActiveCompanyContextError("No active company access found for user")
+    }
 
-  if (!companyAccess) {
-    throw new ActiveCompanyContextError("No active company access found for user")
-  }
+    if (!companyAccess.company.isActive) {
+      throw new ActiveCompanyContextError("Selected company is inactive")
+    }
 
-  if (!companyAccess.company.isActive) {
-    throw new ActiveCompanyContextError("Selected company is inactive")
+    return {
+      userId: session.userId,
+      companyId: companyAccess.companyId,
+      companyCode: companyAccess.company.code,
+      companyName: companyAccess.company.name,
+      companyRole: companyAccess.role,
+      userRole: session.userRole,
+      isDefaultCompany: companyAccess.isDefault,
+    }
   }
+)
 
-  return {
-    userId: session.user.id,
-    companyId: companyAccess.companyId,
-    companyCode: companyAccess.company.code,
-    companyName: companyAccess.company.name,
-    companyRole: companyAccess.role,
-    isDefaultCompany: companyAccess.isDefault,
-  }
+export async function getActiveCompanyContext(
+  options?: ActiveCompanyResolverOptions
+): Promise<ActiveCompanyContext> {
+  const requestedCompanyIdInput = options?.companyId ?? null
+  return resolveActiveCompanyContext(requestedCompanyIdInput)
 }
 
 export async function persistSelectedCompanyForUser(params: {

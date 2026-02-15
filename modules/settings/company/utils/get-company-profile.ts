@@ -1,6 +1,10 @@
 import { db } from "@/lib/db"
-import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import {
+  getActiveCompanyContext,
+  type ActiveCompanyContext,
+} from "@/modules/auth/utils/active-company-context"
 import type { CompanyProfileInput } from "@/modules/settings/company/schemas/company-profile-schema"
+import { cache } from "react"
 
 type ParentCompanyOption = {
   id: string
@@ -30,42 +34,53 @@ const toDateInputValue = (value: Date | null | undefined): string => {
 
 const toText = (value: string | null | undefined): string => value ?? ""
 
-export async function getCompanyProfileViewModel(companyId: string): Promise<CompanyProfileViewModel> {
-  const context = await getActiveCompanyContext({ companyId })
+const getCompanyProfileRecord = cache(async (companyId: string) => {
+  return db.company.findUnique({
+    where: { id: companyId },
+    include: {
+      addresses: {
+        where: { isPrimary: true, isActive: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+      contacts: {
+        where: { isPrimary: true, isActive: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+      emails: {
+        where: { isPrimary: true, isActive: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+    },
+  })
+})
+
+const getParentCompanyOptions = cache(async (companyId: string): Promise<ParentCompanyOption[]> => {
+  return db.company.findMany({
+    where: {
+      id: { not: companyId },
+      isActive: true,
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+    },
+    orderBy: [{ name: "asc" }],
+  })
+})
+
+export async function getCompanyProfileViewModel(
+  companyId: string,
+  context?: ActiveCompanyContext
+): Promise<CompanyProfileViewModel> {
+  const resolvedContext = context ?? (await getActiveCompanyContext({ companyId }))
 
   const [company, parentCompanyOptions] = await Promise.all([
-    db.company.findUnique({
-      where: { id: context.companyId },
-      include: {
-        addresses: {
-          where: { isPrimary: true, isActive: true },
-          orderBy: { createdAt: "asc" },
-          take: 1,
-        },
-        contacts: {
-          where: { isPrimary: true, isActive: true },
-          orderBy: { createdAt: "asc" },
-          take: 1,
-        },
-        emails: {
-          where: { isPrimary: true, isActive: true },
-          orderBy: { createdAt: "asc" },
-          take: 1,
-        },
-      },
-    }),
-    db.company.findMany({
-      where: {
-        id: { not: context.companyId },
-        isActive: true,
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-      orderBy: [{ name: "asc" }],
-    }),
+    getCompanyProfileRecord(resolvedContext.companyId),
+    getParentCompanyOptions(resolvedContext.companyId),
   ])
 
   if (!company) {
@@ -77,9 +92,9 @@ export async function getCompanyProfileViewModel(companyId: string): Promise<Com
   const primaryEmail = company.emails[0]
 
   return {
-    companyName: context.companyName,
-    companyCode: context.companyCode,
-    companyRole: context.companyRole,
+    companyName: resolvedContext.companyName,
+    companyCode: resolvedContext.companyCode,
+    companyRole: resolvedContext.companyRole,
     parentCompanyOptions,
     form: {
       companyId: company.id,

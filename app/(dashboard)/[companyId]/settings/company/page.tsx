@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 
-import { auth } from "@/auth"
 import {
   ActiveCompanyContextError,
   getActiveCompanyContext,
@@ -61,9 +60,8 @@ export default async function CompanyProfileRoutePage({ params }: CompanyProfile
     }
   }
 
-  const profile = await getCompanyProfileViewModel(company.companyId)
-  const session = await auth()
-  const canCreateCompany = company.companyRole === "COMPANY_ADMIN" || session?.user?.role === "SUPER_ADMIN"
+  const profile = await getCompanyProfileViewModel(company.companyId, company)
+  const canCreateCompany = company.companyRole === "COMPANY_ADMIN" || company.userRole === "SUPER_ADMIN"
 
   return (
     <CompanyProfilePage

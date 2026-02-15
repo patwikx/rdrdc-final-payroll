@@ -3,19 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  IconBriefcase,
   IconBuilding,
-  IconChevronLeft,
-  IconChevronRight,
-  IconDots,
-  IconEdit,
-  IconLink,
-  IconMail,
-  IconPackage,
-  IconShieldCheck,
-  IconUser,
-  IconUserCheck,
-  IconUserX,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -34,8 +22,6 @@ import type {
   SystemUserAccountRow,
   UserAccessPreviewRow,
 } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -46,10 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { UserAccessWorkspace } from "./user-access-workspace"

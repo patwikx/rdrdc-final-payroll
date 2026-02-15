@@ -7,21 +7,70 @@ import bcrypt from "bcryptjs"
 
 import { createAuditLog, getRequestAuditMetadata } from "@/modules/audit/utils/audit-log"
 
-type DbUser = Awaited<ReturnType<typeof db.user.findFirst>>
+type LoginUserRecord = Awaited<ReturnType<typeof getLoginUser>>
 
-async function getUser(identifier: string): Promise<DbUser> {
+async function getLoginUser(identifier: string): Promise<{
+  id: string
+  email: string
+  passwordHash: string
+  firstName: string
+  lastName: string
+  role: string
+  isAdmin: boolean
+  isActive: boolean
+  lastLoginAt: Date | null
+  companyAccess: Array<{
+    companyId: string
+    role: string
+  }>
+  employee: {
+    id: string
+    employeeNumber: string
+    companyId: string
+  } | null
+} | null> {
   try {
-    const user = await db.user.findFirst({ 
-      where: { 
+    const user = await db.user.findFirst({
+      where: {
         OR: [
           { email: identifier },
-          { username: identifier }
-        ]
-      } 
+          { username: identifier },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isAdmin: true,
+        isActive: true,
+        lastLoginAt: true,
+        companyAccess: {
+          where: {
+            isDefault: true,
+            isActive: true,
+          },
+          orderBy: [{ createdAt: "asc" }],
+          select: {
+            companyId: true,
+            role: true,
+          },
+          take: 1,
+        },
+        employee: {
+          select: {
+            id: true,
+            employeeNumber: true,
+            companyId: true,
+          },
+        },
+      },
     })
     return user
   } catch (error) {
-    console.error('Failed to fetch user:', error)
+    console.error("Failed to fetch user:", error)
     return null
   }
 }
@@ -49,7 +98,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
           if (parsedCredentials.success) {
             const { identifier, password } = parsedCredentials.data
-            const user = await getUser(identifier)
+            const user: LoginUserRecord = await getLoginUser(identifier)
             if (!user || !user.isActive) {
               await safeCreateAuditLog({
                 tableName: "AuthSession",
@@ -70,10 +119,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
             const passwordsMatch = await bcrypt.compare(password, user.passwordHash)
             if (passwordsMatch) {
-              const companyAccess = await db.userCompanyAccess.findFirst({
-                where: { userId: user.id, isDefault: true, isActive: true },
-                include: { company: true },
-              })
+              const companyAccess = user.companyAccess[0] ?? null
 
               if (!companyAccess && !user.isAdmin) {
                 await safeCreateAuditLog({
@@ -94,36 +140,35 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
                 return null
               }
 
-              const employee = await db.employee.findUnique({
-                where: { userId: user.id },
-                select: { id: true, employeeNumber: true, companyId: true },
-              })
+              const employee = user.employee
+              const now = new Date()
 
-              await db.user.update({
-                where: { id: user.id },
-                data: { lastLoginAt: new Date() },
-              })
-
-              await safeCreateAuditLog({
-                tableName: "AuthSession",
-                recordId: user.id,
-                action: "UPDATE",
-                userId: user.id,
-                reason: "LOGIN_SUCCESS",
-                ...getRequestAuditMetadata(request),
-                changes: [
-                  {
-                    fieldName: "authEvent",
-                    oldValue: "ANONYMOUS",
-                    newValue: "LOGIN_SUCCESS",
-                  },
-                  {
-                    fieldName: "lastLoginAt",
-                    oldValue: user.lastLoginAt,
-                    newValue: new Date(),
-                  },
-                ],
-              })
+              await Promise.all([
+                db.user.update({
+                  where: { id: user.id },
+                  data: { lastLoginAt: now },
+                }),
+                safeCreateAuditLog({
+                  tableName: "AuthSession",
+                  recordId: user.id,
+                  action: "UPDATE",
+                  userId: user.id,
+                  reason: "LOGIN_SUCCESS",
+                  ...getRequestAuditMetadata(request),
+                  changes: [
+                    {
+                      fieldName: "authEvent",
+                      oldValue: "ANONYMOUS",
+                      newValue: "LOGIN_SUCCESS",
+                    },
+                    {
+                      fieldName: "lastLoginAt",
+                      oldValue: user.lastLoginAt,
+                      newValue: now,
+                    },
+                  ],
+                }),
+              ])
 
               return {
                 id: user.id,
@@ -161,7 +206,6 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           console.error("Credentials authorize error:", error)
         }
 
-        console.log('Invalid credentials')
         return null
       },
     }),

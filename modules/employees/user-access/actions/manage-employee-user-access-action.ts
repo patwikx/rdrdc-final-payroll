@@ -158,7 +158,6 @@ export async function getAvailableSystemUsersAction(input: {
         : {}),
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    take: 100,
     select: {
       id: true,
       username: true,

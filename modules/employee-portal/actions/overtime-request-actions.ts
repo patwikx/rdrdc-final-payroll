@@ -22,10 +22,30 @@ import {
   type CreateOvertimeRequestInput,
   type UpdateOvertimeRequestInput,
 } from "@/modules/employee-portal/schemas/overtime-request-actions-schema"
+import { sendSupervisorRequestSubmissionEmail } from "@/modules/notifications/utils/request-approval-email"
 
 type OvertimeRequestActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string }
+
+const overtimeDateLabel = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "2-digit",
+  year: "numeric",
+  timeZone: "Asia/Manila",
+})
+
+const overtimeTimeLabel = new Intl.DateTimeFormat("en-PH", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+  timeZone: "UTC",
+})
+
+const formatOvertimeClock = (value: string): string => {
+  const [hour, minute] = value.split(":").map((part) => Number(part))
+  return overtimeTimeLabel.format(new Date(Date.UTC(1970, 0, 1, hour, minute, 0, 0)))
+}
 
 export async function createOvertimeRequestAction(
   input: CreateOvertimeRequestInput
@@ -52,7 +72,24 @@ export async function createOvertimeRequestAction(
     },
     select: {
       id: true,
+      firstName: true,
+      lastName: true,
+      employeeNumber: true,
       reportingManagerId: true,
+      reportingManager: {
+        select: {
+          firstName: true,
+          lastName: true,
+          user: {
+            select: { email: true },
+          },
+          emails: {
+            where: { isActive: true },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: { email: true },
+          },
+        },
+      },
     },
   })
 
@@ -111,6 +148,38 @@ export async function createOvertimeRequestAction(
   revalidatePath(`/${context.companyId}/employee-portal`)
   revalidatePath(`/${context.companyId}/employee-portal/overtime`)
   revalidatePath(`/${context.companyId}/dashboard`)
+
+  const supervisorEmail =
+    employee.reportingManager?.emails[0]?.email ?? employee.reportingManager?.user?.email ?? null
+  const supervisorName = employee.reportingManager
+    ? `${employee.reportingManager.firstName} ${employee.reportingManager.lastName}`
+    : null
+
+  const notification = await sendSupervisorRequestSubmissionEmail({
+    supervisorEmail,
+    supervisorName,
+    requesterName: `${employee.firstName} ${employee.lastName}`,
+    requesterEmployeeNumber: employee.employeeNumber,
+    requestTypeLabel: "Overtime Request",
+    requestNumber: created.requestNumber,
+    companyName: context.companyName,
+    approvalPath: `/${context.companyId}/employee-portal/overtime-approvals`,
+    detailLines: [
+      `Overtime date: ${overtimeDateLabel.format(overtimeDate)}`,
+      `Time range: ${formatOvertimeClock(payload.startTime)} to ${formatOvertimeClock(payload.endTime)}`,
+      `Total hours: ${hours.toFixed(2)} hour(s)`,
+      payload.reason?.trim() ? `Reason: ${payload.reason.trim()}` : "",
+    ],
+  })
+
+  if (!notification.ok) {
+    console.error("[createOvertimeRequestAction] Supervisor notification email failed", {
+      companyId: context.companyId,
+      requestId: created.id,
+      requestNumber: created.requestNumber,
+      error: notification.error,
+    })
+  }
 
   return { ok: true, message: `Overtime request ${created.requestNumber} submitted.` }
 }

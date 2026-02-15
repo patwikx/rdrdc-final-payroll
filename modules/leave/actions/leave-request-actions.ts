@@ -22,8 +22,24 @@ import {
   type UpdateLeaveRequestInput,
 } from "@/modules/leave/schemas/leave-request-actions-schema"
 import type { LeaveActionResult } from "@/modules/leave/types/leave-action-result"
+import { sendSupervisorRequestSubmissionEmail } from "@/modules/notifications/utils/request-approval-email"
 
 const parseDateInput = (value: string): Date | null => parsePhDateInputToUtcDateOnly(value)
+
+const leaveDateLabel = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "2-digit",
+  year: "numeric",
+  timeZone: "Asia/Manila",
+})
+
+const toDayCountLabel = (value: number): string => {
+  if (Number.isInteger(value)) {
+    return `${value} day(s)`
+  }
+
+  return `${value.toFixed(1)} day(s)`
+}
 
 const dayDiffInclusive = (start: Date, end: Date): number => {
   const ms = end.getTime() - start.getTime()
@@ -76,7 +92,24 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
       },
       select: {
         id: true,
+        firstName: true,
+        lastName: true,
+        employeeNumber: true,
         reportingManagerId: true,
+        reportingManager: {
+          select: {
+            firstName: true,
+            lastName: true,
+            user: {
+              select: { email: true },
+            },
+            emails: {
+              where: { isActive: true },
+              orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+              select: { email: true },
+            },
+          },
+        },
       },
     }),
     db.leaveType.findFirst({
@@ -85,7 +118,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
         isActive: true,
         OR: [{ companyId: context.companyId }, { companyId: null }],
       },
-      select: { id: true, isPaid: true },
+      select: { id: true, name: true, isPaid: true },
     }),
   ])
 
@@ -183,6 +216,38 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
     revalidatePath(`/${context.companyId}/employee-portal`)
     revalidatePath(`/${context.companyId}/employee-portal/leaves`)
     revalidatePath(`/${context.companyId}/dashboard`)
+
+    const supervisorEmail =
+      employee.reportingManager?.emails[0]?.email ?? employee.reportingManager?.user?.email ?? null
+    const supervisorName = employee.reportingManager
+      ? `${employee.reportingManager.firstName} ${employee.reportingManager.lastName}`
+      : null
+
+    const notification = await sendSupervisorRequestSubmissionEmail({
+      supervisorEmail,
+      supervisorName,
+      requesterName: `${employee.firstName} ${employee.lastName}`,
+      requesterEmployeeNumber: employee.employeeNumber,
+      requestTypeLabel: "Leave Request",
+      requestNumber: created.requestNumber,
+      companyName: context.companyName,
+      approvalPath: `/${context.companyId}/employee-portal/leave-approvals`,
+      detailLines: [
+        `Leave type: ${leaveType.name}`,
+        `Date range: ${leaveDateLabel.format(startDate)} to ${leaveDateLabel.format(endDate)}`,
+        `Duration: ${toDayCountLabel(numberOfDays)}${payload.isHalfDay ? ` (${payload.halfDayPeriod ?? "HALF DAY"})` : ""}`,
+        payload.reason?.trim() ? `Reason: ${payload.reason.trim()}` : "",
+      ],
+    })
+
+    if (!notification.ok) {
+      console.error("[createLeaveRequestAction] Supervisor notification email failed", {
+        companyId: context.companyId,
+        requestId: created.id,
+        requestNumber: created.requestNumber,
+        error: notification.error,
+      })
+    }
 
     return { ok: true, message: `Leave request ${created.requestNumber} submitted.` }
   } catch (error) {

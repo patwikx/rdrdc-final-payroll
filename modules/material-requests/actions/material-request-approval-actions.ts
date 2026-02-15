@@ -13,6 +13,7 @@ import { toPhDateInputValue } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { sendMaterialRequestPurchaserQueueEmail } from "@/modules/notifications/utils/request-approval-email"
 import {
   decideMaterialRequestStepInputSchema,
   getMaterialRequestApprovalDecisionDetailsInputSchema,
@@ -94,6 +95,75 @@ const formatDateTime = (value: Date | null): string | null => {
 
 const isHrRole = (role: CompanyRole): boolean => {
   return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
+}
+
+type MaterialRequestPurchaserRecipient = {
+  userId: string
+  name: string
+  email: string
+}
+
+const MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON = "MATERIAL_REQUEST_NOTIFY_PURCHASER_QUEUE"
+const MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON = "MATERIAL_REQUEST_NOTIFY_PURCHASER_QUEUE_SKIPPED_NO_RECIPIENTS"
+
+const currency = new Intl.NumberFormat("en-PH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const toRequestTypeLabel = (value: string): string => value.replaceAll("_", " ")
+
+const resolveMaterialRequestPurchaserRecipients = async (
+  companyId: string
+): Promise<MaterialRequestPurchaserRecipient[]> => {
+  const purchaserAccessRows = await db.userCompanyAccess.findMany({
+    where: {
+      companyId,
+      isActive: true,
+      isMaterialRequestPurchaser: true,
+      user: { isActive: true },
+    },
+    select: {
+      userId: true,
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          employee: {
+            select: {
+              emails: {
+                where: { isActive: true },
+                orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+                select: { email: true },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  const seenEmails = new Set<string>()
+  const recipients: MaterialRequestPurchaserRecipient[] = []
+
+  for (const row of purchaserAccessRows) {
+    const resolvedEmail = (row.user.employee?.emails[0]?.email ?? row.user.email ?? "").trim().toLowerCase()
+    if (resolvedEmail.length === 0 || seenEmails.has(resolvedEmail)) {
+      continue
+    }
+
+    seenEmails.add(resolvedEmail)
+    const fullName = `${row.user.firstName} ${row.user.lastName}`.trim()
+    recipients.push({
+      userId: row.userId,
+      email: resolvedEmail,
+      name: fullName.length > 0 ? fullName : resolvedEmail,
+    })
+  }
+
+  return recipients
 }
 
 export async function getMaterialRequestsForMyApprovalAction(
@@ -560,6 +630,22 @@ export async function approveMaterialRequestStepAction(
       currentStep: true,
       requiredSteps: true,
       status: true,
+      requestType: true,
+      datePrepared: true,
+      dateRequired: true,
+      grandTotal: true,
+      requesterEmployee: {
+        select: {
+          firstName: true,
+          lastName: true,
+          employeeNumber: true,
+        },
+      },
+      department: {
+        select: {
+          name: true,
+        },
+      },
       steps: {
         select: {
           id: true,
@@ -696,6 +782,75 @@ export async function approveMaterialRequestStepAction(
   }
 
   revalidateMaterialApprovalPaths(context.companyId)
+
+  if (isFinalStep) {
+    const existingNotificationMarker = await db.auditLog.findFirst({
+      where: {
+        tableName: "MaterialRequest",
+        recordId: materialRequest.id,
+        reason: {
+          in: [
+            MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON,
+            MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON,
+          ],
+        },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!existingNotificationMarker) {
+      const recipients = await resolveMaterialRequestPurchaserRecipients(context.companyId)
+
+      if (recipients.length === 0) {
+        await createAuditLog({
+          tableName: "MaterialRequest",
+          recordId: materialRequest.id,
+          action: "UPDATE",
+          userId: context.userId,
+          reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON,
+          changes: [{ fieldName: "notificationTargetCount", newValue: "0" }],
+        })
+      } else {
+        const sendResult = await sendMaterialRequestPurchaserQueueEmail({
+          recipients,
+          companyName: context.companyName,
+          requestNumber: materialRequest.requestNumber,
+          requesterName: `${materialRequest.requesterEmployee.firstName} ${materialRequest.requesterEmployee.lastName}`,
+          requesterEmployeeNumber: materialRequest.requesterEmployee.employeeNumber,
+          departmentName: materialRequest.department.name,
+          requestTypeLabel: toRequestTypeLabel(materialRequest.requestType),
+          datePreparedLabel: toPhDateInputValue(materialRequest.datePrepared),
+          dateRequiredLabel: toPhDateInputValue(materialRequest.dateRequired),
+          amountLabel: `PHP ${currency.format(Number(materialRequest.grandTotal))}`,
+          approvalPath: `/${context.companyId}/employee-portal/material-request-processing`,
+        })
+
+        await createAuditLog({
+          tableName: "MaterialRequest",
+          recordId: materialRequest.id,
+          action: "UPDATE",
+          userId: context.userId,
+          reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON,
+          changes: [
+            { fieldName: "notificationTargetCount", newValue: String(recipients.length) },
+            { fieldName: "notificationSentCount", newValue: String(sendResult.sentCount) },
+            { fieldName: "notificationFailedCount", newValue: String(sendResult.failedCount) },
+          ],
+        })
+
+        if (sendResult.failedCount > 0) {
+          console.error("[approveMaterialRequestStepAction] Purchaser queue notification failed for some recipients", {
+            companyId: context.companyId,
+            requestId: materialRequest.id,
+            requestNumber: materialRequest.requestNumber,
+            failedRecipients: sendResult.failedRecipients,
+          })
+        }
+      }
+    }
+  }
 
   return {
     ok: true,

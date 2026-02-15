@@ -21,24 +21,24 @@ import { getSessionMembershipStatus } from "@/modules/auth/utils/session-members
 import { getSetupState } from "@/modules/setup/utils/setup-state"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const setupState = await getSetupState()
+  const [setupState, session] = await Promise.all([getSetupState(), auth()])
 
   if (!setupState.isInitialized) {
     redirect("/setup")
   }
 
-  const session = await auth()
-
   if (!session?.user) {
     redirect("/login")
   }
 
-  const membershipStatus = await getSessionMembershipStatus(session.user.id)
+  const [membershipStatus, companyOptions] = await Promise.all([
+    getSessionMembershipStatus(session.user.id),
+    getUserCompanyOptions(session.user.id),
+  ])
+
   if (!membershipStatus.valid) {
     redirect("/logout?reason=invalid-session")
   }
-
-  const companyOptions = await getUserCompanyOptions(session.user.id)
 
   if (companyOptions.length === 0) {
     redirect("/logout?reason=invalid-session")

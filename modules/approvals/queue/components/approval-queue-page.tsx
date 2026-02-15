@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react"
+import { useCallback, useEffect, useOptimistic, useState, useTransition, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconAlertCircle,
@@ -72,6 +72,15 @@ type ApprovalQueuePageProps = {
 }
 
 type ActionMode = "APPROVE" | "REJECT"
+type QueueOptimisticState = {
+  items: ApprovalQueueItem[]
+  summary: ApprovalQueuePageProps["summary"]
+  pagination: ApprovalQueuePageProps["pagination"]
+}
+type QueueOptimisticAction = {
+  type: "remove_item"
+  item: ApprovalQueueItem
+}
 
 const priorityBadge = (priority: ApprovalQueueItem["priority"]): "default" | "secondary" | "destructive" => {
   if (priority === "HIGH") return "destructive"
@@ -95,13 +104,49 @@ export function ApprovalQueuePage({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
-  const [queryInput, setQueryInput] = useState(filters.query)
+  const [queryInputState, setQueryInputState] = useState({
+    baseQuery: filters.query,
+    value: filters.query,
+  })
+  const queryInput = queryInputState.baseQuery === filters.query ? queryInputState.value : filters.query
+  const [queueState, applyQueueOptimisticAction] = useOptimistic<QueueOptimisticState, QueueOptimisticAction>(
+    { items, summary, pagination },
+    (state, action) => {
+      if (action.type !== "remove_item") return state
+
+      const nextItems = state.items.filter((item) => item.id !== action.item.id)
+      const nextSummary = {
+        total: Math.max(state.summary.total - 1, 0),
+        leave: action.item.kind === "LEAVE" ? Math.max(state.summary.leave - 1, 0) : state.summary.leave,
+        overtime:
+          action.item.kind === "OVERTIME"
+            ? Math.max(state.summary.overtime - 1, 0)
+            : state.summary.overtime,
+        highPriority:
+          action.item.priority === "HIGH"
+            ? Math.max(state.summary.highPriority - 1, 0)
+            : state.summary.highPriority,
+      }
+      const totalItems = Math.max(state.pagination.totalItems - 1, 0)
+      const totalPages = Math.max(1, Math.ceil(totalItems / state.pagination.pageSize))
+      const nextPagination = {
+        ...state.pagination,
+        page: Math.min(state.pagination.page, totalPages),
+        totalItems,
+        totalPages,
+      }
+
+      return {
+        items: nextItems,
+        summary: nextSummary,
+        pagination: nextPagination,
+      }
+    }
+  )
   const [detailItem, setDetailItem] = useState<ApprovalQueueItem | null>(null)
   const [actionItem, setActionItem] = useState<ApprovalQueueItem | null>(null)
   const [actionMode, setActionMode] = useState<ActionMode>("APPROVE")
   const [actionNotes, setActionNotes] = useState("")
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [pageError, setPageError] = useState<string | null>(null)
 
   const updateRoute = useCallback(
     (updates: {
@@ -132,7 +177,7 @@ export function ApprovalQueuePage({
       const currentSearch = searchParams.toString()
       const currentUrl = currentSearch ? `${pathname}?${currentSearch}` : pathname
       if (nextUrl !== currentUrl) {
-        router.push(nextUrl)
+        router.replace(nextUrl)
       }
     },
     [pathname, router, searchParams]
@@ -155,14 +200,12 @@ export function ApprovalQueuePage({
     setActionItem(item)
     setActionMode(mode)
     setActionNotes("")
-    setActionError(null)
   }
 
   const closeActionDialog = (force = false) => {
     if (isPending && !force) return
     setActionItem(null)
     setActionNotes("")
-    setActionError(null)
   }
 
   const submitAction = () => {
@@ -170,7 +213,7 @@ export function ApprovalQueuePage({
 
     const noteText = actionNotes.trim()
     if (noteText.length < 2) {
-      setActionError("Please provide at least 2 characters.")
+      toast.error("Please provide at least 2 characters.")
       return
     }
 
@@ -206,15 +249,25 @@ export function ApprovalQueuePage({
       }
 
       if (!result.ok) {
-        setActionError(result.error)
-        setPageError(result.error)
+        toast.error(result.error)
         return
       }
 
-      setPageError(null)
       toast.success(result.message)
+      const shouldGoPrevPage = queueState.items.length === 1 && queueState.pagination.page > 1
+
+      applyQueueOptimisticAction({
+        type: "remove_item",
+        item: actionItem,
+      })
+
+      if (shouldGoPrevPage) {
+        updateRoute({
+          page: queueState.pagination.page - 1,
+        })
+      }
+
       closeActionDialog(true)
-      router.refresh()
     })
   }
 
@@ -229,20 +282,12 @@ export function ApprovalQueuePage({
 
       <div className="space-y-4 py-6">
 
-      {pageError ? (
-        <div className="px-4 sm:px-6">
-          <section className="border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            {pageError}
-          </section>
-        </div>
-      ) : null}
-
       <section className="overflow-hidden border border-border/60">
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 sm:divide-x sm:divide-border/60">
-          <MetricTile label="Total Pending HR" value={String(summary.total)} icon={<IconListDetails className="size-4" />} />
-          <MetricTile label="Leave Requests" value={String(summary.leave)} icon={<IconCalendarEvent className="size-4" />} />
-          <MetricTile label="Overtime Requests" value={String(summary.overtime)} icon={<IconClockHour4 className="size-4" />} />
-          <MetricTile label="High Priority" value={String(summary.highPriority)} icon={<IconAlertCircle className="size-4" />} />
+          <MetricTile label="Total Pending HR" value={String(queueState.summary.total)} icon={<IconListDetails className="size-4" />} />
+          <MetricTile label="Leave Requests" value={String(queueState.summary.leave)} icon={<IconCalendarEvent className="size-4" />} />
+          <MetricTile label="Overtime Requests" value={String(queueState.summary.overtime)} icon={<IconClockHour4 className="size-4" />} />
+          <MetricTile label="High Priority" value={String(queueState.summary.highPriority)} icon={<IconAlertCircle className="size-4" />} />
         </div>
       </section>
 
@@ -252,7 +297,12 @@ export function ApprovalQueuePage({
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={queryInput}
-              onChange={(event) => setQueryInput(event.target.value)}
+              onChange={(event) =>
+                setQueryInputState({
+                  baseQuery: filters.query,
+                  value: event.target.value,
+                })
+              }
               placeholder="Search employee or request"
               className="pl-8"
             />
@@ -299,7 +349,7 @@ export function ApprovalQueuePage({
         </div>
       </section>
 
-      {summary.total === 0 ? (
+      {queueState.summary.total === 0 ? (
         <section className="border-y border-border/60 bg-background px-4 py-10 text-center sm:px-6">
           <h2 className="text-base text-foreground">No requests pending for HR final validation.</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -322,14 +372,14 @@ export function ApprovalQueuePage({
                 </tr>
               </thead>
               <tbody>
-                {items.length === 0 ? (
+                {queueState.items.length === 0 ? (
                   <tr className="border-t border-border/50 bg-background">
                     <td className="px-3 py-8 text-center text-sm text-muted-foreground" colSpan={7}>
                       No requests found for the current filters.
                     </td>
                   </tr>
                 ) : (
-                  items.map((item, index) => (
+                  queueState.items.map((item, index) => (
                     <tr
                       key={item.id}
                       className={
@@ -389,7 +439,7 @@ export function ApprovalQueuePage({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
             <p className="text-xs text-muted-foreground">
-              Page {pagination.page} of {pagination.totalPages} • {pagination.totalItems} records
+              Page {queueState.pagination.page} of {queueState.pagination.totalPages} • {queueState.pagination.totalItems} records
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -397,10 +447,10 @@ export function ApprovalQueuePage({
                 variant="outline"
                 size="sm"
                 className="h-7 px-2"
-                disabled={pagination.page <= 1}
+                disabled={queueState.pagination.page <= 1}
                 onClick={() =>
                   updateRoute({
-                    page: pagination.page - 1,
+                    page: queueState.pagination.page - 1,
                   })
                 }
               >
@@ -412,10 +462,10 @@ export function ApprovalQueuePage({
                 variant="outline"
                 size="sm"
                 className="h-7 px-2"
-                disabled={pagination.page >= pagination.totalPages}
+                disabled={queueState.pagination.page >= queueState.pagination.totalPages}
                 onClick={() =>
                   updateRoute({
-                    page: pagination.page + 1,
+                    page: queueState.pagination.page + 1,
                   })
                 }
               >
@@ -509,7 +559,6 @@ export function ApprovalQueuePage({
               className="min-h-24"
               disabled={isPending}
             />
-            {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
           </div>
 
           <DialogFooter>

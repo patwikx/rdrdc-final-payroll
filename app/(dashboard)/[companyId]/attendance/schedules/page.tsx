@@ -76,10 +76,12 @@ export default async function AttendanceSchedulesRoutePage({ params, searchParam
 
   return (
     <LeaveCalendarPage
+      key={data?.selectedMonth ?? parsedSearch.month ?? ""}
       companyName={data?.companyName ?? company.companyName}
       selectedMonth={data?.selectedMonth ?? parsedSearch.month ?? ""}
       range={data?.range ?? { startDate: "", endDate: "" }}
       leaves={data?.leaves ?? []}
+      leaveIdsByDate={data?.leaveIdsByDate ?? {}}
       loadError={loadError}
     />
   )

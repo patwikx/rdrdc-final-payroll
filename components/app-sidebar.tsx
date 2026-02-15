@@ -25,8 +25,14 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react"
 import Link from "next/link"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { AnimatePresence, motion, type Variants } from "framer-motion"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 
 import { TeamSwitcher } from "@/components/team-switcher"
 import {
@@ -122,22 +128,6 @@ const isLegacySyncItemId = (itemId: string): boolean => {
   return itemId.startsWith("settings-legacy-")
 }
 
-// ── Animation Variants ─────────────────────────────────────────────────────
-
-const collapsibleVariants: Variants = {
-  hidden: { height: 0, opacity: 0 },
-  visible: {
-    height: "auto",
-    opacity: 1,
-    transition: { duration: 0.2, ease: "easeOut" as const },
-  },
-  exit: {
-    height: 0,
-    opacity: 0,
-    transition: { duration: 0.15, ease: "easeIn" as const },
-  },
-}
-
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function AppSidebar({ companies, activeCompanyId, className }: AppSidebarProps) {
@@ -163,18 +153,21 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
   }, [activeCompanyId, companies, routeCompanyId])
 
   // ── Team data ─────────────────────────────────────────────────────────
-  const teams = companies.map((company) => ({
-    id: company.companyId,
-    name: company.companyName,
-    code: company.companyCode,
-    plan: company.role,
-  }))
+  const teams = useMemo(
+    () =>
+      companies.map((company) => ({
+        id: company.companyId,
+        name: company.companyName,
+        code: company.companyCode,
+        plan: company.role,
+      })),
+    [companies]
+  )
 
   const handleTeamChange = async (companyId: string) => {
     const result = await setActiveCompanyAction({ companyId })
     if (!result.ok) return
     router.push(`/${companyId}/dashboard`)
-    router.refresh()
   }
 
   // ── Path matching ─────────────────────────────────────────────────────
@@ -227,6 +220,26 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
   // ── Dashboard link ────────────────────────────────────────────────────
   const dashboardUrl = toCompanyScopedPath(activeCompany.companyId, "/dashboard")
   const isDashboardActive = matchesPath(currentCompanyPath, "/dashboard")
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set())
+
+  const prefetchRoute = useCallback(
+    (url: string) => {
+      if (prefetchedRoutesRef.current.has(url)) return
+      prefetchedRoutesRef.current.add(url)
+      router.prefetch(url)
+    },
+    [router]
+  )
+
+  useEffect(() => {
+    prefetchRoute(dashboardUrl)
+    const activeNavItem = navItems.find((item) => item.isActive) ?? navItems[0]
+    if (!activeNavItem) return
+    prefetchRoute(activeNavItem.url)
+    for (const item of activeNavItem.items) {
+      prefetchRoute(item.url)
+    }
+  }, [dashboardUrl, navItems, prefetchRoute])
 
   return (
     <Sidebar collapsible="icon" className={cn(className)}>
@@ -249,7 +262,13 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Dashboard" isActive={isDashboardActive}>
-                <Link href={dashboardUrl}>
+                <Link
+                  href={dashboardUrl}
+                  prefetch={false}
+                  onMouseEnter={() => prefetchRoute(dashboardUrl)}
+                  onFocus={() => prefetchRoute(dashboardUrl)}
+                  onTouchStart={() => prefetchRoute(dashboardUrl)}
+                >
                   <IconLayoutDashboard className="size-4" />
                   <span>Dashboard</span>
                 </Link>
@@ -282,62 +301,69 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
                 >
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
-                      <SidebarMenuButton tooltip={item.title} isActive={item.isActive}>
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        onMouseEnter={() => prefetchRoute(item.url)}
+                        onFocus={() => prefetchRoute(item.url)}
+                        onTouchStart={() => prefetchRoute(item.url)}
+                      >
                         {item.icon}
                         <span>{item.title}</span>
                         <IconChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
 
-                    <AnimatePresence initial={false}>
-                      {openSection === item.title && (
-                        <CollapsibleContent forceMount asChild>
-                          <motion.div
-                            variants={collapsibleVariants}
-                            initial="hidden"
-                            animate="visible"
-                            exit="exit"
-                            style={{ overflow: "hidden" }}
-                          >
-                            <SidebarMenuSub>
-                              {primaryItems.map((sub) => (
+                    {openSection === item.title ? (
+                      <CollapsibleContent forceMount>
+                        <SidebarMenuSub>
+                          {primaryItems.map((sub) => (
+                            <SidebarMenuSubItem key={sub.id}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={sub.isActive}
+                              >
+                                <Link
+                                  href={sub.url}
+                                  prefetch={false}
+                                  onMouseEnter={() => prefetchRoute(sub.url)}
+                                  onFocus={() => prefetchRoute(sub.url)}
+                                  onTouchStart={() => prefetchRoute(sub.url)}
+                                >
+                                  {sub.icon}
+                                  <span>{sub.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                          {legacySyncItems.length > 0 ? (
+                            <>
+                              <SidebarMenuSubItem className="mt-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/60">
+                                Legacy Sync
+                              </SidebarMenuSubItem>
+                              {legacySyncItems.map((sub) => (
                                 <SidebarMenuSubItem key={sub.id}>
                                   <SidebarMenuSubButton
                                     asChild
                                     isActive={sub.isActive}
                                   >
-                                    <Link href={sub.url}>
+                                    <Link
+                                      href={sub.url}
+                                      prefetch={false}
+                                      onMouseEnter={() => prefetchRoute(sub.url)}
+                                      onFocus={() => prefetchRoute(sub.url)}
+                                      onTouchStart={() => prefetchRoute(sub.url)}
+                                    >
                                       {sub.icon}
                                       <span>{sub.title}</span>
                                     </Link>
                                   </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
                               ))}
-                              {legacySyncItems.length > 0 ? (
-                                <>
-                                  <SidebarMenuSubItem className="mt-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/60">
-                                    Legacy Sync
-                                  </SidebarMenuSubItem>
-                                  {legacySyncItems.map((sub) => (
-                                    <SidebarMenuSubItem key={sub.id}>
-                                      <SidebarMenuSubButton
-                                        asChild
-                                        isActive={sub.isActive}
-                                      >
-                                        <Link href={sub.url}>
-                                          {sub.icon}
-                                          <span>{sub.title}</span>
-                                        </Link>
-                                      </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                  ))}
-                                </>
-                              ) : null}
-                            </SidebarMenuSub>
-                          </motion.div>
-                        </CollapsibleContent>
-                      )}
-                    </AnimatePresence>
+                            </>
+                          ) : null}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    ) : null}
                   </SidebarMenuItem>
                 </Collapsible>
               )

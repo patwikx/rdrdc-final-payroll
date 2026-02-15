@@ -16,8 +16,10 @@ import {
   IconUserCircle,
   IconUsersGroup,
 } from "@tabler/icons-react"
+import { RequestStatus } from "@prisma/client"
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -27,8 +29,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getPhMonthIndex, getPhYear } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
+import { getLeaveBalanceHistoryPageAction } from "@/modules/leave/actions/get-leave-balance-history-page-action"
 import type {
-  LeaveBalanceWorkspaceHistoryRow,
+  LeaveBalanceWorkspaceHistoryPage,
   LeaveBalanceWorkspaceRow,
 } from "@/modules/leave/types/leave-domain-types"
 
@@ -37,7 +40,7 @@ type Props = {
   selectedYear: number
   years: number[]
   balanceRows: LeaveBalanceWorkspaceRow[]
-  historyRows: LeaveBalanceWorkspaceHistoryRow[]
+  statusCodes: RequestStatus[]
 }
 
 const days = new Intl.NumberFormat("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -46,6 +49,18 @@ const monthLabel = new Intl.DateTimeFormat("en-PH", { month: "short", timeZone: 
 
 const toStatusLabel = (status: string): string => status.replace(/_/g, " ")
 const normalizeLeaveType = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, "")
+const HISTORY_PAGE_SIZE = 10
+
+const buildEmptyHistoryPage = (): LeaveBalanceWorkspaceHistoryPage => ({
+  rows: [],
+  page: 1,
+  pageSize: HISTORY_PAGE_SIZE,
+  totalItems: 0,
+  totalPages: 1,
+  hasPrevPage: false,
+  hasNextPage: false,
+  monthlyTotals: Array.from({ length: 12 }, (_, month) => ({ month, filed: 0, used: 0 })),
+})
 
 const leaveHistoryStatusBadgeClass = (status: string): string => {
   if (status === "APPROVED" || status === "SUPERVISOR_APPROVED") {
@@ -59,33 +74,35 @@ const leaveHistoryStatusBadgeClass = (status: string): string => {
   return "border-border bg-muted text-foreground"
 }
 
-export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, historyRows }: Props) {
+export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, statusCodes }: Props) {
   const [search, setSearch] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all")
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
   const [timelineWindowStart, setTimelineWindowStart] = useState(0)
   const [timelineSelectedMonth, setTimelineSelectedMonth] = useState(() => {
     const currentPhYear = getPhYear()
     return currentPhYear === selectedYear ? getPhMonthIndex() : 0
   })
+  const [historyPageState, setHistoryPageState] = useState<{ key: string; page: number }>({
+    key: "",
+    page: 1,
+  })
+  const [historyPageData, setHistoryPageData] = useState<LeaveBalanceWorkspaceHistoryPage>(() => buildEmptyHistoryPage())
+  const latestHistoryRequestRef = useRef(0)
+  const deferredSearch = useDeferredValue(search)
 
-  const departments = useMemo(
-    () => Array.from(new Set(balanceRows.map((row) => row.departmentName))).sort((a, b) => a.localeCompare(b)),
-    [balanceRows]
-  )
-  const leaveTypes = useMemo(
-    () => Array.from(new Set(balanceRows.map((row) => row.leaveTypeName))).sort((a, b) => a.localeCompare(b)),
-    [balanceRows]
-  )
-  const statuses = useMemo(
-    () => Array.from(new Set(historyRows.map((row) => row.statusCode))).sort((a, b) => a.localeCompare(b)),
-    [historyRows]
-  )
-
-  const employees = useMemo(() => {
-    const map = new Map<
+  const {
+    departments,
+    leaveTypes,
+    employees,
+    balanceRowsByEmployee,
+    leaveTypesByEmployee,
+  } = useMemo(() => {
+    const departmentSet = new Set<string>()
+    const leaveTypeSet = new Set<string>()
+    const employeeMap = new Map<
       string,
       {
         employeeId: string
@@ -95,30 +112,57 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
         departmentName: string
       }
     >()
+    const balanceRowsMap = new Map<string, LeaveBalanceWorkspaceRow[]>()
+    const leaveTypeMap = new Map<string, Set<string>>()
 
     for (const row of balanceRows) {
-      const current = map.get(row.employeeId) ?? {
-        employeeId: row.employeeId,
-        employeeName: row.employeeName,
-        employeeNumber: row.employeeNumber,
-        photoUrl: row.photoUrl,
-        departmentName: row.departmentName,
+      departmentSet.add(row.departmentName)
+      leaveTypeSet.add(row.leaveTypeName)
+
+      if (!employeeMap.has(row.employeeId)) {
+        employeeMap.set(row.employeeId, {
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          employeeNumber: row.employeeNumber,
+          photoUrl: row.photoUrl,
+          departmentName: row.departmentName,
+        })
       }
-      map.set(row.employeeId, current)
+
+      const employeeBalanceRows = balanceRowsMap.get(row.employeeId) ?? []
+      employeeBalanceRows.push(row)
+      balanceRowsMap.set(row.employeeId, employeeBalanceRows)
+
+      const employeeLeaveTypes = leaveTypeMap.get(row.employeeId) ?? new Set<string>()
+      employeeLeaveTypes.add(row.leaveTypeName)
+      leaveTypeMap.set(row.employeeId, employeeLeaveTypes)
     }
 
-    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+    for (const rows of balanceRowsMap.values()) {
+      rows.sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName))
+    }
+
+    return {
+      departments: Array.from(departmentSet).sort((a, b) => a.localeCompare(b)),
+      leaveTypes: Array.from(leaveTypeSet).sort((a, b) => a.localeCompare(b)),
+      employees: Array.from(employeeMap.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName)),
+      balanceRowsByEmployee: balanceRowsMap,
+      leaveTypesByEmployee: leaveTypeMap,
+    }
   }, [balanceRows])
 
+  const statuses = useMemo(() => [...statusCodes].sort((a, b) => a.localeCompare(b)), [statusCodes])
+
   const filteredEmployees = useMemo(() => {
+    const normalizedSearch = deferredSearch.trim().toLowerCase()
     return employees.filter((employee) => {
-      const matchesSearch = `${employee.employeeName} ${employee.employeeNumber}`.toLowerCase().includes(search.toLowerCase())
+      const matchesSearch = `${employee.employeeName} ${employee.employeeNumber}`.toLowerCase().includes(normalizedSearch)
       const matchesDepartment = departmentFilter === "all" || employee.departmentName === departmentFilter
-      const employeeLeaveRows = balanceRows.filter((row) => row.employeeId === employee.employeeId)
-      const matchesLeaveType = leaveTypeFilter === "all" || employeeLeaveRows.some((row) => row.leaveTypeName === leaveTypeFilter)
+      const employeeLeaveTypes = leaveTypesByEmployee.get(employee.employeeId)
+      const matchesLeaveType = leaveTypeFilter === "all" || employeeLeaveTypes?.has(leaveTypeFilter) === true
       return matchesSearch && matchesDepartment && matchesLeaveType
     })
-  }, [employees, search, departmentFilter, leaveTypeFilter, balanceRows])
+  }, [employees, deferredSearch, departmentFilter, leaveTypeFilter, leaveTypesByEmployee])
 
   const resolvedSelectedEmployeeId = useMemo(() => {
     if (!filteredEmployees.length) return null
@@ -135,19 +179,52 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
 
   const selectedEmployeeAllBalanceRows = useMemo(() => {
     if (!selectedEmployee) return []
-    return balanceRows
-      .filter((row) => row.employeeId === selectedEmployee.employeeId)
-      .sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName))
-  }, [selectedEmployee, balanceRows])
+    return balanceRowsByEmployee.get(selectedEmployee.employeeId) ?? []
+  }, [selectedEmployee, balanceRowsByEmployee])
 
-  const selectedHistoryRows = useMemo(() => {
-    if (!selectedEmployee) return []
-    return historyRows
-      .filter((row) => row.employeeId === selectedEmployee.employeeId)
-      .filter((row) => leaveTypeFilter === "all" || row.leaveTypeName === leaveTypeFilter)
-      .filter((row) => statusFilter === "all" || row.statusCode === statusFilter)
-      .sort((a, b) => b.createdAtIso.localeCompare(a.createdAtIso))
-  }, [selectedEmployee, historyRows, leaveTypeFilter, statusFilter])
+  const historyQueryKey = `${resolvedSelectedEmployeeId ?? "none"}|${leaveTypeFilter}|${statusFilter}|${selectedYear}`
+  const effectiveHistoryPage = historyPageState.key === historyQueryKey ? historyPageState.page : 1
+
+  useEffect(() => {
+    if (!resolvedSelectedEmployeeId) return
+
+    const requestId = latestHistoryRequestRef.current + 1
+    latestHistoryRequestRef.current = requestId
+
+    void (async () => {
+      const result = await getLeaveBalanceHistoryPageAction({
+        companyId,
+        year: selectedYear,
+        employeeId: resolvedSelectedEmployeeId,
+        leaveType: leaveTypeFilter === "all" ? undefined : leaveTypeFilter,
+        statusCode: statusFilter === "all" ? undefined : statusFilter,
+        page: effectiveHistoryPage,
+        pageSize: HISTORY_PAGE_SIZE,
+      })
+
+      if (requestId !== latestHistoryRequestRef.current) return
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setHistoryPageData(result.data)
+    })()
+  }, [companyId, selectedYear, resolvedSelectedEmployeeId, leaveTypeFilter, statusFilter, effectiveHistoryPage])
+
+  const selectedHistoryRows = historyPageData.rows
+
+  const selectedHistoryDisplayRows = useMemo(
+    () =>
+      selectedHistoryRows.map((row) => ({
+        ...row,
+        startDateLabel: dateLabel.format(new Date(row.startDateIso)),
+        endDateLabel: dateLabel.format(new Date(row.endDateIso)),
+        filedDateLabel: dateLabel.format(new Date(row.createdAtIso)),
+      })),
+    [selectedHistoryRows]
+  )
 
   const leaveTypeStatValues = useMemo(() => {
     const getByType = (matcher: (normalized: string) => boolean): number => {
@@ -165,17 +242,8 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
   }, [selectedEmployeeAllBalanceRows])
 
   const historyByMonth = useMemo(() => {
-    const monthMap = new Map<number, { used: number; filed: number }>()
-    for (let i = 0; i < 12; i += 1) monthMap.set(i, { used: 0, filed: 0 })
-    for (const row of selectedHistoryRows) {
-      const month = new Date(row.startDateIso).getUTCMonth()
-      const current = monthMap.get(month)!
-      current.filed += row.numberOfDays
-      if (row.statusCode === "APPROVED" || row.statusCode === "SUPERVISOR_APPROVED") current.used += row.numberOfDays
-      monthMap.set(month, current)
-    }
-    return Array.from(monthMap.entries()).map(([month, value]) => ({ month, ...value }))
-  }, [selectedHistoryRows])
+    return historyPageData.monthlyTotals
+  }, [historyPageData.monthlyTotals])
 
   const maxMonth = useMemo(() => historyByMonth.reduce((max, item) => Math.max(max, item.filed), 0), [historyByMonth])
   const TIMELINE_WINDOW = 6
@@ -251,7 +319,7 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
                 ))}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RequestStatus | "all")}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Request Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
@@ -401,37 +469,74 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
                   {selectedHistoryRows.length === 0 ? (
                     <p className="py-6 text-center text-sm text-muted-foreground">No leave history for current filters.</p>
                   ) : (
-                    <div className="overflow-x-auto border border-border/60">
-                      <table className="w-full text-xs">
-                        <thead className="bg-muted/40">
-                          <tr>
-                            <th className="px-3 py-2 text-left">Request #</th>
-                            <th className="px-3 py-2 text-left">Leave Type</th>
-                            <th className="px-3 py-2 text-left">Start Date</th>
-                            <th className="px-3 py-2 text-left">End Date</th>
-                            <th className="px-3 py-2 text-left">Days</th>
-                            <th className="px-3 py-2 text-left">Filed Date</th>
-                            <th className="px-3 py-2 text-left">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedHistoryRows.map((row) => (
-                            <tr key={row.id} className="border-t border-border/50">
-                              <td className="px-3 py-2 font-medium text-foreground">{row.requestNumber}</td>
-                              <td className="px-3 py-2">{row.leaveTypeName}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.startDateIso))}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.endDateIso))}</td>
-                              <td className="px-3 py-2">{days.format(row.numberOfDays)}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{dateLabel.format(new Date(row.createdAtIso))}</td>
-                              <td className="px-3 py-2">
-                                <Badge variant="outline" className={leaveHistoryStatusBadgeClass(row.statusCode)}>
-                                  {toStatusLabel(row.statusCode)}
-                                </Badge>
-                              </td>
+                    <div className="border border-border/60">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/40">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Request #</th>
+                              <th className="px-3 py-2 text-left">Leave Type</th>
+                              <th className="px-3 py-2 text-left">Start Date</th>
+                              <th className="px-3 py-2 text-left">End Date</th>
+                              <th className="px-3 py-2 text-left">Days</th>
+                              <th className="px-3 py-2 text-left">Filed Date</th>
+                              <th className="px-3 py-2 text-left">Status</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {selectedHistoryDisplayRows.map((row) => (
+                              <tr key={row.id} className="border-t border-border/50">
+                                <td className="px-3 py-2 font-medium text-foreground">{row.requestNumber}</td>
+                                <td className="px-3 py-2">{row.leaveTypeName}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{row.startDateLabel}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{row.endDateLabel}</td>
+                                <td className="px-3 py-2">{days.format(row.numberOfDays)}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{row.filedDateLabel}</td>
+                                <td className="px-3 py-2">
+                                  <Badge variant="outline" className={leaveHistoryStatusBadgeClass(row.statusCode)}>
+                                    {toStatusLabel(row.statusCode)}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-border/60 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Page {historyPageData.page} of {historyPageData.totalPages} • {historyPageData.totalItems} records
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!historyPageData.hasPrevPage}
+                            onClick={() =>
+                              setHistoryPageState({
+                                key: historyQueryKey,
+                                page: Math.max(1, historyPageData.page - 1),
+                              })
+                            }
+                          >
+                            Prev
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!historyPageData.hasNextPage}
+                            onClick={() =>
+                              setHistoryPageState({
+                                key: historyQueryKey,
+                                page: Math.min(historyPageData.totalPages, historyPageData.page + 1),
+                              })
+                            }
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

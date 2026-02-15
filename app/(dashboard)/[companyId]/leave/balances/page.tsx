@@ -64,7 +64,7 @@ export default async function LeaveBalancesRoutePage({ params, searchParams }: L
 
   const yearFromQuery = Number(parsedSearch.year)
   const selectedYear = resolveLeaveYear(Number.isFinite(yearFromQuery) ? yearFromQuery : undefined)
-  const { years, balanceRows, historyRows } = await getLeaveBalanceWorkspaceData({
+  const { years, balanceRows, statusCodes } = await getLeaveBalanceWorkspaceData({
     companyId: company.companyId,
     year: selectedYear,
   })
@@ -75,7 +75,7 @@ export default async function LeaveBalancesRoutePage({ params, searchParams }: L
       selectedYear={selectedYear}
       years={years}
       balanceRows={balanceRows}
-      historyRows={historyRows}
+      statusCodes={statusCodes}
     />
   )
 }

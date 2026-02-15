@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import { unstable_cache } from "next/cache"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasAttendanceSensitiveAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
@@ -28,6 +29,7 @@ export type LeaveCalendarViewModel = {
     endDate: string
   }
   leaves: LeaveCalendarEntry[]
+  leaveIdsByDate: Record<string, string[]>
 }
 
 const parseMonth = (value: string | undefined): { start: Date; end: Date; monthText: string } => {
@@ -63,42 +65,38 @@ const formatDate = (value: Date): string => {
   }).format(value)
 }
 
-export async function getLeaveCalendarViewModel(companyId: string, input?: Input): Promise<LeaveCalendarViewModel> {
-  const context = await getActiveCompanyContext({ companyId })
-  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
-    throw new Error("ACCESS_DENIED")
-  }
+const DATE_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Manila",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
 
-  const month = parseMonth(input?.month)
+const toDateKey = (value: Date): string => DATE_KEY_FORMATTER.format(value)
 
-  const leaves = await db.leaveRequest.findMany({
-    where: {
-      employee: { companyId: context.companyId },
-      startDate: { lte: month.end },
-      endDate: { gte: month.start },
-    },
-    orderBy: [{ startDate: "asc" }, { employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }],
-    select: {
-      id: true,
-      startDate: true,
-      endDate: true,
-      statusCode: true,
-      reason: true,
-      isHalfDay: true,
-      halfDayPeriod: true,
-      leaveType: { select: { name: true } },
-      employee: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } },
-    },
-  })
+const getCachedLeaveCalendarEntries = unstable_cache(
+  async (companyId: string, startIso: string, endIso: string): Promise<LeaveCalendarEntry[]> => {
+    const leaves = await db.leaveRequest.findMany({
+      where: {
+        employee: { companyId },
+        startDate: { lte: new Date(endIso) },
+        endDate: { gte: new Date(startIso) },
+      },
+      orderBy: [{ startDate: "asc" }, { employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }],
+      select: {
+        id: true,
+        startDate: true,
+        endDate: true,
+        statusCode: true,
+        reason: true,
+        isHalfDay: true,
+        halfDayPeriod: true,
+        leaveType: { select: { name: true } },
+        employee: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } },
+      },
+    })
 
-  return {
-    companyName: context.companyName,
-    selectedMonth: month.monthText,
-    range: {
-      startDate: formatDate(month.start),
-      endDate: formatDate(month.end),
-    },
-    leaves: leaves.map((leave) => ({
+    return leaves.map((leave) => ({
       id: leave.id,
       employeeId: leave.employee.id,
       employeeName: `${leave.employee.lastName}, ${leave.employee.firstName}`,
@@ -110,6 +108,42 @@ export async function getLeaveCalendarViewModel(companyId: string, input?: Input
       isHalfDay: leave.isHalfDay,
       halfDayPeriod: leave.halfDayPeriod,
       reason: leave.reason,
-    })),
+    }))
+  },
+  ["leave-calendar-entries"],
+  { revalidate: 60 }
+)
+
+export async function getLeaveCalendarViewModel(companyId: string, input?: Input): Promise<LeaveCalendarViewModel> {
+  const context = await getActiveCompanyContext({ companyId })
+  if (!hasAttendanceSensitiveAccess(context.companyRole as CompanyRole)) {
+    throw new Error("ACCESS_DENIED")
+  }
+
+  const month = parseMonth(input?.month)
+  const leaves = await getCachedLeaveCalendarEntries(context.companyId, month.start.toISOString(), month.end.toISOString())
+  const leaveIdsByDate: Record<string, string[]> = {}
+
+  for (const leave of leaves) {
+    const cursor = new Date(leave.startDate)
+    const end = new Date(leave.endDate)
+    while (cursor <= end) {
+      const dateKey = toDateKey(cursor)
+      const bucket = leaveIdsByDate[dateKey] ?? []
+      bucket.push(leave.id)
+      leaveIdsByDate[dateKey] = bucket
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    }
+  }
+
+  return {
+    companyName: context.companyName,
+    selectedMonth: month.monthText,
+    range: {
+      startDate: formatDate(month.start),
+      endDate: formatDate(month.end),
+    },
+    leaves,
+    leaveIdsByDate,
   }
 }

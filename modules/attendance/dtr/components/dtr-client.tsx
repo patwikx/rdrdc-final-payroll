@@ -94,6 +94,10 @@ const formatOvertimeLabel = (hours: number): string => {
   return `${hours.toFixed(2)}h`
 }
 
+const NEUTRAL_METRIC_BADGE_CLASS = "h-5 min-w-10 justify-center border-none bg-muted px-1.5 py-0 text-[11px] font-medium text-muted-foreground"
+const RED_METRIC_BADGE_CLASS = "h-5 min-w-10 justify-center border-none bg-red-500 px-1.5 py-0 text-[11px] font-medium text-white"
+const YELLOW_METRIC_BADGE_CLASS = "h-5 min-w-10 justify-center border-none bg-yellow-500 px-1.5 py-0 text-[11px] font-medium text-black"
+
 type DtrViewTab = "directory" | "calendar" | "workbench"
 type WorkbenchFilter = "ALL" | "PENDING" | "ANOMALY"
 
@@ -439,9 +443,21 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                       <div className="col-span-2 text-center text-sm">{formatWallClockLabel(log.actualTimeIn)}</div>
                       <div className="col-span-2 text-center text-sm">{formatWallClockLabel(log.actualTimeOut)}</div>
                       <div className="col-span-2 text-center text-sm text-foreground/80">{Number(log.hoursWorked).toFixed(2)}</div>
-                      <div className="col-span-1 text-center text-sm text-foreground/70">{log.tardinessMins}m</div>
-                      <div className="col-span-1 text-center text-sm text-foreground/70">{log.undertimeMins}m</div>
-                      <div className="col-span-1 text-center text-sm text-foreground/70">{formatOvertimeLabel(Number(log.overtimeHours))}</div>
+                      <div className="col-span-1 flex justify-center">
+                        <Badge className={cn(log.tardinessMins > 0 ? RED_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                          {log.tardinessMins}m
+                        </Badge>
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <Badge className={cn(log.undertimeMins > 0 ? RED_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                          {log.undertimeMins}m
+                        </Badge>
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <Badge className={cn(Number(log.overtimeHours) > 0 ? YELLOW_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                          {formatOvertimeLabel(Number(log.overtimeHours))}
+                        </Badge>
+                      </div>
                       <div className="col-span-1 flex justify-end">
                         <Tooltip>
                           <TooltipTrigger asChild>

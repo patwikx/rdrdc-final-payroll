@@ -11,7 +11,7 @@ import { getDtrPageData } from "@/modules/attendance/dtr/utils/get-dtr-page-data
 
 type DailyTimeRecordRouteProps = {
   params: Promise<{ companyId: string }>
-  searchParams?: Promise<{ startDate?: string; endDate?: string }>
+  searchParams?: Promise<{ payPeriodId?: string; startDate?: string; endDate?: string }>
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -68,6 +68,7 @@ export default async function DailyTimeRecordRoutePage({ params, searchParams }:
 
   try {
     data = await getDtrPageData(company.companyId, {
+      payPeriodId: parsedSearch.payPeriodId,
       startDate: parsedSearch.startDate,
       endDate: parsedSearch.endDate,
     })
@@ -87,5 +88,15 @@ export default async function DailyTimeRecordRoutePage({ params, searchParams }:
     )
   }
 
-  return <DtrClientPage companyId={data.companyId} logs={data.logs} stats={data.stats} workbenchData={data.workbenchData} leaveOverlays={data.leaveOverlays} filters={data.filters} />
+  return (
+    <DtrClientPage
+      companyId={data.companyId}
+      logs={data.logs}
+      stats={data.stats}
+      workbenchData={data.workbenchData}
+      leaveOverlays={data.leaveOverlays}
+      payPeriodOptions={data.payPeriodOptions}
+      filters={data.filters}
+    />
+  )
 }

@@ -59,7 +59,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "payroll-runs", label: "Payroll Runs", path: "/payroll/runs" },
       { id: "payroll-recurring-deductions", label: "Recurring Deductions", path: "/payroll/recurring-deductions" },
       { id: "payslips", label: "Payslips History", path: "/payroll/payslips" },
-      { id: "statutory-reports", label: "Statutory Reports", path: "/payroll/statutory" },
+      { id: "statutory-reports", label: "Payroll Reports", path: "/payroll/statutory" },
     ],
   },
   {

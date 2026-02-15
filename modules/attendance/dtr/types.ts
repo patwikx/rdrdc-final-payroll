@@ -49,7 +49,13 @@ export type WorkbenchItem = {
   employeeId: string
   employeeName: string
   date: string
-  type: "LEAVE_REQUEST" | "OT_REQUEST" | "MISSING_LOG" | "ABSENCE"
+  type:
+    | "LEAVE_REQUEST"
+    | "OT_REQUEST"
+    | "MISSING_LOG"
+    | "ABSENCE"
+    | "ATTENDANCE_EXCEPTION"
+    | "FOR_APPROVAL"
   status: "PENDING" | "ANOMALY"
   details: string
   referenceId?: string

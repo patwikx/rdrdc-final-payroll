@@ -2,6 +2,7 @@ export type EmployeePortalOvertimeRequestRow = {
   id: string
   requestNumber: string
   overtimeDate: string
+  overtimeDateInput: string
   startTime: string
   endTime: string
   hours: number

@@ -5,6 +5,7 @@ const DEFAULT_SYSTEM_USER_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 100
 
 export type UserAccessLinkFilter = "ALL" | "LINKED" | "UNLINKED"
+export type UserAccessRoleFilter = "ALL" | "EMPLOYEE" | "HR_ADMIN" | "PAYROLL_ADMIN" | "COMPANY_ADMIN"
 
 export type UserAccessPreviewRow = {
   employeeId: string
@@ -67,6 +68,7 @@ export type UserAccessPreviewQuery = {
   employeePage?: number
   employeePageSize?: number
   employeeLinkFilter?: UserAccessLinkFilter
+  roleFilter?: UserAccessRoleFilter
   systemUserPage?: number
   systemUserPageSize?: number
   systemLinkFilter?: UserAccessLinkFilter
@@ -80,6 +82,7 @@ export type UserAccessPreviewData = {
   query: string
   employeeLinkFilter: UserAccessLinkFilter
   systemLinkFilter: UserAccessLinkFilter
+  roleFilter: UserAccessRoleFilter
   employeePagination: {
     page: number
     pageSize: number
@@ -114,6 +117,18 @@ const normalizeLinkFilter = (value: UserAccessPreviewQuery["employeeLinkFilter"]
   return "ALL"
 }
 
+const normalizeRoleFilter = (value: UserAccessPreviewQuery["roleFilter"]): UserAccessRoleFilter => {
+  if (
+    value === "EMPLOYEE" ||
+    value === "HR_ADMIN" ||
+    value === "PAYROLL_ADMIN" ||
+    value === "COMPANY_ADMIN"
+  ) {
+    return value
+  }
+  return "ALL"
+}
+
 export async function getUserAccessPreviewData(
   companyId: string,
   options: UserAccessPreviewQuery = {}
@@ -125,12 +140,28 @@ export async function getUserAccessPreviewData(
   const systemUserPageSize = normalizePageSize(options.systemUserPageSize, DEFAULT_SYSTEM_USER_PAGE_SIZE)
   const employeeLinkFilter = normalizeLinkFilter(options.employeeLinkFilter)
   const systemLinkFilter = normalizeLinkFilter(options.systemLinkFilter)
+  const roleFilter = normalizeRoleFilter(options.roleFilter)
 
   const employeeWhere = {
     companyId,
     deletedAt: null,
     ...(employeeLinkFilter === "LINKED" ? { user: { isNot: null } } : {}),
     ...(employeeLinkFilter === "UNLINKED" ? { user: null } : {}),
+    ...(roleFilter !== "ALL"
+      ? {
+          user: {
+            is: {
+              companyAccess: {
+                some: {
+                  companyId,
+                  isActive: true,
+                  role: roleFilter,
+                },
+              },
+            },
+          },
+        }
+      : {}),
     ...(normalizedQuery
       ? {
           OR: [
@@ -150,6 +181,7 @@ export async function getUserAccessPreviewData(
     companyId,
     ...(systemLinkFilter === "LINKED" ? { user: { employee: { isNot: null } } } : {}),
     ...(systemLinkFilter === "UNLINKED" ? { user: { employee: null } } : {}),
+    ...(roleFilter !== "ALL" ? { role: roleFilter } : {}),
     ...(normalizedQuery
       ? {
           OR: [
@@ -354,6 +386,7 @@ export async function getUserAccessPreviewData(
     query: normalizedQuery,
     employeeLinkFilter,
     systemLinkFilter,
+    roleFilter,
     employeePagination: {
       page: Math.min(employeePage, employeeTotalPages),
       pageSize: employeePageSize,

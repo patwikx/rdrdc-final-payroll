@@ -1,11 +1,13 @@
 "use client"
 
-import { useMemo, useState, useTransition, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconAlertCircle,
   IconCalendarEvent,
   IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
   IconClockHour4,
   IconDots,
   IconEye,
@@ -42,12 +44,25 @@ import {
   rejectLeaveRequestByHrAction,
   rejectOvertimeRequestByHrAction,
 } from "@/modules/approvals/queue/actions/finalize-approval-queue-request-action"
-import type { ApprovalQueueItem } from "@/modules/approvals/queue/utils/get-approval-queue-data"
+import type {
+  ApprovalQueueItem,
+  ApprovalQueueKindFilter,
+} from "@/modules/approvals/queue/utils/get-approval-queue-data"
 
 type ApprovalQueuePageProps = {
   companyId: string
   companyName: string
   items: ApprovalQueueItem[]
+  filters: {
+    query: string
+    kind: ApprovalQueueKindFilter
+  }
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+  }
   summary: {
     total: number
     leave: number
@@ -68,11 +83,19 @@ const requestTypeLabel = (kind: ApprovalQueueItem["kind"]): string => {
   return kind === "LEAVE" ? "Leave Request" : "Overtime Request"
 }
 
-export function ApprovalQueuePage({ companyId, companyName, items, summary }: ApprovalQueuePageProps) {
+export function ApprovalQueuePage({
+  companyId,
+  companyName,
+  items,
+  filters,
+  pagination,
+  summary,
+}: ApprovalQueuePageProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
-  const [query, setQuery] = useState("")
-  const [selectedKind, setSelectedKind] = useState<"ALL" | "LEAVE" | "OVERTIME">("ALL")
+  const [queryInput, setQueryInput] = useState(filters.query)
   const [detailItem, setDetailItem] = useState<ApprovalQueueItem | null>(null)
   const [actionItem, setActionItem] = useState<ApprovalQueueItem | null>(null)
   const [actionMode, setActionMode] = useState<ActionMode>("APPROVE")
@@ -80,21 +103,53 @@ export function ApprovalQueuePage({ companyId, companyName, items, summary }: Ap
   const [actionError, setActionError] = useState<string | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase()
+  const updateRoute = useCallback(
+    (updates: {
+      q?: string
+      kind?: ApprovalQueueKindFilter
+      page?: number
+    }) => {
+      const params = new URLSearchParams(searchParams.toString())
 
-    return items.filter((item) => {
-      const kindMatch = selectedKind === "ALL" || item.kind === selectedKind
-      if (!kindMatch) return false
-      if (!normalized) return true
+      if (typeof updates.q !== "undefined") {
+        const trimmed = updates.q.trim()
+        if (trimmed) params.set("q", trimmed)
+        else params.delete("q")
+      }
 
-      return (
-        item.employeeName.toLowerCase().includes(normalized) ||
-        item.requestNumber.toLowerCase().includes(normalized) ||
-        item.department.toLowerCase().includes(normalized)
-      )
-    })
-  }, [items, query, selectedKind])
+      if (typeof updates.kind !== "undefined") {
+        if (updates.kind === "ALL") params.delete("kind")
+        else params.set("kind", updates.kind)
+      }
+
+      if (typeof updates.page !== "undefined") {
+        if (updates.page > 1) params.set("page", String(updates.page))
+        else params.delete("page")
+      }
+
+      const nextSearch = params.toString()
+      const nextUrl = nextSearch ? `${pathname}?${nextSearch}` : pathname
+      const currentSearch = searchParams.toString()
+      const currentUrl = currentSearch ? `${pathname}?${currentSearch}` : pathname
+      if (nextUrl !== currentUrl) {
+        router.push(nextUrl)
+      }
+    },
+    [pathname, router, searchParams]
+  )
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      const nextQuery = queryInput.trim()
+      if (nextQuery === filters.query) return
+      updateRoute({
+        q: nextQuery,
+        page: 1,
+      })
+    }, 250)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [filters.query, queryInput, updateRoute])
 
   const openActionDialog = (item: ApprovalQueueItem, mode: ActionMode) => {
     setActionItem(item)
@@ -195,24 +250,48 @@ export function ApprovalQueuePage({ companyId, companyName, items, summary }: Ap
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-80">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or request" className="pl-8" />
+            <Input
+              value={queryInput}
+              onChange={(event) => setQueryInput(event.target.value)}
+              placeholder="Search employee or request"
+              className="pl-8"
+            />
           </div>
-          <Button type="button" variant={selectedKind === "ALL" ? "default" : "outline"} onClick={() => setSelectedKind("ALL")}>
+          <Button
+            type="button"
+            variant={filters.kind === "ALL" ? "default" : "outline"}
+            onClick={() =>
+              updateRoute({
+                kind: "ALL",
+                page: 1,
+              })
+            }
+          >
             <IconListDetails className="size-3.5" />
             All
           </Button>
           <Button
             type="button"
-            variant={selectedKind === "LEAVE" ? "default" : "outline"}
-            onClick={() => setSelectedKind("LEAVE")}
+            variant={filters.kind === "LEAVE" ? "default" : "outline"}
+            onClick={() =>
+              updateRoute({
+                kind: "LEAVE",
+                page: 1,
+              })
+            }
           >
             <IconCalendarEvent className="size-3.5" />
             Leave
           </Button>
           <Button
             type="button"
-            variant={selectedKind === "OVERTIME" ? "default" : "outline"}
-            onClick={() => setSelectedKind("OVERTIME")}
+            variant={filters.kind === "OVERTIME" ? "default" : "outline"}
+            onClick={() =>
+              updateRoute({
+                kind: "OVERTIME",
+                page: 1,
+              })
+            }
           >
             <IconClockHour4 className="size-3.5" />
             Overtime
@@ -243,14 +322,14 @@ export function ApprovalQueuePage({ companyId, companyName, items, summary }: Ap
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {items.length === 0 ? (
                   <tr className="border-t border-border/50 bg-background">
                     <td className="px-3 py-8 text-center text-sm text-muted-foreground" colSpan={7}>
                       No requests found for the current filters.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((item, index) => (
+                  items.map((item, index) => (
                     <tr
                       key={item.id}
                       className={
@@ -308,6 +387,43 @@ export function ApprovalQueuePage({ companyId, companyName, items, summary }: Ap
               </tbody>
             </table>
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+            <p className="text-xs text-muted-foreground">
+              Page {pagination.page} of {pagination.totalPages} • {pagination.totalItems} records
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={pagination.page <= 1}
+                onClick={() =>
+                  updateRoute({
+                    page: pagination.page - 1,
+                  })
+                }
+              >
+                <IconChevronLeft className="size-3.5" />
+                Prev
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() =>
+                  updateRoute({
+                    page: pagination.page + 1,
+                  })
+                }
+              >
+                Next
+                <IconChevronRight className="size-3.5" />
+              </Button>
+            </div>
+          </div>
         </section>
       )}
 
@@ -349,6 +465,37 @@ export function ApprovalQueuePage({ companyId, companyName, items, summary }: Ap
                 : ""}
             </DialogDescription>
           </DialogHeader>
+
+          {actionItem ? (
+            <div className="space-y-3 border border-border/60 bg-muted/20 p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailRow
+                  label="Leave Type"
+                  value={actionItem.kind === "LEAVE" ? actionItem.leaveTypeName ?? "-" : "N/A (Overtime Request)"}
+                />
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Supervisor Status</p>
+                  {actionItem.supervisorApprovedAt === "-" ? (
+                    <Badge variant="secondary">Pending Supervisor Approval</Badge>
+                  ) : (
+                    <Badge>Supervisor Approved</Badge>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Request Date</p>
+                <p className="whitespace-normal break-words text-sm text-foreground">{actionItem.scheduleLabel}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Reason</p>
+                <Input
+                  value={actionItem.reason}
+                  readOnly
+                  className="h-9"
+                />
+              </div>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <label className="text-sm text-foreground">

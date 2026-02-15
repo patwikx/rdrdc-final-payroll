@@ -23,6 +23,11 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
 
 ## Changelog
 
+- 2026-02-14 (UI Polish):
+  - Standardized employee-portal request-log table UX across Material Requests, Overtime, Leave, and Payslips.
+  - Added pending-request edit flows for overtime and leave (update-in-place, no duplicate submit).
+  - Aligned date parsing in leave/overtime create+update actions to shared `ph-time` utilities.
+  - Details: see `Session Updates (2026-02-14 - UI Polish)`.
 - 2026-02-14 (Extended):
   - Expanded Material Requests with serving/posting lifecycle, partial-serve tracking, and print-ready processing outputs.
   - Added Material Request legacy-sync unmatched-row editor with row/bulk save, filters, pagination, and status mapping controls.
@@ -43,6 +48,49 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
   - Details: see `Session Updates (2026-02-09)`.
 
 ## What Is Implemented So Far
+
+### Session Updates (2026-02-14 - UI Polish)
+
+- Material Requests employee-portal UX refinement:
+  - Enforced request-log/list behavior parity across posting, processing, and approvals workspaces.
+  - Replaced deferred filter submission behavior with immediate filter application (removed apply-button dependency).
+  - Normalized request-log table/search composition:
+    - non-rounded table containers
+    - fixed-width desktop search input (not full-width)
+    - compact table typography and spacing parity
+  - Updated processing row actions from dropdown to inline action buttons with tooltips.
+  - Updated request-level cancel/edit affordances:
+    - destructive cancel styling + tooltip
+    - edit tooltip
+    - clearer create-vs-update button semantics in request form
+  - Enabled pending-without-history material-request edits end-to-end:
+    - list/detail guards updated
+    - update action path updates existing request (no duplicate re-submit)
+    - update CTA differentiated from create CTA.
+- Overtime Requests employee-portal updates:
+  - Added request-log edit and cancel icon actions for pending rows with tooltips.
+  - Added pending-only overtime request update server action (`updateOvertimeRequestAction`) with audit logging and company/ownership checks.
+  - Updated overtime request-log table/search pattern to match material-request conventions:
+    - non-rounded table container
+    - fixed desktop search width
+    - compact row typography and action button pattern.
+  - Switched overtime date parsing to shared PH utility path via `parsePhDateInputToUtcDateOnly`.
+- Leave Requests employee-portal updates:
+  - Added request-log edit and cancel icon actions for pending rows with tooltips and destructive cancel action.
+  - Added pending-only leave request update server action (`updateLeaveRequestAction`) with:
+    - company/ownership checks
+    - balance reservation reflow (release old reservation then reserve new)
+    - audit logging
+  - Added leave request-log edit payload support (`leaveTypeId`, `startDateInput`, `endDateInput`) for dialog prefill.
+  - Aligned leave date parsing for create/update actions to shared PH utility path (`parsePhDateInputToUtcDateOnly`).
+  - Applied the same request-log table/search styling pattern (non-rounded tables, fixed desktop search width, compact table text).
+- Employee Portal Payslips page updates:
+  - Added request-log style search + status filters (auto-applied, with reset).
+  - Replaced payslip row action dropdown with inline icon actions + tooltips (view details, download PDF).
+  - Applied shared table styling parity:
+    - non-rounded table container
+    - compact row/badge styles
+    - fixed desktop search width.
 
 ### Session Updates (2026-02-14 - Extended)
 

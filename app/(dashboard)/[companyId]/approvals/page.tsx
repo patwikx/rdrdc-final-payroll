@@ -11,6 +11,11 @@ import { getApprovalQueueData } from "@/modules/approvals/queue/utils/get-approv
 
 type ApprovalQueueRouteProps = {
   params: Promise<{ companyId: string }>
+  searchParams?: Promise<{
+    q?: string
+    kind?: string
+    page?: string
+  }>
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -29,8 +34,9 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function ApprovalQueueRoutePage({ params }: ApprovalQueueRouteProps) {
+export default async function ApprovalQueueRoutePage({ params, searchParams }: ApprovalQueueRouteProps) {
   const { companyId } = await params
+  const parsedSearch = (await searchParams) ?? {}
 
   let company: Awaited<ReturnType<typeof getActiveCompanyContext>> | null = null
   let noAccess = false
@@ -65,7 +71,12 @@ export default async function ApprovalQueueRoutePage({ params }: ApprovalQueueRo
   let loadError: string | undefined
 
   try {
-    data = await getApprovalQueueData(company.companyId)
+    const page = Number(parsedSearch.page)
+    data = await getApprovalQueueData(company.companyId, {
+      query: parsedSearch.q?.trim() ?? "",
+      kind: parsedSearch.kind === "LEAVE" || parsedSearch.kind === "OVERTIME" ? parsedSearch.kind : "ALL",
+      page: Number.isFinite(page) ? page : 1,
+    })
   } catch (error) {
     loadError =
       error instanceof Error && error.message === "ACCESS_DENIED"
@@ -83,6 +94,13 @@ export default async function ApprovalQueueRoutePage({ params }: ApprovalQueueRo
   }
 
   return (
-    <ApprovalQueuePage companyId={data.companyId} companyName={data.companyName} items={data.items} summary={data.summary} />
+    <ApprovalQueuePage
+      companyId={data.companyId}
+      companyName={data.companyName}
+      items={data.items}
+      filters={data.filters}
+      pagination={data.pagination}
+      summary={data.summary}
+    />
   )
 }

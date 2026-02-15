@@ -214,6 +214,8 @@ export function MaterialRequestDraftFormClient({
 }: MaterialRequestDraftFormClientProps) {
   const router = useRouter()
   const isEditing = Boolean(initialRequest)
+  const isPendingApprovalEdit = initialRequest?.status === "PENDING_APPROVAL"
+  const canSubmitFromForm = !isPendingApprovalEdit
   const defaultChargeToDepartmentId =
     departments.find((department) => department.isActive)?.id ?? departments[0]?.id ?? ""
   const defaultSelectedStepApproverUserIds = getDefaultStepApproverUserIdsForDepartment(
@@ -394,6 +396,11 @@ export function MaterialRequestDraftFormClient({
   })
 
   const saveDraft = (submitAfterSave: boolean) => {
+    if (submitAfterSave && !canSubmitFromForm) {
+      toast.error("This request is already submitted for approval. Use Update Request to save changes.")
+      return
+    }
+
     if (!form.datePrepared || !form.dateRequired) {
       toast.error("Prepared date and required date are required.")
       return
@@ -489,14 +496,22 @@ export function MaterialRequestDraftFormClient({
             <p className="text-xs text-muted-foreground">Employee Self-Service</p>
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-                {isEditing ? "Edit Material Request Draft" : "Create Material Request Draft"}
+                {!isEditing
+                  ? "Create Material Request Draft"
+                  : isPendingApprovalEdit
+                    ? "Update Pending Material Request"
+                    : "Edit Material Request Draft"}
               </h1>
               <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 Requisition
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Fill in the requisition details and line items. Save as draft before submitting for approval.
+              {!isEditing
+                ? "Fill in the requisition details and line items. Save as draft before submitting for approval."
+                : isPendingApprovalEdit
+                  ? "Update request details while approval is still pending with no decision history."
+                  : "Update your draft details and submit when ready."}
             </p>
           </div>
 
@@ -512,16 +527,27 @@ export function MaterialRequestDraftFormClient({
             </Button>
             <Button
               type="button"
-              variant="outline"
+              variant={isPendingApprovalEdit ? "default" : "outline"}
               onClick={() => saveDraft(false)}
               disabled={isPending}
-              className="rounded-lg"
+              className={cn(
+                "rounded-lg",
+                isPendingApprovalEdit && "bg-violet-600 text-white hover:bg-violet-700"
+              )}
             >
-              {isPending ? "Saving..." : isEditing ? "Update Draft" : "Save Draft"}
+              {isPending
+                ? "Saving..."
+                : !isEditing
+                  ? "Save Draft"
+                  : isPendingApprovalEdit
+                    ? "Update Request"
+                    : "Update Draft"}
             </Button>
-            <Button type="button" onClick={() => saveDraft(true)} disabled={isPending} className="rounded-lg">
-              {isPending ? "Saving..." : "Save & Submit"}
-            </Button>
+            {canSubmitFromForm ? (
+              <Button type="button" onClick={() => saveDraft(true)} disabled={isPending} className="rounded-lg">
+                {isPending ? "Saving..." : "Save & Submit"}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

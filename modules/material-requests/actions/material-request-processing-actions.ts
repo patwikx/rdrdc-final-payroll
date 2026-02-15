@@ -6,7 +6,7 @@ import {
   MaterialRequestPostingStatus,
   MaterialRequestProcessingStatus,
   MaterialRequestStatus,
-  type Prisma,
+  Prisma,
 } from "@prisma/client"
 
 import { db } from "@/lib/db"
@@ -102,6 +102,18 @@ const asNullableText = (value: string | undefined): string | null => {
 }
 
 const QUANTITY_TOLERANCE = 0.0005
+const PROCESSING_STATUS_UPDATE_MAX_RETRIES = 3
+
+class MaterialRequestProcessingValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "MaterialRequestProcessingValidationError"
+  }
+}
+
+const isTransactionSerializationConflict = (error: unknown): boolean => {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034"
+}
 
 export async function getMaterialRequestProcessingPageAction(
   input: GetMaterialRequestProcessingPageInput
@@ -192,278 +204,331 @@ export async function updateMaterialRequestProcessingStatusAction(
     return { ok: false, error: "You are not allowed to process material requests." }
   }
 
-  const request = await db.materialRequest.findFirst({
-    where: {
-      id: payload.requestId,
-      companyId: context.companyId,
-      status: MaterialRequestStatus.APPROVED,
-    },
-    select: {
-      id: true,
-      requestNumber: true,
-      processingStatus: true,
-      processingStartedAt: true,
-      processingCompletedAt: true,
-      processingRemarks: true,
-      postingStatus: true,
-      serveBatches: {
-        orderBy: [{ servedAt: "desc" }, { createdAt: "desc" }],
-        take: 1,
-        select: {
-          id: true,
-          poNumber: true,
-          supplierName: true,
-          notes: true,
-        },
-      },
-      items: {
-        select: {
-          id: true,
-          quantity: true,
-          serveBatchItems: {
-            select: {
-              quantityServed: true,
-            },
-          },
-        },
-      },
-    },
-  })
-
-  if (!request) {
-    return { ok: false, error: "Approved material request not found." }
-  }
-
-  const previousStatus = normalizeProcessingStatus(request.processingStatus)
-  const postingStatus = request.postingStatus
-
-  if (payload.status === MaterialRequestProcessingStatus.IN_PROGRESS) {
-    if (postingStatus === MaterialRequestPostingStatus.POSTED) {
-      return { ok: false, error: "Posted requests can no longer be processed." }
-    }
-
-    if (previousStatus === MaterialRequestProcessingStatus.COMPLETED) {
-      return { ok: false, error: "Completed requests cannot be moved back to in progress." }
-    }
-  }
-
-  if (payload.status === MaterialRequestProcessingStatus.COMPLETED) {
-    if (postingStatus === MaterialRequestPostingStatus.POSTED) {
-      return { ok: false, error: "This request is already posted." }
-    }
-
-    if (previousStatus === MaterialRequestProcessingStatus.PENDING_PURCHASER) {
-      return { ok: false, error: "Start processing the request before marking it completed." }
-    }
-
-    if (previousStatus === MaterialRequestProcessingStatus.COMPLETED) {
-      return {
-        ok: true,
-        message: `Material request ${request.requestNumber} is already completed.`,
-      }
-    }
-  }
-
   const actedAt = new Date()
-  const latestServeBatch = request.serveBatches[0] ?? null
-  const remarks = asNullableText(payload.remarks) ?? request.processingRemarks
-  const processingPoNumber = asNullableText(payload.processingPoNumber) ?? latestServeBatch?.poNumber ?? null
-  const processingSupplierName =
-    asNullableText(payload.processingSupplierName) ?? latestServeBatch?.supplierName ?? null
-  const requestedQuantityByItemId = new Map<string, number>()
-  const servedQuantityByItemId = new Map<string, number>()
-
-  for (const item of request.items) {
-    const requestedQuantity = Number(item.quantity)
-    const servedQuantity = item.serveBatchItems.reduce((accumulator, servedEntry) => {
-      return accumulator + Number(servedEntry.quantityServed)
-    }, 0)
-
-    requestedQuantityByItemId.set(item.id, requestedQuantity)
-    servedQuantityByItemId.set(item.id, servedQuantity)
-  }
-
-  const batchItemsToCreate: Array<{ materialRequestItemId: string; quantityServed: number }> = []
-  for (const servedItem of payload.servedItems ?? []) {
-    const requestedQuantity = requestedQuantityByItemId.get(servedItem.materialRequestItemId)
-    if (requestedQuantity === undefined) {
-      return { ok: false, error: "One or more served items do not belong to this request." }
-    }
-
-    const alreadyServed = servedQuantityByItemId.get(servedItem.materialRequestItemId) ?? 0
-    const remainingQuantity = Math.max(0, requestedQuantity - alreadyServed)
-
-    if (servedItem.quantityServed > remainingQuantity + QUANTITY_TOLERANCE) {
-      return {
-        ok: false,
-        error: "Served quantity cannot be greater than the remaining quantity.",
+  let outcome:
+    | {
+        requestNumber: string
+        previousStatus: MaterialRequestProcessingStatus
+        alreadyCompleted: boolean
       }
-    }
+    | null = null
 
-    batchItemsToCreate.push({
-      materialRequestItemId: servedItem.materialRequestItemId,
-      quantityServed: servedItem.quantityServed,
-    })
+  for (let attempt = 0; attempt < PROCESSING_STATUS_UPDATE_MAX_RETRIES; attempt += 1) {
+    try {
+      outcome = await db.$transaction(async (tx) => {
+        // Lock the request row first so quantity and status validation is based
+        // on the latest committed state for this specific request.
+        await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${payload.requestId} FOR UPDATE`
 
-    servedQuantityByItemId.set(servedItem.materialRequestItemId, alreadyServed + servedItem.quantityServed)
-  }
-
-  if (
-    payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
-    batchItemsToCreate.length === 0
-  ) {
-    return { ok: false, error: "At least one line item quantity is required when marking request as served." }
-  }
-
-  const hasRemainingQuantities = Array.from(requestedQuantityByItemId.entries()).some(
-    ([itemId, requestedQuantity]) =>
-      requestedQuantity - (servedQuantityByItemId.get(itemId) ?? 0) > QUANTITY_TOLERANCE
-  )
-
-  if (payload.status === MaterialRequestProcessingStatus.COMPLETED && hasRemainingQuantities) {
-    return {
-      ok: false,
-      error: "Cannot mark request as completed while there are remaining item quantities to serve.",
-    }
-  }
-
-  const shouldCreateServeBatch = batchItemsToCreate.length > 0
-
-  if (shouldCreateServeBatch && (!processingPoNumber || !processingSupplierName)) {
-    return { ok: false, error: "PO # and supplier are required to mark request as served." }
-  }
-
-  const updateData: Prisma.MaterialRequestUpdateInput =
-    payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
-      ? {
-          processingStatus: MaterialRequestProcessingStatus.IN_PROGRESS,
-          processingStartedAt: request.processingStartedAt ?? actedAt,
-          processingCompletedAt: null,
-          postingStatus: null,
-          postingReference: null,
-          postingRemarks: null,
-          postedAt: null,
-          postedByUser: {
-            disconnect: true,
+        const request = await tx.materialRequest.findFirst({
+          where: {
+            id: payload.requestId,
+            companyId: context.companyId,
+            status: MaterialRequestStatus.APPROVED,
           },
-          processedByUser: {
-            connect: {
-              id: context.userId,
+          select: {
+            id: true,
+            requestNumber: true,
+            processingStatus: true,
+            processingStartedAt: true,
+            processingRemarks: true,
+            postingStatus: true,
+            serveBatches: {
+              orderBy: [{ servedAt: "desc" }, { createdAt: "desc" }],
+              take: 1,
+              select: {
+                id: true,
+                poNumber: true,
+                supplierName: true,
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                quantity: true,
+                serveBatchItems: {
+                  select: {
+                    quantityServed: true,
+                  },
+                },
+              },
             },
           },
-          processingRemarks: remarks,
+        })
+
+        if (!request) {
+          throw new MaterialRequestProcessingValidationError("Approved material request not found.")
         }
-      : {
-          processingStatus: MaterialRequestProcessingStatus.COMPLETED,
-          processingStartedAt: request.processingStartedAt ?? actedAt,
-          processingCompletedAt: actedAt,
-          postingStatus: MaterialRequestPostingStatus.PENDING_POSTING,
-          postingReference: null,
-          postingRemarks: null,
-          postedAt: null,
-          postedByUser: {
-            disconnect: true,
+
+        const previousStatus = normalizeProcessingStatus(request.processingStatus)
+        const postingStatus = request.postingStatus
+
+        if (payload.status === MaterialRequestProcessingStatus.IN_PROGRESS) {
+          if (postingStatus === MaterialRequestPostingStatus.POSTED) {
+            throw new MaterialRequestProcessingValidationError("Posted requests can no longer be processed.")
+          }
+
+          if (previousStatus === MaterialRequestProcessingStatus.COMPLETED) {
+            throw new MaterialRequestProcessingValidationError(
+              "Completed requests cannot be moved back to in progress."
+            )
+          }
+        }
+
+        if (payload.status === MaterialRequestProcessingStatus.COMPLETED) {
+          if (postingStatus === MaterialRequestPostingStatus.POSTED) {
+            throw new MaterialRequestProcessingValidationError("This request is already posted.")
+          }
+
+          if (previousStatus === MaterialRequestProcessingStatus.PENDING_PURCHASER) {
+            throw new MaterialRequestProcessingValidationError(
+              "Start processing the request before marking it completed."
+            )
+          }
+
+          if (previousStatus === MaterialRequestProcessingStatus.COMPLETED) {
+            return {
+              requestNumber: request.requestNumber,
+              previousStatus,
+              alreadyCompleted: true,
+            }
+          }
+        }
+
+        const latestServeBatch = request.serveBatches[0] ?? null
+        const remarks = asNullableText(payload.remarks) ?? request.processingRemarks
+        const processingPoNumber = asNullableText(payload.processingPoNumber) ?? latestServeBatch?.poNumber ?? null
+        const processingSupplierName =
+          asNullableText(payload.processingSupplierName) ?? latestServeBatch?.supplierName ?? null
+
+        const requestedQuantityByItemId = new Map<string, number>()
+        const servedQuantityByItemId = new Map<string, number>()
+
+        for (const item of request.items) {
+          const requestedQuantity = Number(item.quantity)
+          const servedQuantity = item.serveBatchItems.reduce((accumulator, servedEntry) => {
+            return accumulator + Number(servedEntry.quantityServed)
+          }, 0)
+
+          requestedQuantityByItemId.set(item.id, requestedQuantity)
+          servedQuantityByItemId.set(item.id, servedQuantity)
+        }
+
+        const batchItemsToCreate: Array<{ materialRequestItemId: string; quantityServed: number }> = []
+        for (const servedItem of payload.servedItems ?? []) {
+          const requestedQuantity = requestedQuantityByItemId.get(servedItem.materialRequestItemId)
+          if (requestedQuantity === undefined) {
+            throw new MaterialRequestProcessingValidationError(
+              "One or more served items do not belong to this request."
+            )
+          }
+
+          const alreadyServed = servedQuantityByItemId.get(servedItem.materialRequestItemId) ?? 0
+          const remainingQuantity = Math.max(0, requestedQuantity - alreadyServed)
+
+          if (servedItem.quantityServed > remainingQuantity + QUANTITY_TOLERANCE) {
+            throw new MaterialRequestProcessingValidationError(
+              "Served quantity cannot be greater than the remaining quantity."
+            )
+          }
+
+          batchItemsToCreate.push({
+            materialRequestItemId: servedItem.materialRequestItemId,
+            quantityServed: servedItem.quantityServed,
+          })
+
+          servedQuantityByItemId.set(servedItem.materialRequestItemId, alreadyServed + servedItem.quantityServed)
+        }
+
+        if (
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          batchItemsToCreate.length === 0
+        ) {
+          throw new MaterialRequestProcessingValidationError(
+            "At least one line item quantity is required when marking request as served."
+          )
+        }
+
+        const hasRemainingQuantities = Array.from(requestedQuantityByItemId.entries()).some(
+          ([itemId, requestedQuantity]) =>
+            requestedQuantity - (servedQuantityByItemId.get(itemId) ?? 0) > QUANTITY_TOLERANCE
+        )
+
+        if (payload.status === MaterialRequestProcessingStatus.COMPLETED && hasRemainingQuantities) {
+          throw new MaterialRequestProcessingValidationError(
+            "Cannot mark request as completed while there are remaining item quantities to serve."
+          )
+        }
+
+        const shouldCreateServeBatch = batchItemsToCreate.length > 0
+
+        if (shouldCreateServeBatch && (!processingPoNumber || !processingSupplierName)) {
+          throw new MaterialRequestProcessingValidationError("PO # and supplier are required to mark request as served.")
+        }
+
+        const updateData: Prisma.MaterialRequestUpdateInput =
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
+            ? {
+                processingStatus: MaterialRequestProcessingStatus.IN_PROGRESS,
+                processingStartedAt: request.processingStartedAt ?? actedAt,
+                processingCompletedAt: null,
+                postingStatus: null,
+                postingReference: null,
+                postingRemarks: null,
+                postedAt: null,
+                postedByUser: {
+                  disconnect: true,
+                },
+                processedByUser: {
+                  connect: {
+                    id: context.userId,
+                  },
+                },
+                processingRemarks: remarks,
+              }
+            : {
+                processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+                processingStartedAt: request.processingStartedAt ?? actedAt,
+                processingCompletedAt: actedAt,
+                postingStatus: MaterialRequestPostingStatus.PENDING_POSTING,
+                postingReference: null,
+                postingRemarks: null,
+                postedAt: null,
+                postedByUser: {
+                  disconnect: true,
+                },
+                processedByUser: {
+                  connect: {
+                    id: context.userId,
+                  },
+                },
+                processingRemarks: remarks,
+              }
+
+        await tx.materialRequest.update({
+          where: {
+            id: request.id,
           },
-          processedByUser: {
-            connect: {
-              id: context.userId,
+          data: updateData,
+        })
+
+        if (shouldCreateServeBatch && processingPoNumber && processingSupplierName) {
+          await tx.materialRequestServeBatch.create({
+            data: {
+              materialRequestId: request.id,
+              poNumber: processingPoNumber,
+              supplierName: processingSupplierName,
+              notes: remarks,
+              isFinalServe: payload.status === MaterialRequestProcessingStatus.COMPLETED,
+              servedAt: actedAt,
+              servedByUserId: context.userId,
+              items: {
+                create: batchItemsToCreate.map((batchItem) => ({
+                  materialRequestItemId: batchItem.materialRequestItemId,
+                  quantityServed: batchItem.quantityServed,
+                })),
+              },
             },
-          },
-          processingRemarks: remarks,
+          })
+        } else if (
+          payload.status === MaterialRequestProcessingStatus.COMPLETED &&
+          latestServeBatch?.id
+        ) {
+          await tx.materialRequestServeBatch.update({
+            where: {
+              id: latestServeBatch.id,
+            },
+            data: {
+              isFinalServe: true,
+            },
+          })
         }
 
-  await db.$transaction(async (tx) => {
-    await tx.materialRequest.update({
-      where: {
-        id: request.id,
-      },
-      data: updateData,
-    })
-
-    if (shouldCreateServeBatch && processingPoNumber && processingSupplierName) {
-      await tx.materialRequestServeBatch.create({
-        data: {
-          materialRequestId: request.id,
-          poNumber: processingPoNumber,
-          supplierName: processingSupplierName,
-          notes: remarks,
-          isFinalServe: payload.status === MaterialRequestProcessingStatus.COMPLETED,
-          servedAt: actedAt,
-          servedByUserId: context.userId,
-          items: {
-            create: batchItemsToCreate.map((batchItem) => ({
-              materialRequestItemId: batchItem.materialRequestItemId,
-              quantityServed: batchItem.quantityServed,
-            })),
+        await createAuditLog(
+          {
+            tableName: "MaterialRequest",
+            recordId: request.id,
+            action: "UPDATE",
+            userId: context.userId,
+            reason: "UPDATE_MATERIAL_REQUEST_PROCESSING_STATUS",
+            changes: [
+              {
+                fieldName: "processingStatus",
+                oldValue: previousStatus,
+                newValue: payload.status,
+              },
+              {
+                fieldName: "processingRemarks",
+                oldValue: request.processingRemarks,
+                newValue: remarks,
+              },
+              ...(shouldCreateServeBatch
+                ? [
+                    {
+                      fieldName: "serveBatchPoNumber",
+                      oldValue: latestServeBatch?.poNumber ?? null,
+                      newValue: processingPoNumber,
+                    },
+                    {
+                      fieldName: "serveBatchSupplierName",
+                      oldValue: latestServeBatch?.supplierName ?? null,
+                      newValue: processingSupplierName,
+                    },
+                    {
+                      fieldName: "serveBatchItemsCount",
+                      oldValue: null,
+                      newValue: batchItemsToCreate.length,
+                    },
+                  ]
+                : []),
+            ],
           },
-        },
+          tx
+        )
+
+        return {
+          requestNumber: request.requestNumber,
+          previousStatus,
+          alreadyCompleted: false,
+        }
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       })
-    } else if (
-      payload.status === MaterialRequestProcessingStatus.COMPLETED &&
-      latestServeBatch?.id
-    ) {
-      await tx.materialRequestServeBatch.update({
-        where: {
-          id: latestServeBatch.id,
-        },
-        data: {
-          isFinalServe: true,
-        },
-      })
+      break
+    } catch (error) {
+      if (error instanceof MaterialRequestProcessingValidationError) {
+        return { ok: false, error: error.message }
+      }
+
+      if (isTransactionSerializationConflict(error) && attempt < PROCESSING_STATUS_UPDATE_MAX_RETRIES - 1) {
+        continue
+      }
+
+      const message = error instanceof Error ? error.message : "Unknown error"
+      return { ok: false, error: `Failed to update processing status: ${message}` }
     }
+  }
 
-    await createAuditLog(
-      {
-        tableName: "MaterialRequest",
-        recordId: request.id,
-        action: "UPDATE",
-        userId: context.userId,
-        reason: "UPDATE_MATERIAL_REQUEST_PROCESSING_STATUS",
-        changes: [
-          {
-            fieldName: "processingStatus",
-            oldValue: previousStatus,
-            newValue: payload.status,
-          },
-          {
-            fieldName: "processingRemarks",
-            oldValue: request.processingRemarks,
-            newValue: remarks,
-          },
-          ...(shouldCreateServeBatch
-            ? [
-                {
-                  fieldName: "serveBatchPoNumber",
-                  oldValue: latestServeBatch?.poNumber ?? null,
-                  newValue: processingPoNumber,
-                },
-                {
-                  fieldName: "serveBatchSupplierName",
-                  oldValue: latestServeBatch?.supplierName ?? null,
-                  newValue: processingSupplierName,
-                },
-                {
-                  fieldName: "serveBatchItemsCount",
-                  oldValue: null,
-                  newValue: batchItemsToCreate.length,
-                },
-              ]
-            : []),
-        ],
-      },
-      tx
-    )
-  })
+  if (!outcome) {
+    return { ok: false, error: "Failed to update processing status due to concurrent updates. Please retry." }
+  }
 
   revalidateMaterialProcessingPaths(context.companyId)
+
+  if (outcome.alreadyCompleted) {
+    return {
+      ok: true,
+      message: `Material request ${outcome.requestNumber} is already completed.`,
+    }
+  }
 
   return {
     ok: true,
     message:
       payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
-        ? previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS
-          ? `Material request ${request.requestNumber} updated with served quantities.`
-          : `Material request ${request.requestNumber} marked as served.`
-        : `Material request ${request.requestNumber} marked as completed.`,
+        ? outcome.previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS
+          ? `Material request ${outcome.requestNumber} updated with served quantities.`
+          : `Material request ${outcome.requestNumber} marked as served.`
+        : `Material request ${outcome.requestNumber} marked as completed.`,
   }
 }

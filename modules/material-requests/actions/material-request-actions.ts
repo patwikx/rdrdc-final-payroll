@@ -469,6 +469,13 @@ export async function updateMaterialRequestDraftAction(
         id: true,
         requestNumber: true,
         status: true,
+        steps: {
+          select: {
+            status: true,
+            actedAt: true,
+            actedByUserId: true,
+          },
+        },
       },
     }),
   ])
@@ -478,11 +485,24 @@ export async function updateMaterialRequestDraftAction(
   }
 
   if (!existingRequest) {
-    return { ok: false, error: "Material request draft not found." }
+    return { ok: false, error: "Material request not found in the active company." }
   }
 
-  if (existingRequest.status !== MaterialRequestStatus.DRAFT) {
-    return { ok: false, error: "Only draft material requests can be edited." }
+  const hasApprovalHistory = existingRequest.steps.some(
+    (step) =>
+      step.status !== MaterialRequestStepStatus.PENDING ||
+      step.actedAt !== null ||
+      step.actedByUserId !== null
+  )
+
+  const canEditPendingWithoutHistory =
+    existingRequest.status === MaterialRequestStatus.PENDING_APPROVAL && !hasApprovalHistory
+
+  if (existingRequest.status !== MaterialRequestStatus.DRAFT && !canEditPendingWithoutHistory) {
+    return {
+      ok: false,
+      error: "Only draft requests or pending requests without approval decisions can be edited.",
+    }
   }
 
   const resolvedDepartment = await resolveRequestDepartment({
@@ -508,6 +528,164 @@ export async function updateMaterialRequestDraftAction(
     discount: payload.discount,
   })
 
+  let pendingSubmissionFlow:
+    | {
+        requiredSteps: number
+        submissionFlowSteps: Array<{
+          stepNumber: number
+          stepName: string | null
+          approverUserId: string
+        }>
+      }
+    | null = null
+
+  if (canEditPendingWithoutHistory) {
+    const approvalFlow = await db.departmentMaterialRequestApprovalFlow.findFirst({
+      where: {
+        companyId: context.companyId,
+        departmentId: resolvedDepartment.departmentId,
+        isActive: true,
+      },
+      include: {
+        steps: {
+          orderBy: {
+            stepNumber: "asc",
+          },
+          select: {
+            stepNumber: true,
+            stepName: true,
+            approverUserId: true,
+          },
+        },
+      },
+    })
+
+    if (!approvalFlow) {
+      return { ok: false, error: "No active department approval flow found for this request." }
+    }
+
+    const sortedFlowSteps = [...approvalFlow.steps].sort((a, b) => a.stepNumber - b.stepNumber)
+    const selectedApproverByStep = new Map<number, string>()
+
+    const selectedInitialApproverUserId = toNullableId(payload.selectedInitialApproverUserId)
+    const selectedStepTwoApproverUserId = toNullableId(payload.selectedStepTwoApproverUserId)
+    const selectedStepThreeApproverUserId = toNullableId(payload.selectedStepThreeApproverUserId)
+    const selectedStepFourApproverUserId = toNullableId(payload.selectedStepFourApproverUserId)
+
+    if (selectedInitialApproverUserId) {
+      selectedApproverByStep.set(1, selectedInitialApproverUserId)
+    }
+
+    if (selectedStepTwoApproverUserId) {
+      selectedApproverByStep.set(2, selectedStepTwoApproverUserId)
+    }
+
+    if (selectedStepThreeApproverUserId) {
+      selectedApproverByStep.set(3, selectedStepThreeApproverUserId)
+    }
+
+    if (selectedStepFourApproverUserId) {
+      selectedApproverByStep.set(4, selectedStepFourApproverUserId)
+    }
+
+    for (let stepNumber = 1; stepNumber <= approvalFlow.requiredSteps; stepNumber += 1) {
+      const stepApprovers = sortedFlowSteps.filter((step) => step.stepNumber === stepNumber)
+      if (stepApprovers.length === 0) {
+        continue
+      }
+
+      if (!selectedApproverByStep.get(stepNumber)) {
+        const stepDisplayName = getStepDisplayName(stepNumber, stepApprovers[0]?.stepName)
+        return {
+          ok: false,
+          error: `${stepDisplayName} approver selection is required before saving this pending request.`,
+        }
+      }
+    }
+
+    for (const [stepNumber, selectedApproverUserId] of selectedApproverByStep.entries()) {
+      if (stepNumber > approvalFlow.requiredSteps) {
+        continue
+      }
+
+      const stepApprovers = sortedFlowSteps.filter((step) => step.stepNumber === stepNumber)
+      if (!stepApprovers.some((step) => step.approverUserId === selectedApproverUserId)) {
+        const stepDisplayName = getStepDisplayName(stepNumber, stepApprovers[0]?.stepName)
+        return {
+          ok: false,
+          error: `Selected approver for ${stepDisplayName} is no longer valid for the department flow.`,
+        }
+      }
+    }
+
+    const submissionFlowSteps = sortedFlowSteps.filter((step) => {
+      if (step.stepNumber < 1 || step.stepNumber > approvalFlow.requiredSteps) {
+        return false
+      }
+
+      const selectedApproverUserId = selectedApproverByStep.get(step.stepNumber)
+      if (!selectedApproverUserId) {
+        return true
+      }
+
+      return step.approverUserId === selectedApproverUserId
+    })
+
+    for (let expectedStep = 1; expectedStep <= approvalFlow.requiredSteps; expectedStep += 1) {
+      const stepApprovers = submissionFlowSteps.filter((step) => step.stepNumber === expectedStep)
+      if (stepApprovers.length === 0) {
+        return {
+          ok: false,
+          error: "Department approval flow is invalid. Each required step must have at least one approver.",
+        }
+      }
+    }
+
+    if (submissionFlowSteps.some((step) => step.stepNumber < 1 || step.stepNumber > approvalFlow.requiredSteps)) {
+      return {
+        ok: false,
+        error: "Department approval flow is invalid. One or more approvers are assigned outside the required step range.",
+      }
+    }
+
+    const uniqueApproverUserIds = [...new Set(submissionFlowSteps.map((step) => step.approverUserId))]
+
+    const approverUsers = await db.user.findMany({
+      where: {
+        id: {
+          in: uniqueApproverUserIds,
+        },
+        isActive: true,
+        isRequestApprover: true,
+        companyAccess: {
+          some: {
+            companyId: context.companyId,
+            isActive: true,
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (approverUsers.length !== uniqueApproverUserIds.length) {
+      return {
+        ok: false,
+        error: "Department approval flow contains one or more inactive or unauthorized approvers.",
+      }
+    }
+
+    pendingSubmissionFlow = {
+      requiredSteps: approvalFlow.requiredSteps,
+      submissionFlowSteps: submissionFlowSteps.map((step) => ({
+        stepNumber: step.stepNumber,
+        stepName: step.stepName,
+        approverUserId: step.approverUserId,
+      })),
+    }
+  }
+
   try {
     await db.$transaction(async (tx) => {
       await tx.materialRequestItem.deleteMany({
@@ -515,6 +693,23 @@ export async function updateMaterialRequestDraftAction(
           materialRequestId: existingRequest.id,
         },
       })
+
+      if (pendingSubmissionFlow) {
+        await tx.materialRequestApprovalStep.deleteMany({
+          where: {
+            materialRequestId: existingRequest.id,
+          },
+        })
+
+        await tx.materialRequestApprovalStep.createMany({
+          data: pendingSubmissionFlow.submissionFlowSteps.map((step) => ({
+            materialRequestId: existingRequest.id,
+            stepNumber: step.stepNumber,
+            stepName: step.stepName,
+            approverUserId: step.approverUserId,
+          })),
+        })
+      }
 
       const updated = await tx.materialRequest.update({
         where: {
@@ -540,6 +735,12 @@ export async function updateMaterialRequestDraftAction(
           discount: totals.discount,
           subTotal: totals.subTotal,
           grandTotal: totals.grandTotal,
+          ...(pendingSubmissionFlow
+            ? {
+                requiredSteps: pendingSubmissionFlow.requiredSteps,
+                currentStep: 1,
+              }
+            : {}),
           items: {
             create: items.map((item) => ({
               lineNumber: item.lineNumber,
@@ -567,7 +768,9 @@ export async function updateMaterialRequestDraftAction(
           recordId: updated.id,
           action: "UPDATE",
           userId: context.userId,
-          reason: "EMPLOYEE_UPDATE_MATERIAL_REQUEST_DRAFT",
+          reason: pendingSubmissionFlow
+            ? "EMPLOYEE_UPDATE_MATERIAL_REQUEST_PENDING_NO_HISTORY"
+            : "EMPLOYEE_UPDATE_MATERIAL_REQUEST_DRAFT",
           changes: [
             {
               fieldName: "itemCount",
@@ -587,12 +790,12 @@ export async function updateMaterialRequestDraftAction(
 
     return {
       ok: true,
-      message: `Material request ${existingRequest.requestNumber} draft updated.`,
+      message: `Material request ${existingRequest.requestNumber} updated.`,
       requestId: existingRequest.id,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
-    return { ok: false, error: `Failed to update material request draft: ${message}` }
+    return { ok: false, error: `Failed to update material request: ${message}` }
   }
 }
 

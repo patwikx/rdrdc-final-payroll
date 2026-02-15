@@ -90,7 +90,6 @@ export async function getEmployeePortalMaterialRequestsReadModel(params: {
       requesterUserId: params.userId,
     },
     orderBy: [{ createdAt: "desc" }],
-    take: 100,
     select: {
       id: true,
       requestNumber: true,
@@ -689,17 +688,23 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
   approverUserId: string
   isHR: boolean
 }): Promise<EmployeePortalMaterialRequestApprovalReadModel> {
-  const queuePromise = db.materialRequest.findMany({
-    where: {
-      companyId: params.companyId,
-      status: MaterialRequestStatus.PENDING_APPROVAL,
+  const actionableQueueWhere: Prisma.MaterialRequestWhereInput = {
+    companyId: params.companyId,
+    status: MaterialRequestStatus.PENDING_APPROVAL,
+    OR: [1, 2, 3, 4].map((stepNumber) => ({
+      currentStep: stepNumber,
       steps: {
         some: {
           approverUserId: params.approverUserId,
-          status: "PENDING",
+          status: MaterialRequestStepStatus.PENDING,
+          stepNumber,
         },
       },
-    },
+    })),
+  }
+
+  const queuePromise = db.materialRequest.findMany({
+    where: actionableQueueWhere,
     orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
@@ -722,18 +727,7 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
           name: true,
         },
       },
-      steps: {
-        where: {
-          approverUserId: params.approverUserId,
-          status: "PENDING",
-        },
-        select: {
-          stepNumber: true,
-          stepName: true,
-        },
-      },
     },
-    take: 500,
   })
 
   const historyPromise = getEmployeePortalMaterialRequestApprovalHistoryPageReadModel({
@@ -748,15 +742,7 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
 
   const [queueRequests, historyPage] = await Promise.all([queuePromise, historyPromise])
 
-  const rows = queueRequests
-    .filter((request) => {
-      if (!request.currentStep) {
-        return false
-      }
-
-      return request.steps.some((step) => step.stepNumber === request.currentStep)
-    })
-    .map((request) => toQueueRow(request))
+  const rows = queueRequests.map((request) => toQueueRow(request))
 
   return {
     rows,
@@ -796,14 +782,28 @@ const buildMaterialRequestProcessingWhere = (params: {
     AND: andConditions,
   }
 
-  if (params.status === "PENDING_PURCHASER") {
+  if (params.status === "OPEN") {
     andConditions.push({
       OR: [
         {
-        processingStatus: MaterialRequestProcessingStatus.PENDING_PURCHASER,
+          processingStatus: null,
         },
         {
-        processingStatus: null,
+          processingStatus: MaterialRequestProcessingStatus.PENDING_PURCHASER,
+        },
+        {
+          processingStatus: MaterialRequestProcessingStatus.IN_PROGRESS,
+        },
+      ],
+    })
+  } else if (params.status === "PENDING_PURCHASER") {
+    andConditions.push({
+      OR: [
+        {
+          processingStatus: MaterialRequestProcessingStatus.PENDING_PURCHASER,
+        },
+        {
+          processingStatus: null,
         },
       ],
     })
@@ -997,7 +997,7 @@ export async function getEmployeePortalMaterialRequestProcessingPageReadModel(pa
     db.materialRequest.count({ where }),
     db.materialRequest.findMany({
       where,
-      orderBy: [{ approvedAt: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ createdAt: "desc" }, { approvedAt: "desc" }, { requestNumber: "desc" }],
       skip,
       take: params.pageSize,
       select: {

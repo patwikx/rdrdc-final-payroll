@@ -1,18 +1,23 @@
 import { RequestStatus, type Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
-import { toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
+import { parsePhDateInputToUtcDateOnly, toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { overtimeDateInputSchema, overtimeTimeInputSchema } from "@/modules/overtime/schemas/overtime-domain-schemas"
 import type {
   EmployeePortalOvertimeApprovalHistoryPage,
   EmployeePortalOvertimeApprovalHistoryRow,
   EmployeePortalOvertimeApprovalRow,
+  EmployeePortalOvertimeRequestRow,
 } from "@/modules/overtime/types/overtime-domain-types"
 
-export const parseOvertimeDateInput = (value: string): Date => {
-  const parsed = overtimeDateInputSchema.parse(value)
-  const [year, month, day] = parsed.split("-").map((part) => Number(part))
-  return new Date(Date.UTC(year, month - 1, day))
+export const parseOvertimeDateInput = (value: string): Date | null => {
+  const parsed = overtimeDateInputSchema.safeParse(value)
+  if (!parsed.success) {
+    return null
+  }
+
+  const converted = parsePhDateInputToUtcDateOnly(parsed.data)
+  return converted
 }
 
 export const parseOvertimeTimeInput = (value: string): Date => {
@@ -57,6 +62,13 @@ const dateLabel = new Intl.DateTimeFormat("en-PH", {
   month: "short",
   day: "2-digit",
   year: "numeric",
+  timeZone: "Asia/Manila",
+})
+
+const dateInputLabel = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
   timeZone: "Asia/Manila",
 })
 
@@ -318,7 +330,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
 
 export async function getEmployeePortalOvertimeRequestsReadModel(params: {
   employeeId: string
-}) {
+}): Promise<EmployeePortalOvertimeRequestRow[]> {
   const requests = await db.overtimeRequest.findMany({
     where: { employeeId: params.employeeId },
     orderBy: [{ createdAt: "desc" }],
@@ -357,6 +369,7 @@ export async function getEmployeePortalOvertimeRequestsReadModel(params: {
     id: item.id,
     requestNumber: item.requestNumber,
     overtimeDate: dateLabel.format(item.overtimeDate),
+    overtimeDateInput: dateInputLabel.format(item.overtimeDate),
     startTime: item.startTime.toISOString(),
     endTime: item.endTime.toISOString(),
     hours: Number(item.hours),

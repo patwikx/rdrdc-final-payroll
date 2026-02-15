@@ -205,3 +205,15 @@ Use this section as the single running log for implementation lessons/progress n
 - Tightened legacy requester resolution to legacy requester employee-id/number matching against new `employeeNumber` (no name fallback).
 - Updated employee-portal material-request ownership visibility to `requesterUserId` so cross-company-access users can see/create/edit their requests in accessible companies even without a local employee row in that company.
 - Added server-side paginated approval history + animated accordion expansion for Material Requests, and applied the same server-driven history pattern to Leave and Overtime approvals.
+- Applied request-log UX standardization across Material Requests (processing/posting/approvals), Overtime Requests, Leave Requests, and Employee-Portal Payslips:
+  - non-rounded table containers
+  - fixed desktop search width (no `w-full`)
+  - compact table text/badge/action spacing parity
+  - filter changes applied immediately in UI flows where applicable.
+- Replaced row action dropdown patterns in employee request logs with inline icon actions + tooltips where requested (material processing, overtime requests, leave requests, payslips).
+- Added pending-request edit/update flows for Overtime and Leave request logs:
+  - new server actions: `updateOvertimeRequestAction`, `updateLeaveRequestAction`
+  - update-in-place behavior (no duplicate request creation)
+  - retained company-scoped authz, ownership checks, and audit logging.
+- Expanded Material Request editability behavior so pending requests with no acted approval history can be updated, including route/action guard alignment and create-vs-update CTA distinction.
+- Aligned leave/overtime create+update date parsing paths to shared PH date utility usage (`parsePhDateInputToUtcDateOnly`) to preserve expected PH-local date semantics.

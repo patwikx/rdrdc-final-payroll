@@ -107,54 +107,50 @@ export async function getMaterialRequestsForMyApprovalAction(
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
 
-  const pendingRequests = await db.materialRequest.findMany({
-    where: {
-      companyId: context.companyId,
-      status: MaterialRequestStatus.PENDING_APPROVAL,
+  const actionableQueueWhere = {
+    companyId: context.companyId,
+    status: MaterialRequestStatus.PENDING_APPROVAL,
+    OR: [1, 2, 3, 4].map((stepNumber) => ({
+      currentStep: stepNumber,
       steps: {
         some: {
           approverUserId: context.userId,
           status: MaterialRequestStepStatus.PENDING,
+          stepNumber,
         },
       },
-    },
-    include: {
-      requesterEmployee: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          employeeNumber: true,
-        },
-      },
-      department: {
-        select: {
-          name: true,
-        },
-      },
-      steps: {
-        where: {
-          approverUserId: context.userId,
-          status: MaterialRequestStepStatus.PENDING,
-        },
-        select: {
-          stepNumber: true,
-        },
-      },
-    },
-    orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
-    take: 500,
-  })
+    })),
+  }
 
-  const actionableRows = pendingRequests
-    .filter((request) => {
-      if (!request.currentStep) {
-        return false
-      }
+  const skip = (payload.page - 1) * payload.pageSize
+  const [total, queueRequests] = await db.$transaction([
+    db.materialRequest.count({
+      where: actionableQueueWhere,
+    }),
+    db.materialRequest.findMany({
+      where: actionableQueueWhere,
+      orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
+      skip,
+      take: payload.pageSize,
+      include: {
+        requesterEmployee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            employeeNumber: true,
+          },
+        },
+        department: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ])
 
-      return request.steps.some((step) => step.stepNumber === request.currentStep)
-    })
-    .map<MaterialRequestApprovalQueueRow>((request) => ({
+  const rows = queueRequests.map<MaterialRequestApprovalQueueRow>((request) => ({
       id: request.id,
       requestNumber: request.requestNumber,
       requesterEmployeeId: request.requesterEmployee.id,
@@ -169,14 +165,10 @@ export async function getMaterialRequestsForMyApprovalAction(
       submittedAt: request.submittedAt,
     }))
 
-  const total = actionableRows.length
-  const start = (payload.page - 1) * payload.pageSize
-  const end = start + payload.pageSize
-
   return {
     ok: true,
     data: {
-      rows: actionableRows.slice(start, end),
+      rows,
       total,
       page: payload.page,
       pageSize: payload.pageSize,

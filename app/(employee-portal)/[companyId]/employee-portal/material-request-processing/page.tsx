@@ -31,7 +31,7 @@ export default async function MaterialRequestProcessingPage({ params }: Material
     page: 1,
     pageSize: 10,
     search: "",
-    status: "ALL",
+    status: "OPEN",
   })
 
   return (

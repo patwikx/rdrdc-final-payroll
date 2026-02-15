@@ -3,7 +3,15 @@
 import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconChecklist, IconGitPullRequest, IconPlus, IconSitemap, IconTrash } from "@tabler/icons-react"
+import {
+  IconChecklist,
+  IconChevronLeft,
+  IconChevronRight,
+  IconGitPullRequest,
+  IconPlus,
+  IconSitemap,
+  IconTrash,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -51,6 +59,7 @@ type FlowForm = {
 }
 
 const REQUIRED_STEP_OPTIONS = [1, 2, 3, 4] as const
+const FLOW_TABLE_PAGE_SIZE = 10
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
@@ -109,6 +118,7 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
   const defaultDepartmentId = initialFlow?.departmentId ?? data.departments[0]?.id ?? ""
 
   const [selectedDepartmentId, setSelectedDepartmentId] = useState(defaultDepartmentId)
+  const [flowPage, setFlowPage] = useState(1)
   const [form, setForm] = useState<FlowForm>(
     initialFlow ? createFlowFormFromRow(initialFlow) : createEmptyFlowForm(defaultDepartmentId)
   )
@@ -118,6 +128,12 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
   }, [data.flows])
 
   const selectedFlow = selectedDepartmentId ? flowByDepartmentId.get(selectedDepartmentId) ?? null : null
+  const flowTotalPages = Math.max(1, Math.ceil(data.flows.length / FLOW_TABLE_PAGE_SIZE))
+  const safeFlowPage = Math.min(flowPage, flowTotalPages)
+  const pagedFlows = data.flows.slice(
+    (safeFlowPage - 1) * FLOW_TABLE_PAGE_SIZE,
+    safeFlowPage * FLOW_TABLE_PAGE_SIZE
+  )
 
   const assignFormFromDepartment = (departmentId: string) => {
     const existingFlow = flowByDepartmentId.get(departmentId)
@@ -343,7 +359,7 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                       </TableCell>
                     </TableRow>
                   ) : (
-                    data.flows.map((flow) => (
+                    pagedFlows.map((flow) => (
                       <TableRow
                         key={flow.id}
                         className={cn(
@@ -396,6 +412,37 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                 </TableBody>
               </Table>
             </div>
+            {data.flows.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Page {safeFlowPage} of {flowTotalPages} • {data.flows.length} records
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={safeFlowPage <= 1}
+                    onClick={() => setFlowPage((prev) => Math.max(1, prev - 1))}
+                  >
+                    <IconChevronLeft className="size-3.5" />
+                    Prev
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2"
+                    disabled={safeFlowPage >= flowTotalPages}
+                    onClick={() => setFlowPage((prev) => Math.min(flowTotalPages, prev + 1))}
+                  >
+                    Next
+                    <IconChevronRight className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
 

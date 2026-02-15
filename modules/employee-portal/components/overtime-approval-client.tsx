@@ -224,7 +224,9 @@ export function OvertimeApprovalClient({
                 <>
                   {paginatedRows.map((row) => (
                     <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                      <div className="col-span-1 text-xs text-muted-foreground">{row.requestNumber}</div>
+                      <div className="col-span-1 min-w-0">
+                        <p className="truncate text-xs text-muted-foreground" title={row.requestNumber}>{row.requestNumber}</p>
+                      </div>
                       <div className="col-span-2">
                         <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
                         <p className="text-xs text-muted-foreground">{row.employeeNumber}</p>

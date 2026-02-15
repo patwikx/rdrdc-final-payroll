@@ -30,6 +30,7 @@ import type {
   AvailableSystemUserOption,
   UserAccessCompanyOption,
   UserAccessLinkFilter,
+  UserAccessRoleFilter,
   SystemUserAccountRow,
   UserAccessPreviewRow,
 } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
@@ -51,6 +52,7 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { UserAccessWorkspace } from "./user-access-workspace"
 
 type UserAccessPageProps = {
   companyId: string
@@ -62,6 +64,7 @@ type UserAccessPageProps = {
   query: string
   employeeLinkFilter: UserAccessLinkFilter
   systemLinkFilter: UserAccessLinkFilter
+  roleFilter: UserAccessRoleFilter
   employeePagination: {
     page: number
     pageSize: number
@@ -167,6 +170,11 @@ type ActionDialogState =
   | { type: "LINK"; row: UserAccessPreviewRow }
   | { type: "EDIT"; row: UserAccessPreviewRow }
 
+const resolveUnifiedLinkFilter = (
+  employeeFilter: UserAccessLinkFilter,
+  systemFilter: UserAccessLinkFilter
+): UserAccessLinkFilter => (employeeFilter !== "ALL" ? employeeFilter : systemFilter)
+
 export function UserAccessPage({
   companyId,
   companyName,
@@ -177,6 +185,7 @@ export function UserAccessPage({
   query,
   employeeLinkFilter,
   systemLinkFilter,
+  roleFilter,
   employeePagination,
   systemUserPagination,
 }: UserAccessPageProps) {
@@ -184,8 +193,10 @@ export function UserAccessPage({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [queryInput, setQueryInput] = useState(query)
-  const [employeeLinkFilterInput, setEmployeeLinkFilterInput] = useState<UserAccessLinkFilter>(employeeLinkFilter)
-  const [systemLinkFilterInput, setSystemLinkFilterInput] = useState<UserAccessLinkFilter>(systemLinkFilter)
+  const [linkFilterInput, setLinkFilterInput] = useState<UserAccessLinkFilter>(
+    resolveUnifiedLinkFilter(employeeLinkFilter, systemLinkFilter)
+  )
+  const [roleFilterInput, setRoleFilterInput] = useState<UserAccessRoleFilter>(roleFilter)
 
   const [dialogState, setDialogState] = useState<ActionDialogState>({ type: "NONE" })
   const [isPending, startTransition] = useTransition()
@@ -215,12 +226,12 @@ export function UserAccessPage({
   }, [query])
 
   useEffect(() => {
-    setEmployeeLinkFilterInput(employeeLinkFilter)
-  }, [employeeLinkFilter])
+    setLinkFilterInput(resolveUnifiedLinkFilter(employeeLinkFilter, systemLinkFilter))
+  }, [employeeLinkFilter, systemLinkFilter])
 
   useEffect(() => {
-    setSystemLinkFilterInput(systemLinkFilter)
-  }, [systemLinkFilter])
+    setRoleFilterInput(roleFilter)
+  }, [roleFilter])
 
   const buildEditableCompanyAccesses = (row: UserAccessPreviewRow): EditableCompanyAccess[] => {
     const accessByCompanyId = new Map(row.linkedCompanyAccesses.map((entry) => [entry.companyId, entry]))
@@ -257,6 +268,7 @@ export function UserAccessPage({
     q?: string
     empLink?: UserAccessLinkFilter
     sysLink?: UserAccessLinkFilter
+    role?: UserAccessRoleFilter
     empPage?: number
     sysPage?: number
   }) => {
@@ -287,6 +299,14 @@ export function UserAccessPage({
       }
     }
 
+    if (typeof updates.role !== "undefined") {
+      if (updates.role === "ALL") {
+        params.delete("role")
+      } else {
+        params.set("role", updates.role)
+      }
+    }
+
     if (typeof updates.empPage !== "undefined") {
       if (updates.empPage > 1) {
         params.set("empPage", String(updates.empPage))
@@ -304,27 +324,42 @@ export function UserAccessPage({
     }
 
     const next = params.toString()
+    if (next === searchParams.toString()) {
+      return
+    }
+
     router.push(next ? `${pathname}?${next}` : pathname)
   }
 
-  const applyFilters = () => {
+  const syncFiltersToRoute = () => {
     updateRoute({
       q: queryInput,
-      empLink: employeeLinkFilterInput,
-      sysLink: systemLinkFilterInput,
+      empLink: linkFilterInput,
+      sysLink: linkFilterInput,
+      role: roleFilterInput,
       empPage: 1,
       sysPage: 1,
     })
   }
 
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      syncFiltersToRoute()
+    }, 250)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryInput, linkFilterInput, roleFilterInput])
+
   const resetFilters = () => {
     setQueryInput("")
-    setEmployeeLinkFilterInput("ALL")
-    setSystemLinkFilterInput("ALL")
+    setLinkFilterInput("ALL")
+    setRoleFilterInput("ALL")
     updateRoute({
       q: "",
       empLink: "ALL",
       sysLink: "ALL",
+      role: "ALL",
       empPage: 1,
       sysPage: 1,
     })
@@ -573,39 +608,34 @@ export function UserAccessPage({
       </section>
 
       <section className="border-b border-border/60 px-4 py-3 sm:px-6">
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_180px_auto_auto]">
-          <Input
-            value={queryInput}
-            onChange={(event) => setQueryInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                applyFilters()
-              }
-            }}
-            placeholder="Search employee, username, email"
-          />
-          <Select value={employeeLinkFilterInput} onValueChange={(value) => setEmployeeLinkFilterInput(value as UserAccessLinkFilter)}>
-            <SelectTrigger><SelectValue placeholder="Employee Link" /></SelectTrigger>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <div className="min-w-0 md:w-[360px] md:flex-none">
+            <Input
+              value={queryInput}
+              onChange={(event) => setQueryInput(event.target.value)}
+              placeholder="Search employee, username, email"
+            />
+          </div>
+          <Select value={linkFilterInput} onValueChange={(value) => setLinkFilterInput(value as UserAccessLinkFilter)}>
+            <SelectTrigger className="w-full md:w-[220px]"><SelectValue placeholder="Link Status" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Employee: All</SelectItem>
-              <SelectItem value="LINKED">Employee: Linked</SelectItem>
-              <SelectItem value="UNLINKED">Employee: Unlinked</SelectItem>
+              <SelectItem value="ALL">All</SelectItem>
+              <SelectItem value="LINKED">Linked</SelectItem>
+              <SelectItem value="UNLINKED">Unlinked</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={systemLinkFilterInput} onValueChange={(value) => setSystemLinkFilterInput(value as UserAccessLinkFilter)}>
-            <SelectTrigger><SelectValue placeholder="System Link" /></SelectTrigger>
+          <Select value={roleFilterInput} onValueChange={(value) => setRoleFilterInput(value as UserAccessRoleFilter)}>
+            <SelectTrigger className="w-full md:w-[220px]"><SelectValue placeholder="Role" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">System: All</SelectItem>
-              <SelectItem value="LINKED">System: Linked</SelectItem>
-              <SelectItem value="UNLINKED">System: Unlinked</SelectItem>
+              <SelectItem value="ALL">All Roles</SelectItem>
+              <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+              <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+              <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+              <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
             </SelectContent>
           </Select>
           <Button type="button" variant="outline" onClick={resetFilters} disabled={isPending}>
             Reset
-          </Button>
-          <Button type="button" onClick={applyFilters} disabled={isPending}>
-            Apply
           </Button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
@@ -649,8 +679,8 @@ export function UserAccessPage({
               <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
               <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} disabled={isPending} />
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
+            <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+              <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
               <Switch checked={createApprover} onCheckedChange={setCreateApprover} disabled={isPending} />
             </div>
             <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
@@ -703,8 +733,8 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
                               onCheckedChange={(checked) =>
@@ -715,8 +745,8 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
@@ -814,8 +844,8 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
                               onCheckedChange={(checked) =>
@@ -826,8 +856,8 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
@@ -855,43 +885,84 @@ export function UserAccessPage({
       </Dialog>
 
       <Dialog open={dialogState.type === "EDIT"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Linked User Credentials</DialogTitle>
+        <DialogContent className="max-h-[90vh] overflow-hidden border border-border/60 p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/60 bg-muted/20 px-6 py-4">
+            <DialogTitle className="text-base">Edit User Credentials</DialogTitle>
             <DialogDescription>
-              {dialogState.type === "EDIT" ? `${dialogState.row.fullName} (${dialogState.row.employeeNumber})` : ""}
+              {dialogState.type === "EDIT" ? `${dialogState.row.fullName} — ${dialogState.row.employeeNumber}` : ""}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3">
-            <div className="space-y-2">
-              <Label>Username<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>New Password (optional)</Label>
-              <Input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} disabled={isPending} placeholder="Leave blank to keep current password" />
-            </div>
-            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <span className="text-sm text-foreground">Request Approver (Leave & OT)</span>
-              <Switch checked={editApprover} onCheckedChange={setEditApprover} disabled={isPending} />
-            </div>
-            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
-              <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <IconBuilding className="size-4" />
-                Multi-Company Access
-              </p>
-              <div className="space-y-2">
+          <div className="max-h-[calc(90vh-156px)] space-y-5 overflow-y-auto px-6 py-5">
+            {/* ── Credentials ── */}
+            <section className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Account Credentials</p>
+                <p className="text-xs text-muted-foreground">Login details for this user account.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Username<span className="ml-1 text-destructive">*</span></Label>
+                  <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} disabled={isPending} placeholder="e.g. john.doe" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Email<span className="ml-1 text-destructive">*</span></Label>
+                  <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} disabled={isPending} placeholder="e.g. john@company.com" />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">New Password</Label>
+                  <Input
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    disabled={isPending}
+                    placeholder="Leave blank to keep current"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* ── Account Status ── */}
+            <section className="space-y-3 border-t border-border/60 pt-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Account Status</p>
+                <p className="text-xs text-muted-foreground">Toggle account state and permissions.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                  <span className="text-xs text-foreground">Active Account</span>
+                  <Switch checked={editIsActive} onCheckedChange={setEditIsActive} disabled={isPending} />
+                </div>
+                <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                  <span className="text-xs text-foreground">Request Approver (Leave &amp; OT)</span>
+                  <Switch checked={editApprover} onCheckedChange={setEditApprover} disabled={isPending} />
+                </div>
+              </div>
+            </section>
+
+            {/* ── Multi-Company Access ── */}
+            <section className="space-y-3 border-t border-border/60 pt-4">
+              <div>
+                <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <IconBuilding className="size-4" />
+                  Multi-Company Access
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Enable companies, assign roles, and set one default company.
+                </p>
+              </div>
+              <div className="space-y-3">
                 {editCompanyAccesses.map((access) => {
                   const company = companyOptions.find((option) => option.companyId === access.companyId)
                   return (
-                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                    <div
+                      key={access.companyId}
+                      className="rounded-md border border-border/60 px-3 py-2.5"
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                        <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
                           <Checkbox
                             checked={access.enabled}
                             onCheckedChange={(checked) => setCompanyAccessEnabled(access.companyId, checked === true)}
@@ -905,13 +976,14 @@ export function UserAccessPage({
                           size="sm"
                           disabled={isPending || !access.enabled}
                           onClick={() => setCompanyAccessDefault(access.companyId)}
+                          className="h-6 px-2 text-[11px]"
                         >
                           {access.isDefault && access.enabled ? "Default" : "Set Default"}
                         </Button>
                       </div>
 
                       {access.enabled ? (
-                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
                           <Select
                             value={access.role}
                             onValueChange={(value) =>
@@ -930,8 +1002,8 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Purchaser</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
                               onCheckedChange={(checked) =>
@@ -942,8 +1014,8 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5">
-                            <span className="text-[11px] text-foreground">MRS Poster</span>
+                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
@@ -960,16 +1032,12 @@ export function UserAccessPage({
                   )
                 })}
               </div>
-            </div>
-            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <span className="text-sm text-foreground">Active Account</span>
-              <Switch checked={editIsActive} onCheckedChange={setEditIsActive} disabled={isPending} />
-            </div>
+            </section>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t border-border/60 bg-muted/10 px-6 py-3">
             <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
-            <Button onClick={submitEdit} disabled={isPending}>Save Credentials</Button>
+            <Button onClick={submitEdit} disabled={isPending}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -977,234 +1045,3 @@ export function UserAccessPage({
   )
 }
 
-function UserAccessWorkspace({ rows, systemUsers, onCreate, onLink, onUnlink, onEdit, isPending, employeePagination, systemUserPagination, onEmployeePageChange, onSystemUserPageChange }: {
-  rows: UserAccessPreviewRow[]
-  systemUsers: SystemUserAccountRow[]
-  onCreate: (row: UserAccessPreviewRow) => void
-  onLink: (row: UserAccessPreviewRow) => void
-  onUnlink: (row: UserAccessPreviewRow) => void
-  onEdit: (row: UserAccessPreviewRow) => void
-  isPending: boolean
-  employeePagination: {
-    page: number
-    pageSize: number
-    totalItems: number
-    totalPages: number
-  }
-  systemUserPagination: {
-    page: number
-    pageSize: number
-    totalItems: number
-    totalPages: number
-  }
-  onEmployeePageChange: (nextPage: number) => void
-  onSystemUserPageChange: (nextPage: number) => void
-}) {
-  return (
-    <section className="grid border-b border-border/60 xl:grid-cols-[minmax(0,1fr)_440px]">
-      <div className="overflow-hidden xl:border-r xl:border-border/60">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-xs">
-            <thead className="bg-muted/40">
-              <tr>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" /> <span>Employee</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconBriefcase className="size-3.5" /> <span>Department</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconLink className="size-3.5" /> <span>Linked User</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconShieldCheck className="size-3.5" /> <span>Role</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUserCheck className="size-3.5" /> <span>Request Approver</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconPackage className="size-3.5" /> <span>MRS Purchaser</span></span></th>
-                <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconPackage className="size-3.5" /> <span>MRS Poster</span></span></th>
-                <th className="px-3 py-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr className="border-t border-border/60">
-                  <td colSpan={8} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    No employees found for the current filters.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.employeeId} className="border-t border-border/60">
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
-                          <AvatarImage src={row.photoUrl ?? undefined} alt={row.fullName} className="!rounded-md object-cover" />
-                          <AvatarFallback className="!rounded-md text-[11px]">
-                            {getEmployeeInitials(row.fullName)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div>{row.fullName}</div>
-                          <div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{row.department}</td>
-                    <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.linkedEmail}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
-                    <td className="px-3 py-2">{row.linkedCompanyRole ? <Badge variant="secondary">{row.linkedCompanyRole}</Badge> : <Badge variant="outline">-</Badge>}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant={row.requestApprover ? "default" : "destructive"}>
-                        {row.requestApprover ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={row.materialRequestPurchaser ? "default" : "outline"}>
-                        {row.materialRequestPurchaser ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={row.materialRequestPoster ? "default" : "outline"}>
-                        {row.materialRequestPoster ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm" disabled={isPending}>
-                            <IconDots className="size-4 rotate-90" />
-                            <span className="sr-only">Open actions</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          {!row.hasLinkedUser ? (
-                            <DropdownMenuItem onSelect={() => onCreate(row)} disabled={isPending}>
-                              Create & Link User
-                            </DropdownMenuItem>
-                          ) : null}
-                          {!row.hasLinkedUser ? (
-                            <DropdownMenuItem onSelect={() => onLink(row)} disabled={isPending}>
-                              Link Existing User
-                            </DropdownMenuItem>
-                          ) : null}
-                          {row.hasLinkedUser ? (
-                            <DropdownMenuItem onSelect={() => onEdit(row)} disabled={isPending}>
-                              <IconEdit className="mr-2 size-4" />
-                              Edit
-                            </DropdownMenuItem>
-                          ) : null}
-                          {row.hasLinkedUser ? (
-                            <DropdownMenuItem onSelect={() => onUnlink(row)} disabled={isPending}>
-                              <IconUserX className="mr-2 size-4" />
-                              Unlink
-                            </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          <span>
-            Page {employeePagination.page} of {employeePagination.totalPages} ({employeePagination.totalItems} employees)
-          </span>
-          <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              disabled={isPending || employeePagination.page <= 1}
-              onClick={() => onEmployeePageChange(employeePagination.page - 1)}
-            >
-              <IconChevronLeft className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              disabled={isPending || employeePagination.page >= employeePagination.totalPages}
-              onClick={() => onEmployeePageChange(employeePagination.page + 1)}
-            >
-              <IconChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <aside>
-        <div className="border-b border-border/60 px-4 py-3">
-          <h2 className="inline-flex items-center gap-2.5 text-sm text-foreground"><IconUser className="size-4" /> <span>System User Accounts</span></h2>
-          <p className="text-xs text-muted-foreground">Linked status per account</p>
-        </div>
-        <ScrollArea className="h-[680px]">
-          <div>
-          {systemUsers.length === 0 ? (
-            <p className="p-4 text-xs text-muted-foreground">No user accounts found for this company.</p>
-          ) : (
-            systemUsers.map((user) => (
-              <div key={user.id} className="border-b border-border/60 px-4 py-3 last:border-b-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs text-foreground">{user.displayName}</p>
-                    <p className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"><IconUser className="size-3" /> <span>{user.username}</span></p>
-                    <p className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"><IconMail className="size-3" /> <span>{user.email}</span></p>
-                  </div>
-                  <Badge variant={user.isLinked ? "default" : "outline"} className="inline-flex items-center gap-1.5 px-2.5">
-                    {user.isLinked ? <IconLink className="size-3" /> : <IconUserX className="size-3" />}
-                    {user.isLinked ? "Linked" : "Unlinked"}
-                  </Badge>
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
-                  <Badge variant="secondary" className="px-2.5">{user.companyRole}</Badge>
-                  <Badge variant={user.isRequestApprover ? "default" : "outline"} className="px-2.5">{user.isRequestApprover ? "Request Approver" : "Standard"}</Badge>
-                  <Badge variant={user.isMaterialRequestPurchaser ? "default" : "outline"} className="px-2.5">
-                    {user.isMaterialRequestPurchaser ? "MRS Purchaser" : "No MRS Purchaser"}
-                  </Badge>
-                  <Badge variant={user.isMaterialRequestPoster ? "default" : "outline"} className="px-2.5">
-                    {user.isMaterialRequestPoster ? "MRS Poster" : "No MRS Poster"}
-                  </Badge>
-                  <Badge variant={user.isActive ? "default" : "outline"} className="px-2.5">{user.isActive ? "Active" : "Inactive"}</Badge>
-                </div>
-                {user.isLinked && user.linkedEmployeeNumber ? (
-                  <p className="mt-2.5 text-[11px] text-muted-foreground">Linked to: {user.linkedEmployeeName} ({user.linkedEmployeeNumber})</p>
-                ) : null}
-              </div>
-            ))
-          )}
-          </div>
-        </ScrollArea>
-        <div className="flex items-center justify-between border-t border-border/60 px-4 py-2 text-xs text-muted-foreground">
-          <span>
-            Page {systemUserPagination.page} of {systemUserPagination.totalPages} ({systemUserPagination.totalItems} users)
-          </span>
-          <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              disabled={isPending || systemUserPagination.page <= 1}
-              onClick={() => onSystemUserPageChange(systemUserPagination.page - 1)}
-            >
-              <IconChevronLeft className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              disabled={isPending || systemUserPagination.page >= systemUserPagination.totalPages}
-              onClick={() => onSystemUserPageChange(systemUserPagination.page + 1)}
-            >
-              <IconChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-      </aside>
-    </section>
-  )
-}
-
-function getEmployeeInitials(fullName: string): string {
-  const [lastNamePart = "", firstNamePart = ""] = fullName.split(",")
-  const first = firstNamePart.trim().charAt(0)
-  const last = lastNamePart.trim().charAt(0)
-  return `${first}${last}`.toUpperCase() || "NA"
-}

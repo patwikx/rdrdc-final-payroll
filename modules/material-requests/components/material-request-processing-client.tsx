@@ -1,12 +1,12 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import {
   IconAlertCircle,
   IconCheck,
   IconClipboardCheck,
-  IconEye,
+  IconFileText,
   IconFilterOff,
   IconPackage,
   IconPrinter,
@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   getMaterialRequestProcessingDetailsAction,
   getMaterialRequestProcessingPageAction,
@@ -49,6 +50,7 @@ const currency = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 2,
 })
 const QUANTITY_TOLERANCE = 0.0005
+const SEARCH_DEBOUNCE_MS = 350
 const normalizeServeQuantityInput = (rawValue: string, maxValue: number): string => {
   const trimmed = rawValue.trim()
   if (!trimmed) {
@@ -137,13 +139,14 @@ export function MaterialRequestProcessingClient({
   initialPageSize,
 }: MaterialRequestProcessingClientProps) {
   const loadTokenRef = useRef(0)
+  const searchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [rows, setRows] = useState(initialRows)
   const [total, setTotal] = useState(initialTotal)
   const [page, setPage] = useState(initialPage)
   const [pageSize, setPageSize] = useState(String(initialPageSize))
   const [search, setSearch] = useState("")
-  const [status, setStatus] = useState<EmployeePortalMaterialRequestProcessingStatusFilter>("ALL")
+  const [status, setStatus] = useState<EmployeePortalMaterialRequestProcessingStatusFilter>("OPEN")
 
   const [action, setAction] = useState<ProcessingAction>({ type: "NONE" })
   const [actionRemarks, setActionRemarks] = useState("")
@@ -162,6 +165,23 @@ export function MaterialRequestProcessingClient({
   const [isPrintPending, startPrintTransition] = useTransition()
 
   const totalPages = Math.max(1, Math.ceil(total / Number(pageSize)))
+
+  const clearSearchDebounceTimeout = () => {
+    if (!searchDebounceTimeoutRef.current) {
+      return
+    }
+
+    clearTimeout(searchDebounceTimeoutRef.current)
+    searchDebounceTimeoutRef.current = null
+  }
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceTimeoutRef.current) {
+        clearTimeout(searchDebounceTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const summary = useMemo(() => {
     return rows.reduce(
@@ -486,90 +506,105 @@ export function MaterialRequestProcessingClient({
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search request number, requester, department"
-              className="pl-9"
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") {
-                  return
-                }
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => {
+                  const nextSearch = event.target.value
+                  setSearch(nextSearch)
+                  clearSearchDebounceTimeout()
+                  searchDebounceTimeoutRef.current = setTimeout(() => {
+                    loadPage({
+                      page: 1,
+                      pageSize: Number(pageSize),
+                      search: nextSearch,
+                      status,
+                    })
+                  }, SEARCH_DEBOUNCE_MS)
+                }}
+                placeholder="Search request number, requester, department"
+                className="rounded-lg pl-8"
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") {
+                    return
+                  }
 
-                event.preventDefault()
+                  event.preventDefault()
+                  clearSearchDebounceTimeout()
+                  loadPage({
+                    page: 1,
+                    pageSize: Number(pageSize),
+                    search,
+                    status,
+                  })
+                }}
+              />
+            </div>
+
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                const nextStatus = value as EmployeePortalMaterialRequestProcessingStatusFilter
+                setStatus(nextStatus)
+                clearSearchDebounceTimeout()
                 loadPage({
                   page: 1,
                   pageSize: Number(pageSize),
                   search,
-                  status,
+                  status: nextStatus,
                 })
               }}
-            />
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="OPEN">Open (Pending + In Progress)</SelectItem>
+                <SelectItem value="ALL">All Statuses</SelectItem>
+                <SelectItem value="PENDING_PURCHASER">Pending Purchaser</SelectItem>
+                <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                clearSearchDebounceTimeout()
+                setSearch("")
+                setStatus("OPEN")
+                setPageSize("10")
+                loadPage({
+                  page: 1,
+                  pageSize: 10,
+                  search: "",
+                  status: "OPEN",
+                })
+              }}
+              disabled={isListPending}
+            >
+              <IconFilterOff className="mr-2 size-4" />
+              Reset
+            </Button>
           </div>
 
-          <Select value={status} onValueChange={(value) => setStatus(value as EmployeePortalMaterialRequestProcessingStatusFilter)}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Statuses</SelectItem>
-              <SelectItem value="PENDING_PURCHASER">Pending Purchaser</SelectItem>
-              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-              <SelectItem value="COMPLETED">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            type="button"
-            onClick={() => {
-              loadPage({
-                page: 1,
-                pageSize: Number(pageSize),
-                search,
-                status,
-              })
-            }}
-            disabled={isListPending}
-          >
-            Apply
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setSearch("")
-              setStatus("ALL")
-              setPageSize("10")
-              loadPage({
-                page: 1,
-                pageSize: 10,
-                search: "",
-                status: "ALL",
-              })
-            }}
-            disabled={isListPending}
-          >
-            <IconFilterOff className="mr-2 size-4" />
-            Reset
-          </Button>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-            No approved material requests match the current filters.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+          {rows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+              No approved material requests match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-hidden border border-border/60 bg-card">
             <div className="overflow-x-auto">
               <div className="min-w-[980px]">
-                <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                <div className="grid grid-cols-12 items-center gap-1 border-b border-border/60 bg-muted/30 px-3 py-2">
+                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared / Required</p>
+                  <p className="col-span-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
+                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Required</p>
                   <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Items</p>
                   <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
                   <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
@@ -577,17 +612,13 @@ export function MaterialRequestProcessingClient({
                 </div>
 
                 {rows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-3 text-xs last:border-b-0 hover:bg-muted/20">
-                    <div className="col-span-2 text-foreground">{row.requestNumber}</div>
+                  <div key={row.id} className="grid grid-cols-12 items-center gap-1 border-b border-border/60 px-3 py-2 text-xs last:border-b-0 hover:bg-muted/20">
+                    <div className="col-span-1 text-foreground truncate" title={row.requestNumber}>{row.requestNumber}</div>
                     <div className="col-span-2">
-                      <p className="text-sm font-medium text-foreground">{row.requesterName}</p>
-                      <p className="text-xs text-muted-foreground">{row.requesterEmployeeNumber}</p>
+                      <p className="truncate text-xs text-foreground" title={row.requesterName}>{row.requesterName}</p>
                     </div>
-                    <div className="col-span-1 text-foreground">{row.departmentName}</div>
-                    <div className="col-span-2 text-foreground">
-                      <p>{row.datePreparedLabel}</p>
-                      <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
-                    </div>
+                    <div className="col-span-3 truncate text-foreground" title={row.departmentName}>{row.departmentName}</div>
+                    <div className="col-span-1 text-foreground">{row.dateRequiredLabel}</div>
                     <div className="col-span-1 text-foreground">{row.itemCount}</div>
                     <div className="col-span-1 font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
                     <div className="col-span-1">
@@ -595,62 +626,91 @@ export function MaterialRequestProcessingClient({
                         {toProcessingStatusLabel(getProcessingStatusLabel(row))}
                       </Badge>
                     </div>
-                    <div className="col-span-2 flex flex-wrap justify-end gap-2">
-                      <Button type="button" size="sm" variant="outline" asChild>
-                        <Link href={`/${companyId}/employee-portal/material-request-processing/${row.id}`}>
-                          <IconEye className="h-4 w-4" />
+                    <div className="col-span-2 flex items-center justify-end gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button type="button" size="sm" variant="outline" className="h-8 w-8 p-0" asChild>
+                            <Link href={`/${companyId}/employee-portal/material-request-processing/${row.id}`}>
+                              <IconFileText className="h-4 w-4" />
+                              <span className="sr-only">View Details</span>
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
                           View Details
-                        </Link>
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => printRequest(row)}
-                        disabled={isPrintPending && printingRequestId === row.id}
-                      >
-                        <IconPrinter className="h-4 w-4" />
-                        {isPrintPending && printingRequestId === row.id ? "Preparing print..." : "Print"}
-                      </Button>
-                      {row.processingStatus === "PENDING_PURCHASER" || row.processingStatus === "IN_PROGRESS" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() =>
-                            openStatusAction({
-                              type: "IN_PROGRESS",
-                              serveMode:
-                                row.processingStatus === "PENDING_PURCHASER" ? "INITIAL" : "ADDITIONAL",
-                              requestId: row.id,
-                              requestNumber: row.requestNumber,
-                              processingPoNumber: row.processingPoNumber,
-                              processingSupplierName: row.processingSupplierName,
-                            })
-                          }
-                          disabled={isActionPending}
-                        >
-                          <IconTruckDelivery className="h-4 w-4" />
-                          Serve Qty
-                        </Button>
-                      ) : null}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            onClick={() => printRequest(row)}
+                            disabled={isPrintPending && printingRequestId === row.id}
+                          >
+                            <IconPrinter className="h-4 w-4" />
+                            <span className="sr-only">Print</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
+                          {isPrintPending && printingRequestId === row.id ? "Preparing print..." : "Print"}
+                        </TooltipContent>
+                      </Tooltip>
                       {row.canMarkCompleted ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() =>
-                            openStatusAction({
-                              type: "COMPLETED",
-                              requestId: row.id,
-                              requestNumber: row.requestNumber,
-                              processingPoNumber: row.processingPoNumber,
-                              processingSupplierName: row.processingSupplierName,
-                            })
-                          }
-                          disabled={isActionPending}
-                        >
-                          <IconCheck className="h-4 w-4" />
-                          Mark Completed
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() =>
+                                openStatusAction({
+                                  type: "COMPLETED",
+                                  requestId: row.id,
+                                  requestNumber: row.requestNumber,
+                                  processingPoNumber: row.processingPoNumber,
+                                  processingSupplierName: row.processingSupplierName,
+                                })
+                              }
+                              disabled={isActionPending}
+                            >
+                              <IconCheck className="h-4 w-4" />
+                              <span className="sr-only">Mark Completed</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Mark Completed
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : row.processingStatus === "PENDING_PURCHASER" || row.processingStatus === "IN_PROGRESS" ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() =>
+                                openStatusAction({
+                                  type: "IN_PROGRESS",
+                                  serveMode: row.processingStatus === "PENDING_PURCHASER" ? "INITIAL" : "ADDITIONAL",
+                                  requestId: row.id,
+                                  requestNumber: row.requestNumber,
+                                  processingPoNumber: row.processingPoNumber,
+                                  processingSupplierName: row.processingSupplierName,
+                                })
+                              }
+                              disabled={isActionPending}
+                            >
+                              <IconTruckDelivery className="h-4 w-4" />
+                              <span className="sr-only">Serve Qty</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" sideOffset={6}>
+                            Serve Qty
+                          </TooltipContent>
+                        </Tooltip>
                       ) : null}
                     </div>
                   </div>
@@ -667,6 +727,7 @@ export function MaterialRequestProcessingClient({
                   value={pageSize}
                   onValueChange={(value) => {
                     setPageSize(value)
+                    clearSearchDebounceTimeout()
                     loadPage({
                       page: 1,
                       pageSize: Number(value),
@@ -722,8 +783,9 @@ export function MaterialRequestProcessingClient({
                 </Button>
               </div>
             </div>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
       <Dialog open={action.type !== "NONE"} onOpenChange={(open) => (open ? null : closeStatusAction())}>

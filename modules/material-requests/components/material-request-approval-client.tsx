@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
@@ -54,6 +54,7 @@ const currency = new Intl.NumberFormat("en-PH", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+const HISTORY_SEARCH_DEBOUNCE_MS = 350
 
 const statusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
   if (status === "APPROVED") return "default"
@@ -76,6 +77,7 @@ export function MaterialRequestApprovalClient({
 }: MaterialRequestApprovalClientProps) {
   const router = useRouter()
   const historyRequestTokenRef = useRef(0)
+  const historySearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
   const [decisionType, setDecisionType] = useState<"approve" | "reject">("approve")
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
@@ -123,6 +125,23 @@ export function MaterialRequestApprovalClient({
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
+
+  const clearHistorySearchDebounceTimeout = () => {
+    if (!historySearchDebounceTimeoutRef.current) {
+      return
+    }
+
+    clearTimeout(historySearchDebounceTimeoutRef.current)
+    historySearchDebounceTimeoutRef.current = null
+  }
+
+  useEffect(() => {
+    return () => {
+      if (historySearchDebounceTimeoutRef.current) {
+        clearTimeout(historySearchDebounceTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const loadHistoryPage = (params: {
     page: number
@@ -295,7 +314,7 @@ export function MaterialRequestApprovalClient({
             No material requests pending your current approval step.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+          <div className="overflow-hidden border border-border/60 bg-card">
             <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
               <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
               <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
@@ -315,13 +334,14 @@ export function MaterialRequestApprovalClient({
               return (
                 <>
                   {paginatedRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
+                    <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20">
                       <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
                       <div className="col-span-2">
-                        <p className="text-sm font-medium text-foreground">{row.requesterName}</p>
-                        <p className="text-xs text-muted-foreground">{row.requesterEmployeeNumber}</p>
+                        <p className="text-xs text-foreground">{row.requesterName}</p>
                       </div>
-                      <div className="col-span-1 text-xs text-foreground">{row.departmentName}</div>
+                      <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
+                        {row.departmentName}
+                      </div>
                       <div className="col-span-2 text-xs text-foreground">
                         <p>{row.datePreparedLabel}</p>
                         <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
@@ -400,8 +420,8 @@ export function MaterialRequestApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="relative md:col-span-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="relative min-w-0">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search request #, requester, department..."
@@ -410,14 +430,31 @@ export function MaterialRequestApprovalClient({
                   const nextSearch = event.target.value
                   setHistorySearch(nextSearch)
                   setExpandedHistoryRequestId(null)
+                  clearHistorySearchDebounceTimeout()
+                  historySearchDebounceTimeoutRef.current = setTimeout(() => {
+                    loadHistoryPage({
+                      page: 1,
+                      pageSize: historyItemsPerPage,
+                      search: nextSearch,
+                      status: historyStatus,
+                    })
+                  }, HISTORY_SEARCH_DEBOUNCE_MS)
+                }}
+                className="rounded-lg pl-8"
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") {
+                    return
+                  }
+
+                  event.preventDefault()
+                  clearHistorySearchDebounceTimeout()
                   loadHistoryPage({
                     page: 1,
                     pageSize: historyItemsPerPage,
-                    search: nextSearch,
+                    search: historySearch,
                     status: historyStatus,
                   })
                 }}
-                className="rounded-lg pl-8"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -427,6 +464,7 @@ export function MaterialRequestApprovalClient({
                   const nextStatus = value as HistoryStatusFilter
                   setHistoryStatus(nextStatus)
                   setExpandedHistoryRequestId(null)
+                  clearHistorySearchDebounceTimeout()
                   loadHistoryPage({
                     page: 1,
                     pageSize: historyItemsPerPage,
@@ -453,6 +491,7 @@ export function MaterialRequestApprovalClient({
                   setHistorySearch("")
                   setHistoryStatus("ALL")
                   setExpandedHistoryRequestId(null)
+                  clearHistorySearchDebounceTimeout()
                   loadHistoryPage({
                     page: 1,
                     pageSize: historyItemsPerPage,
@@ -478,16 +517,15 @@ export function MaterialRequestApprovalClient({
               No history records for current filters.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="overflow-hidden border border-border/60 bg-card">
               <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
-                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Range</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Required</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
-                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Acted At</p>
-                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
+                <p className="col-span-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
               </div>
 
               {(() => {
@@ -508,33 +546,24 @@ export function MaterialRequestApprovalClient({
                           )}
                         >
                           <div
-                            className="grid cursor-pointer grid-cols-12 items-start gap-3 px-3 py-4 hover:bg-muted/20"
+                            className="grid cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20"
                             onClick={() => toggleHistoryDetails(row.id)}
                           >
                             <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
                             <div className="col-span-2">
-                              <p className="text-sm font-medium text-foreground">{row.requesterName}</p>
-                              <p className="text-xs text-muted-foreground">{row.requesterEmployeeNumber}</p>
+                              <p className="text-xs text-foreground">{row.requesterName}</p>
                             </div>
-                            <div className="col-span-1 text-xs text-foreground">{row.departmentName}</div>
-                            <div className="col-span-2 text-xs text-foreground">
-                              <p>{row.datePreparedLabel}</p>
-                              <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
+                            <div className="col-span-2 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
+                              {row.departmentName}
                             </div>
+                            <div className="col-span-2 text-xs text-foreground">{row.dateRequiredLabel}</div>
                             <div className="col-span-1 text-xs text-foreground">PHP {currency.format(row.grandTotal)}</div>
                             <div className="col-span-1">
                               <Badge variant={statusVariant(row.status)} className="rounded-full border px-2 py-0.5 text-[10px]">
                                 {statusLabel(row.status)}
                               </Badge>
                             </div>
-                            <div className="col-span-2 text-xs text-muted-foreground">
-                              <p>{row.actedAtLabel}</p>
-                              <p>
-                                {row.actedStepName ?? (row.actedStepNumber ? `Step ${row.actedStepNumber}` : "-")}
-                                {row.actedStepStatus ? ` • ${statusLabel(row.actedStepStatus)}` : ""}
-                              </p>
-                            </div>
-                            <div className="col-span-2 text-xs text-muted-foreground">
+                            <div className="col-span-3 text-xs text-muted-foreground">
                               {row.actedRemarks ?? row.finalDecisionRemarks ?? "-"}
                             </div>
                           </div>
@@ -679,6 +708,7 @@ export function MaterialRequestApprovalClient({
                           onValueChange={(value) => {
                             const nextPageSize = Number(value)
                             setExpandedHistoryRequestId(null)
+                            clearHistorySearchDebounceTimeout()
                             loadHistoryPage({
                               page: 1,
                               pageSize: nextPageSize,
@@ -705,6 +735,7 @@ export function MaterialRequestApprovalClient({
                           disabled={activeHistoryPage <= 1 || isHistoryPending}
                           onClick={() => {
                             setExpandedHistoryRequestId(null)
+                            clearHistorySearchDebounceTimeout()
                             loadHistoryPage({
                               page: Math.max(1, activeHistoryPage - 1),
                               pageSize: historyItemsPerPage,
@@ -722,6 +753,7 @@ export function MaterialRequestApprovalClient({
                           disabled={activeHistoryPage >= historyTotalPages || isHistoryPending}
                           onClick={() => {
                             setExpandedHistoryRequestId(null)
+                            clearHistorySearchDebounceTimeout()
                             loadHistoryPage({
                               page: Math.min(historyTotalPages, activeHistoryPage + 1),
                               pageSize: historyItemsPerPage,

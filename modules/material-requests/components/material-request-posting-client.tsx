@@ -251,88 +251,87 @@ export function MaterialRequestPostingClient({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search request number, requester, department, posting ref"
-              className="pl-9"
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") {
-                  return
-                }
+        <div className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search request number, requester, department, posting ref"
+                className="rounded-lg pl-8"
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") {
+                    return
+                  }
 
-                event.preventDefault()
+                  event.preventDefault()
+                  loadPage({
+                    page: 1,
+                    pageSize: Number(pageSize),
+                    search,
+                    status,
+                  })
+                }}
+              />
+            </div>
+
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                const nextStatus = value as EmployeePortalMaterialRequestPostingStatusFilter
+                setStatus(nextStatus)
                 loadPage({
                   page: 1,
                   pageSize: Number(pageSize),
                   search,
-                  status,
+                  status: nextStatus,
                 })
               }}
-            />
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Statuses</SelectItem>
+                <SelectItem value="PENDING_POSTING">Pending Posting</SelectItem>
+                <SelectItem value="POSTED">Posted</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSearch("")
+                setStatus("ALL")
+                setPageSize("10")
+                loadPage({
+                  page: 1,
+                  pageSize: 10,
+                  search: "",
+                  status: "ALL",
+                })
+              }}
+              disabled={isListPending}
+            >
+              <IconFilterOff className="mr-2 size-4" />
+              Reset
+            </Button>
           </div>
 
-          <Select value={status} onValueChange={(value) => setStatus(value as EmployeePortalMaterialRequestPostingStatusFilter)}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Statuses</SelectItem>
-              <SelectItem value="PENDING_POSTING">Pending Posting</SelectItem>
-              <SelectItem value="POSTED">Posted</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Button
-            type="button"
-            onClick={() =>
-              loadPage({
-                page: 1,
-                pageSize: Number(pageSize),
-                search,
-                status,
-              })
-            }
-            disabled={isListPending}
-          >
-            Apply
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setSearch("")
-              setStatus("ALL")
-              setPageSize("10")
-              loadPage({
-                page: 1,
-                pageSize: 10,
-                search: "",
-                status: "ALL",
-              })
-            }}
-            disabled={isListPending}
-          >
-            <IconFilterOff className="mr-2 size-4" />
-            Reset
-          </Button>
-        </div>
-
-        {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-            No completed material requests match the current filters.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+          {rows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+              No completed material requests match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-hidden border border-border/60 bg-card">
             <div className="overflow-x-auto">
               <div className="min-w-[980px]">
                 <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
+                  <p className="col-span-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Completed</p>
                   <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
                   <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
@@ -340,13 +339,12 @@ export function MaterialRequestPostingClient({
                 </div>
 
                 {rows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-3 text-xs last:border-b-0 hover:bg-muted/20">
-                    <div className="col-span-2 text-foreground">{row.requestNumber}</div>
+                  <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 text-xs last:border-b-0 hover:bg-muted/20">
+                    <div className="col-span-1 text-foreground">{row.requestNumber}</div>
                     <div className="col-span-2">
-                      <p className="text-sm font-medium text-foreground">{row.requesterName}</p>
-                      <p className="text-xs text-muted-foreground">{row.requesterEmployeeNumber}</p>
+                      <p className="text-xs text-foreground">{row.requesterName}</p>
                     </div>
-                    <div className="col-span-2 text-foreground">{row.departmentName}</div>
+                    <div className="col-span-3 text-foreground">{row.departmentName}</div>
                     <div className="col-span-2 text-foreground">{row.processingCompletedAtLabel ?? "-"}</div>
                     <div className="col-span-1 font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
                     <div className="col-span-1">
@@ -434,8 +432,9 @@ export function MaterialRequestPostingClient({
                 </Button>
               </div>
             </div>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
       <Dialog open={action.type === "DETAIL"} onOpenChange={(open) => (open ? null : closeDetail())}>

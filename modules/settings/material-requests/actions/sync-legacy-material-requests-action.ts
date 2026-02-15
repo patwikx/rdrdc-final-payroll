@@ -25,8 +25,6 @@ type SyncLegacyMaterialRequestsActionResult =
       error: string
     }
 
-const MAX_ROWS_PER_SECTION = 200
-
 export async function syncLegacyMaterialRequestsAction(
   input: SyncLegacyMaterialRequestsInput
 ): Promise<SyncLegacyMaterialRequestsActionResult> {
@@ -84,9 +82,9 @@ export async function syncLegacyMaterialRequestsAction(
         : "Legacy material request sync completed.",
       dryRun: payload.dryRun,
       summary: report.summary,
-      unmatched: report.unmatched.slice(0, MAX_ROWS_PER_SECTION),
-      skipped: report.skipped.slice(0, MAX_ROWS_PER_SECTION),
-      errors: report.errors.slice(0, MAX_ROWS_PER_SECTION),
+      unmatched: report.unmatched,
+      skipped: report.skipped,
+      errors: report.errors,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

@@ -226,13 +226,18 @@ export function LeaveApprovalClient({
                 <>
                   {paginatedRows.map((row) => (
                     <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                      <div className="col-span-1 text-xs text-foreground/70">{row.requestNumber}</div>
+                      <div className="col-span-1 min-w-0">
+                        <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                      </div>
                       <div className="col-span-2">
-                        <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
+                        <p className="text-xs text-foreground">{row.employeeName}</p>
                         <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
                       </div>
-                      <div className="col-span-2 text-sm text-foreground">{row.leaveTypeName}</div>
-                      <div className="col-span-2 text-sm leading-tight text-foreground whitespace-normal break-words">{row.startDate} to {row.endDate}</div>
+                      <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
+                      <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
+                        <p>{row.startDate}</p>
+                        <p className="text-foreground/70">to {row.endDate}</p>
+                      </div>
                       <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
                       <div className="col-span-1 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
                       <div className="col-span-1">
@@ -463,13 +468,18 @@ export function LeaveApprovalClient({
                       className="grid cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20"
                       onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
                     >
-                      <div className="col-span-1 text-xs text-foreground/70">{row.requestNumber}</div>
+                      <div className="col-span-1 min-w-0">
+                        <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                      </div>
                       <div className="col-span-2">
-                        <p className="text-sm font-medium text-foreground">{row.employeeName}</p>
+                        <p className="text-xs text-foreground">{row.employeeName}</p>
                         <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
                       </div>
-                      <div className="col-span-2 text-sm text-foreground">{row.leaveTypeName}</div>
-                      <div className="col-span-2 text-sm leading-tight text-foreground whitespace-normal break-words">{row.startDate} to {row.endDate}</div>
+                      <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
+                      <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
+                        <p>{row.startDate}</p>
+                        <p className="text-foreground/70">to {row.endDate}</p>
+                      </div>
                       <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
                       <div className="col-span-2 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
                       <div className="col-span-2 space-y-1">

@@ -13,6 +13,7 @@ type UserAccessRouteProps = {
     sysPage?: string
     empLink?: string
     sysLink?: string
+    role?: string
   }>
 }
 
@@ -62,6 +63,13 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
       parsedSearch.sysLink === "LINKED" || parsedSearch.sysLink === "UNLINKED"
         ? parsedSearch.sysLink
         : "ALL",
+    roleFilter:
+      parsedSearch.role === "EMPLOYEE" ||
+      parsedSearch.role === "HR_ADMIN" ||
+      parsedSearch.role === "PAYROLL_ADMIN" ||
+      parsedSearch.role === "COMPANY_ADMIN"
+        ? parsedSearch.role
+        : "ALL",
   })
 
   return (
@@ -75,6 +83,7 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
       query={data.query}
       employeeLinkFilter={data.employeeLinkFilter}
       systemLinkFilter={data.systemLinkFilter}
+      roleFilter={data.roleFilter}
       employeePagination={data.employeePagination}
       systemUserPagination={data.systemUserPagination}
     />

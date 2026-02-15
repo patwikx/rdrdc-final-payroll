@@ -1,10 +1,13 @@
 export type EmployeePortalLeaveRequestRow = {
   id: string
   requestNumber: string
+  leaveTypeId: string
   isHalfDay: boolean
   halfDayPeriod: string | null
   startDate: string
+  startDateInput: string
   endDate: string
+  endDateInput: string
   numberOfDays: number
   reason: string | null
   statusCode: string

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
   IconChartBar,
+  IconChevronLeft,
+  IconChevronRight,
   IconEdit,
   IconFilter,
   IconPlus,
@@ -96,6 +98,7 @@ type EmploymentClassForm = {
 }
 
 type StatusFilter = "all" | "active" | "inactive"
+const TABLE_PAGE_SIZE = 5
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
@@ -617,6 +620,11 @@ function EntityTableCard({
   onEdit: (id: string) => void
   dialog: React.ReactNode
 }) {
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE))
+  const safePage = Math.min(currentPage, totalPages)
+  const pagedRows = rows.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE)
+
   return (
     <section className={cn("border border-border/60 bg-background", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-4 py-3">
@@ -652,7 +660,7 @@ function EntityTableCard({
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pagedRows.map((row) => (
                   <tr key={row.id} className="border-t border-border/50">
                     {row.values.map((value, valueIndex) => (
                       <td key={valueIndex} className="px-3 py-2 text-foreground">
@@ -671,6 +679,37 @@ function EntityTableCard({
             </tbody>
           </table>
         </div>
+        {rows.length > 0 ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Page {safePage} of {totalPages} • {rows.length} records
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={safePage <= 1}
+                onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+              >
+                <IconChevronLeft className="size-3.5" />
+                Prev
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2"
+                disabled={safePage >= totalPages}
+                onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+              >
+                Next
+                <IconChevronRight className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )

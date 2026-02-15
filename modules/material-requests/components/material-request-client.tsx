@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react"
 import {
   IconArrowNarrowRight,
+  IconCircleMinus,
   IconChecklist,
   IconEdit,
   IconFilePlus,
@@ -11,7 +12,6 @@ import {
   IconPlus,
   IconSearch,
   IconSend,
-  IconX,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   cancelMaterialRequestAction,
@@ -234,10 +235,10 @@ export function MaterialRequestClient({
               ) : null}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="overflow-hidden border border-border/60 bg-card">
               <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex-row sm:items-center">
-                <div className="relative flex-1">
-                  <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+                  <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={logSearch}
                     onChange={(event) => {
@@ -246,7 +247,7 @@ export function MaterialRequestClient({
                       setExpandedRequestId(null)
                     }}
                     placeholder="Search request #, type, department, notes"
-                    className="pl-9"
+                    className="rounded-lg pl-8"
                   />
                 </div>
                 <Select
@@ -296,8 +297,8 @@ export function MaterialRequestClient({
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Required</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Items</p>
-                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
-                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
 
@@ -305,13 +306,20 @@ export function MaterialRequestClient({
                 <>
                   {paginatedRows.map((request) => {
                       const isExpanded = expandedRequestId === request.id
-                      const canEdit = request.status === "DRAFT"
+                      const hasApprovalHistory = request.approvalSteps.some(
+                        (step) =>
+                          step.status !== "PENDING" ||
+                          step.actedAtLabel !== null ||
+                          step.actedByName !== null
+                      )
+                      const canEdit =
+                        request.status === "DRAFT" ||
+                        (request.status === "PENDING_APPROVAL" && !hasApprovalHistory)
                       const canSubmit = request.status === "DRAFT" && request.items.length > 0
                       const canCancel = request.status === "DRAFT" || request.status === "PENDING_APPROVAL"
-                      const requestHref =
-                        request.status === "DRAFT"
-                          ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
-                          : `/${companyId}/employee-portal/material-requests/${request.id}`
+                      const requestHref = canEdit
+                        ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
+                        : `/${companyId}/employee-portal/material-requests/${request.id}`
 
                       return (
                         <div
@@ -335,23 +343,30 @@ export function MaterialRequestClient({
                               </Link>
                             </div>
                             <div className="col-span-1 text-xs text-foreground">{request.series}/{request.requestType}</div>
-                            <div className="col-span-2 text-sm text-foreground">{request.datePreparedLabel}</div>
-                            <div className="col-span-2 text-sm text-foreground">{request.dateRequiredLabel}</div>
-                            <div className="col-span-1 text-sm text-foreground">{request.items.length}</div>
-                            <div className="col-span-2 text-sm font-medium text-foreground">PHP {currency.format(request.grandTotal)}</div>
-                            <div className="col-span-1">
-                              <Badge variant={statusVariant(request.status)} className="w-full justify-center rounded-full border px-2 py-1 text-xs shadow-none">
+                            <div className="col-span-2 text-xs text-foreground">{request.datePreparedLabel}</div>
+                            <div className="col-span-2 text-xs text-foreground">{request.dateRequiredLabel}</div>
+                            <div className="col-span-1 text-xs text-foreground">{request.items.length}</div>
+                            <div className="col-span-1 text-xs text-foreground">PHP {currency.format(request.grandTotal)}</div>
+                            <div className="col-span-2">
+                              <Badge variant={statusVariant(request.status)} className="w-full justify-center text-xs font-normal">
                                 {statusLabel(request.status)}
                               </Badge>
                             </div>
                             <div className="col-span-1 flex justify-end" onClick={(event) => event.stopPropagation()}>
                               <div className="flex items-center gap-1">
                                 {canEdit ? (
-                                  <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-2 text-xs" asChild>
-                                    <Link href={`/${companyId}/employee-portal/material-requests/${request.id}/edit`}>
-                                      <IconEdit className="h-3.5 w-3.5" />
-                                    </Link>
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-2 text-xs" asChild>
+                                        <Link href={`/${companyId}/employee-portal/material-requests/${request.id}/edit`}>
+                                          <IconEdit className="h-3.5 w-3.5" />
+                                        </Link>
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" sideOffset={6}>
+                                      Edit Request
+                                    </TooltipContent>
+                                  </Tooltip>
                                 ) : null}
 
                                 {canSubmit ? (
@@ -380,11 +395,18 @@ export function MaterialRequestClient({
 
                                 {canCancel ? (
                                   <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-2 text-xs" disabled={isPending}>
-                                        <IconX className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </AlertDialogTrigger>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <AlertDialogTrigger asChild>
+                                          <Button type="button" variant="destructive" size="sm" className="h-8 rounded-lg px-2 text-xs" disabled={isPending}>
+                                            <IconCircleMinus className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" sideOffset={6}>
+                                        Cancel Request
+                                      </TooltipContent>
+                                    </Tooltip>
                                     <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
                                       <AlertDialogHeader>
                                         <AlertDialogTitle className="text-base font-semibold">Cancel Request</AlertDialogTitle>
@@ -458,7 +480,7 @@ export function MaterialRequestClient({
                                 </div>
                               ) : null}
 
-                              <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+                              <div className="overflow-hidden border border-border/60 bg-card">
                                 <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
                                   <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line</p>
                                   <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Code</p>

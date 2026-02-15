@@ -206,6 +206,7 @@ export type EmployeePortalMaterialRequestApprovalHistoryDetail = {
 }
 
 export type EmployeePortalMaterialRequestProcessingStatusFilter =
+  | "OPEN"
   | "ALL"
   | "PENDING_PURCHASER"
   | "IN_PROGRESS"

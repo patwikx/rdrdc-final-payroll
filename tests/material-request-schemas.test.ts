@@ -163,6 +163,17 @@ test("getMaterialRequestProcessingPageInputSchema supports processing status fil
   assert.equal(invalid.success, false)
 })
 
+test("getMaterialRequestProcessingPageInputSchema defaults status to OPEN", () => {
+  const parsed = getMaterialRequestProcessingPageInputSchema.safeParse({
+    companyId: COMPANY_ID,
+  })
+
+  assert.equal(parsed.success, true)
+  if (parsed.success) {
+    assert.equal(parsed.data.status, "OPEN")
+  }
+})
+
 test("updateMaterialRequestProcessingStatusInputSchema requires a valid target status", () => {
   const valid = updateMaterialRequestProcessingStatusInputSchema.safeParse({
     companyId: COMPANY_ID,

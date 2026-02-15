@@ -16,6 +16,13 @@ const dateLabel = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 })
 
+const dateInputLabel = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: "Asia/Manila",
+})
+
 const dateTimeLabel = new Intl.DateTimeFormat("en-PH", {
   month: "short",
   day: "2-digit",
@@ -44,6 +51,7 @@ export async function getEmployeePortalLeaveRequestsReadModel(params: {
       select: {
         id: true,
         requestNumber: true,
+        leaveTypeId: true,
         isHalfDay: true,
         halfDayPeriod: true,
         startDate: true,
@@ -120,10 +128,13 @@ export async function getEmployeePortalLeaveRequestsReadModel(params: {
     requests: leaveRequests.map((item) => ({
       id: item.id,
       requestNumber: item.requestNumber,
+      leaveTypeId: item.leaveTypeId,
       isHalfDay: item.isHalfDay,
       halfDayPeriod: item.halfDayPeriod,
       startDate: dateLabel.format(item.startDate),
+      startDateInput: dateInputLabel.format(item.startDate),
       endDate: dateLabel.format(item.endDate),
+      endDateInput: dateInputLabel.format(item.endDate),
       numberOfDays: Number(item.numberOfDays),
       reason: item.reason,
       statusCode: item.statusCode,

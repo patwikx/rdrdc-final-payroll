@@ -39,7 +39,20 @@ export default async function EditMaterialRequestPage({ params }: EditMaterialRe
 
   const request = requests.find((item) => item.id === requestId)
 
-  if (!request || request.status !== "DRAFT") {
+  const hasApprovalHistory = request?.approvalSteps.some(
+    (step) =>
+      step.status !== "PENDING" ||
+      step.actedAtLabel !== null ||
+      step.actedByName !== null
+  ) ?? false
+
+  const canEditRequest = Boolean(
+    request &&
+      (request.status === "DRAFT" ||
+        (request.status === "PENDING_APPROVAL" && !hasApprovalHistory))
+  )
+
+  if (!canEditRequest || !request) {
     redirect(`/${context.companyId}/employee-portal/material-requests`)
   }
 

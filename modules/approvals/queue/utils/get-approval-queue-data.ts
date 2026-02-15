@@ -56,6 +56,21 @@ export type ApprovalQueueQuery = {
   pageSize?: number
 }
 
+type PriorityBucket = "HIGH" | "MEDIUM" | "LOW"
+type SegmentKind = "LEAVE" | "OVERTIME"
+
+type SegmentDefinition = {
+  kind: SegmentKind
+  priority: PriorityBucket
+  count: number
+}
+
+type SegmentWindow = SegmentDefinition & {
+  index: number
+  skip: number
+  take: number
+}
+
 const DEFAULT_PAGE_SIZE = 10
 const MAX_PAGE_SIZE = 50
 
@@ -98,15 +113,6 @@ const toNumeric = (value: Prisma.Decimal | null): number => {
 
 const toEmployeeName = (firstName: string, lastName: string): string => `${lastName}, ${firstName}`
 
-const getPriority = (approvedAt: Date | null): "HIGH" | "MEDIUM" | "LOW" => {
-  if (!approvedAt) return "MEDIUM"
-
-  const hoursOpen = (Date.now() - approvedAt.getTime()) / (1000 * 60 * 60)
-  if (hoursOpen >= 72) return "HIGH"
-  if (hoursOpen >= 24) return "MEDIUM"
-  return "LOW"
-}
-
 const normalizePage = (value: number | undefined): number => {
   if (!Number.isFinite(value)) return 1
   const parsed = Math.floor(value as number)
@@ -123,6 +129,36 @@ const normalizePageSize = (value: number | undefined): number => {
 const normalizeKind = (value: ApprovalQueueQuery["kind"]): ApprovalQueueKindFilter => {
   if (value === "LEAVE" || value === "OVERTIME") return value
   return "ALL"
+}
+
+const buildPriorityWhere = (
+  priority: PriorityBucket,
+  stale72Hours: Date,
+  stale24Hours: Date
+): Prisma.LeaveRequestWhereInput => {
+  if (priority === "HIGH") {
+    return {
+      supervisorApprovedAt: { lte: stale72Hours },
+    }
+  }
+
+  if (priority === "MEDIUM") {
+    return {
+      OR: [
+        { supervisorApprovedAt: null },
+        {
+          AND: [
+            { supervisorApprovedAt: { gt: stale72Hours } },
+            { supervisorApprovedAt: { lte: stale24Hours } },
+          ],
+        },
+      ],
+    }
+  }
+
+  return {
+    supervisorApprovedAt: { gt: stale24Hours },
+  }
 }
 
 export async function getApprovalQueueData(companyId: string, options: ApprovalQueueQuery = {}): Promise<ApprovalQueueData> {
@@ -144,169 +180,281 @@ export async function getApprovalQueueData(companyId: string, options: ApprovalQ
   const leaveFilterEnabled = hasLeaveAccess && (kind === "ALL" || kind === "LEAVE")
   const overtimeFilterEnabled = hasOvertimeAccess && (kind === "ALL" || kind === "OVERTIME")
 
-  const leaveBaseWhere = {
+  const leaveBaseWhere: Prisma.LeaveRequestWhereInput = {
     employee: { companyId: context.companyId },
     statusCode: RequestStatus.SUPERVISOR_APPROVED,
-  } as const
+  }
 
-  const overtimeBaseWhere = {
+  const overtimeBaseWhere: Prisma.OvertimeRequestWhereInput = {
     employee: { companyId: context.companyId },
     statusCode: RequestStatus.SUPERVISOR_APPROVED,
-  } as const
+  }
 
-  const leaveSearchWhere = query
+  const leaveSearchWhere: Prisma.LeaveRequestWhereInput = query
     ? {
         OR: [
-          { requestNumber: { contains: query, mode: "insensitive" as const } },
-          { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
-          { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
-          { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
-          { employee: { department: { is: { name: { contains: query, mode: "insensitive" as const } } } } },
+          { requestNumber: { contains: query, mode: "insensitive" } },
+          { employee: { firstName: { contains: query, mode: "insensitive" } } },
+          { employee: { lastName: { contains: query, mode: "insensitive" } } },
+          { employee: { employeeNumber: { contains: query, mode: "insensitive" } } },
+          { employee: { department: { is: { name: { contains: query, mode: "insensitive" } } } } },
         ],
       }
     : {}
 
-  const overtimeSearchWhere = query
+  const overtimeSearchWhere: Prisma.OvertimeRequestWhereInput = query
     ? {
         OR: [
-          { requestNumber: { contains: query, mode: "insensitive" as const } },
-          { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
-          { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
-          { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
-          { employee: { department: { is: { name: { contains: query, mode: "insensitive" as const } } } } },
+          { requestNumber: { contains: query, mode: "insensitive" } },
+          { employee: { firstName: { contains: query, mode: "insensitive" } } },
+          { employee: { lastName: { contains: query, mode: "insensitive" } } },
+          { employee: { employeeNumber: { contains: query, mode: "insensitive" } } },
+          { employee: { department: { is: { name: { contains: query, mode: "insensitive" } } } } },
         ],
       }
     : {}
 
-  const staleThreshold = new Date(Date.now() - 72 * 60 * 60 * 1000)
+  const stale72Hours = new Date(Date.now() - 72 * 60 * 60 * 1000)
+  const stale24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-  const [summaryLeaveCount, summaryOvertimeCount, summaryHighLeaveCount, summaryHighOvertimeCount, leaveRequests, overtimeRequests] =
-    await Promise.all([
-      hasLeaveAccess
-        ? db.leaveRequest.count({
-            where: leaveBaseWhere,
-          })
-        : Promise.resolve(0),
-      hasOvertimeAccess
-        ? db.overtimeRequest.count({
-            where: overtimeBaseWhere,
-          })
-        : Promise.resolve(0),
-      hasLeaveAccess
-        ? db.leaveRequest.count({
-            where: {
-              ...leaveBaseWhere,
-              supervisorApprovedAt: { lte: staleThreshold },
-            },
-          })
-        : Promise.resolve(0),
-      hasOvertimeAccess
-        ? db.overtimeRequest.count({
-            where: {
-              ...overtimeBaseWhere,
-              supervisorApprovedAt: { lte: staleThreshold },
-            },
-          })
-        : Promise.resolve(0),
-      leaveFilterEnabled
-        ? db.leaveRequest.findMany({
-            where: {
-              ...leaveBaseWhere,
-              ...leaveSearchWhere,
-            },
-            orderBy: [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }],
-            select: {
-              id: true,
-              requestNumber: true,
-              leaveType: { select: { name: true } },
-              startDate: true,
-              endDate: true,
-              numberOfDays: true,
-              reason: true,
-              submittedAt: true,
-              supervisorApprovedAt: true,
-              supervisorApprovalRemarks: true,
-              employee: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  employeeNumber: true,
-                  department: { select: { name: true } },
-                },
-              },
-              supervisorApprover: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          })
-        : Promise.resolve([]),
-      overtimeFilterEnabled
-        ? db.overtimeRequest.findMany({
-            where: {
-              ...overtimeBaseWhere,
-              ...overtimeSearchWhere,
-            },
-            orderBy: [{ supervisorApprovedAt: "asc" }, { createdAt: "asc" }],
-            select: {
-              id: true,
-              requestNumber: true,
-              overtimeDate: true,
-              startTime: true,
-              endTime: true,
-              hours: true,
-              reason: true,
-              createdAt: true,
-              supervisorApprovedAt: true,
-              supervisorApprovalRemarks: true,
-              employee: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  employeeNumber: true,
-                  isOvertimeEligible: true,
-                  department: { select: { name: true } },
-                },
-              },
-              supervisorApprover: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          })
-        : Promise.resolve([]),
-    ])
+  const [
+    summaryLeaveCount,
+    summaryOvertimeCount,
+    summaryHighLeaveCount,
+    summaryHighOvertimeCount,
+    leaveHighCount,
+    leaveMediumCount,
+    leaveLowCount,
+    overtimeHighCount,
+    overtimeMediumCount,
+    overtimeLowCount,
+  ] = await Promise.all([
+    hasLeaveAccess ? db.leaveRequest.count({ where: leaveBaseWhere }) : Promise.resolve(0),
+    hasOvertimeAccess ? db.overtimeRequest.count({ where: overtimeBaseWhere }) : Promise.resolve(0),
+    hasLeaveAccess
+      ? db.leaveRequest.count({
+          where: {
+            ...leaveBaseWhere,
+            supervisorApprovedAt: { lte: stale72Hours },
+          },
+        })
+      : Promise.resolve(0),
+    hasOvertimeAccess
+      ? db.overtimeRequest.count({
+          where: {
+            ...overtimeBaseWhere,
+            supervisorApprovedAt: { lte: stale72Hours },
+          },
+        })
+      : Promise.resolve(0),
+    leaveFilterEnabled
+      ? db.leaveRequest.count({
+          where: {
+            ...leaveBaseWhere,
+            ...leaveSearchWhere,
+            ...buildPriorityWhere("HIGH", stale72Hours, stale24Hours),
+          },
+        })
+      : Promise.resolve(0),
+    leaveFilterEnabled
+      ? db.leaveRequest.count({
+          where: {
+            ...leaveBaseWhere,
+            ...leaveSearchWhere,
+            ...buildPriorityWhere("MEDIUM", stale72Hours, stale24Hours),
+          },
+        })
+      : Promise.resolve(0),
+    leaveFilterEnabled
+      ? db.leaveRequest.count({
+          where: {
+            ...leaveBaseWhere,
+            ...leaveSearchWhere,
+            ...buildPriorityWhere("LOW", stale72Hours, stale24Hours),
+          },
+        })
+      : Promise.resolve(0),
+    overtimeFilterEnabled
+      ? db.overtimeRequest.count({
+          where: {
+            ...overtimeBaseWhere,
+            ...overtimeSearchWhere,
+            ...(buildPriorityWhere("HIGH", stale72Hours, stale24Hours) as Prisma.OvertimeRequestWhereInput),
+          },
+        })
+      : Promise.resolve(0),
+    overtimeFilterEnabled
+      ? db.overtimeRequest.count({
+          where: {
+            ...overtimeBaseWhere,
+            ...overtimeSearchWhere,
+            ...(buildPriorityWhere("MEDIUM", stale72Hours, stale24Hours) as Prisma.OvertimeRequestWhereInput),
+          },
+        })
+      : Promise.resolve(0),
+    overtimeFilterEnabled
+      ? db.overtimeRequest.count({
+          where: {
+            ...overtimeBaseWhere,
+            ...overtimeSearchWhere,
+            ...(buildPriorityWhere("LOW", stale72Hours, stale24Hours) as Prisma.OvertimeRequestWhereInput),
+          },
+        })
+      : Promise.resolve(0),
+  ])
 
-  const leaveItems: ApprovalQueueItem[] = leaveRequests.map((item) => ({
-    id: `LEAVE-${item.id}`,
-    requestId: item.id,
-    kind: "LEAVE",
-    requestNumber: item.requestNumber,
-    leaveTypeName: item.leaveType.name,
-    employeeId: item.employee.id,
-    employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
-    employeeNumber: item.employee.employeeNumber,
-    department: item.employee.department?.name ?? "-",
-    filedAt: toDateTimeLabel(item.submittedAt),
-    scheduleLabel: `${toDateLabel(item.startDate)} - ${toDateLabel(item.endDate)}`,
-    quantityLabel: `${toNumeric(item.numberOfDays).toFixed(2)} day(s)`,
-    reason: item.reason ?? "-",
-    supervisorName: item.supervisorApprover
-      ? toEmployeeName(item.supervisorApprover.firstName, item.supervisorApprover.lastName)
-      : "-",
-    supervisorApprovedAt: toDateTimeLabel(item.supervisorApprovedAt),
-    supervisorRemarks: item.supervisorApprovalRemarks ?? "-",
-    priority: getPriority(item.supervisorApprovedAt),
-    ctoConversionPreview: false,
-  }))
+  const leaveCountsByPriority: Record<PriorityBucket, number> = {
+    HIGH: leaveHighCount,
+    MEDIUM: leaveMediumCount,
+    LOW: leaveLowCount,
+  }
 
-  const overtimeEmployeeIds = Array.from(new Set(overtimeRequests.map((item) => item.employee.id)))
+  const overtimeCountsByPriority: Record<PriorityBucket, number> = {
+    HIGH: overtimeHighCount,
+    MEDIUM: overtimeMediumCount,
+    LOW: overtimeLowCount,
+  }
+
+  const priorityOrder: PriorityBucket[] = ["HIGH", "MEDIUM", "LOW"]
+  const segments: SegmentDefinition[] = []
+
+  for (const priority of priorityOrder) {
+    if (leaveFilterEnabled) {
+      segments.push({ kind: "LEAVE", priority, count: leaveCountsByPriority[priority] })
+    }
+    if (overtimeFilterEnabled) {
+      segments.push({ kind: "OVERTIME", priority, count: overtimeCountsByPriority[priority] })
+    }
+  }
+
+  const totalItems = segments.reduce((sum, segment) => sum + segment.count, 0)
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pageStart = (safePage - 1) * pageSize
+  const pageEnd = pageStart + pageSize
+
+  const segmentWindows: SegmentWindow[] = []
+  let offset = 0
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    const segmentStart = offset
+    const segmentEnd = offset + segment.count
+
+    const overlapStart = Math.max(pageStart, segmentStart)
+    const overlapEnd = Math.min(pageEnd, segmentEnd)
+
+    if (overlapEnd > overlapStart) {
+      segmentWindows.push({
+        ...segment,
+        index,
+        skip: overlapStart - segmentStart,
+        take: overlapEnd - overlapStart,
+      })
+    }
+
+    offset = segmentEnd
+  }
+
+  const leaveWindows = segmentWindows.filter((window) => window.kind === "LEAVE")
+  const overtimeWindows = segmentWindows.filter((window) => window.kind === "OVERTIME")
+
+  const [leaveWindowResults, overtimeWindowResults] = await Promise.all([
+    Promise.all(
+      leaveWindows.map(async (window) => {
+        const rows = await db.leaveRequest.findMany({
+          where: {
+            ...leaveBaseWhere,
+            ...leaveSearchWhere,
+            ...buildPriorityWhere(window.priority, stale72Hours, stale24Hours),
+          },
+          orderBy: [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }],
+          skip: window.skip,
+          take: window.take,
+          select: {
+            id: true,
+            requestNumber: true,
+            leaveType: { select: { name: true } },
+            startDate: true,
+            endDate: true,
+            numberOfDays: true,
+            reason: true,
+            submittedAt: true,
+            supervisorApprovedAt: true,
+            supervisorApprovalRemarks: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                employeeNumber: true,
+                department: { select: { name: true } },
+              },
+            },
+            supervisorApprover: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        })
+
+        return { index: window.index, rows }
+      })
+    ),
+    Promise.all(
+      overtimeWindows.map(async (window) => {
+        const rows = await db.overtimeRequest.findMany({
+          where: {
+            ...overtimeBaseWhere,
+            ...overtimeSearchWhere,
+            ...(buildPriorityWhere(window.priority, stale72Hours, stale24Hours) as Prisma.OvertimeRequestWhereInput),
+          },
+          orderBy: [{ supervisorApprovedAt: "asc" }, { createdAt: "asc" }],
+          skip: window.skip,
+          take: window.take,
+          select: {
+            id: true,
+            requestNumber: true,
+            overtimeDate: true,
+            startTime: true,
+            endTime: true,
+            hours: true,
+            reason: true,
+            createdAt: true,
+            supervisorApprovedAt: true,
+            supervisorApprovalRemarks: true,
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                employeeNumber: true,
+                isOvertimeEligible: true,
+                department: { select: { name: true } },
+              },
+            },
+            supervisorApprover: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        })
+
+        return { index: window.index, rows }
+      })
+    ),
+  ])
+
+  const leaveRowsBySegmentIndex = new Map(leaveWindowResults.map((entry) => [entry.index, entry.rows]))
+  const overtimeRowsBySegmentIndex = new Map(overtimeWindowResults.map((entry) => [entry.index, entry.rows]))
+
+  const overtimeEmployeeIds = Array.from(
+    new Set(overtimeWindowResults.flatMap((entry) => entry.rows.map((row) => row.employee.id)))
+  )
+
   const directReportCounts =
     overtimeEmployeeIds.length > 0
       ? await db.employee.groupBy({
@@ -328,40 +476,64 @@ export async function getApprovalQueueData(companyId: string, options: ApprovalQ
     }
   }
 
-  const overtimeItems: ApprovalQueueItem[] = overtimeRequests.map((item) => ({
-    ctoConversionPreview:
-      !item.employee.isOvertimeEligible || (directReportCountByManagerId.get(item.employee.id) ?? 0) > 0,
-    id: `OT-${item.id}`,
-    requestId: item.id,
-    kind: "OVERTIME",
-    requestNumber: item.requestNumber,
-    leaveTypeName: null,
-    employeeId: item.employee.id,
-    employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
-    employeeNumber: item.employee.employeeNumber,
-    department: item.employee.department?.name ?? "-",
-    filedAt: toDateTimeLabel(item.createdAt),
-    scheduleLabel: `${toDateLabel(item.overtimeDate)} | ${toTimeLabel(item.startTime)} - ${toTimeLabel(item.endTime)}`,
-    quantityLabel: `${toNumeric(item.hours).toFixed(2)} hour(s)`,
-    reason: item.reason ?? "-",
-    supervisorName: item.supervisorApprover
-      ? toEmployeeName(item.supervisorApprover.firstName, item.supervisorApprover.lastName)
-      : "-",
-    supervisorApprovedAt: toDateTimeLabel(item.supervisorApprovedAt),
-    supervisorRemarks: item.supervisorApprovalRemarks ?? "-",
-    priority: getPriority(item.supervisorApprovedAt),
-  }))
+  const items: ApprovalQueueItem[] = []
+  for (const window of segmentWindows) {
+    if (window.kind === "LEAVE") {
+      const rows = leaveRowsBySegmentIndex.get(window.index) ?? []
+      for (const item of rows) {
+        items.push({
+          id: `LEAVE-${item.id}`,
+          requestId: item.id,
+          kind: "LEAVE",
+          requestNumber: item.requestNumber,
+          leaveTypeName: item.leaveType.name,
+          employeeId: item.employee.id,
+          employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
+          employeeNumber: item.employee.employeeNumber,
+          department: item.employee.department?.name ?? "-",
+          filedAt: toDateTimeLabel(item.submittedAt),
+          scheduleLabel: `${toDateLabel(item.startDate)} - ${toDateLabel(item.endDate)}`,
+          quantityLabel: `${toNumeric(item.numberOfDays).toFixed(2)} day(s)`,
+          reason: item.reason ?? "-",
+          supervisorName: item.supervisorApprover
+            ? toEmployeeName(item.supervisorApprover.firstName, item.supervisorApprover.lastName)
+            : "-",
+          supervisorApprovedAt: toDateTimeLabel(item.supervisorApprovedAt),
+          supervisorRemarks: item.supervisorApprovalRemarks ?? "-",
+          priority: window.priority,
+          ctoConversionPreview: false,
+        })
+      }
+      continue
+    }
 
-  const filteredItems = [...leaveItems, ...overtimeItems].sort((a, b) => {
-    const rank = { HIGH: 3, MEDIUM: 2, LOW: 1 }
-    return rank[b.priority] - rank[a.priority]
-  })
-
-  const totalItems = filteredItems.length
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
-  const safePage = Math.min(page, totalPages)
-  const startIndex = (safePage - 1) * pageSize
-  const items = filteredItems.slice(startIndex, startIndex + pageSize)
+    const rows = overtimeRowsBySegmentIndex.get(window.index) ?? []
+    for (const item of rows) {
+      items.push({
+        id: `OT-${item.id}`,
+        requestId: item.id,
+        kind: "OVERTIME",
+        requestNumber: item.requestNumber,
+        leaveTypeName: null,
+        employeeId: item.employee.id,
+        employeeName: toEmployeeName(item.employee.firstName, item.employee.lastName),
+        employeeNumber: item.employee.employeeNumber,
+        department: item.employee.department?.name ?? "-",
+        filedAt: toDateTimeLabel(item.createdAt),
+        scheduleLabel: `${toDateLabel(item.overtimeDate)} | ${toTimeLabel(item.startTime)} - ${toTimeLabel(item.endTime)}`,
+        quantityLabel: `${toNumeric(item.hours).toFixed(2)} hour(s)`,
+        reason: item.reason ?? "-",
+        supervisorName: item.supervisorApprover
+          ? toEmployeeName(item.supervisorApprover.firstName, item.supervisorApprover.lastName)
+          : "-",
+        supervisorApprovedAt: toDateTimeLabel(item.supervisorApprovedAt),
+        supervisorRemarks: item.supervisorApprovalRemarks ?? "-",
+        priority: window.priority,
+        ctoConversionPreview:
+          !item.employee.isOvertimeEligible || (directReportCountByManagerId.get(item.employee.id) ?? 0) > 0,
+      })
+    }
+  }
 
   return {
     companyId: context.companyId,

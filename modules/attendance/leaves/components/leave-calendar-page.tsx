@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import {
   addMonths,
   eachDayOfInterval,
@@ -11,14 +12,22 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { IconCalendarEvent } from "@tabler/icons-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import type { LeaveCalendarEntry } from "@/modules/attendance/leaves/utils/get-leave-calendar-view-model"
+
+const LeaveCalendarDetailsPanel = dynamic(
+  () =>
+    import("@/modules/attendance/leaves/components/leave-calendar-details-panel").then(
+      (module) => module.LeaveCalendarDetailsPanel
+    ),
+  {
+    loading: () => <p className="text-sm text-muted-foreground">Loading leave details...</p>,
+  }
+)
 
 type LeaveCalendarPageProps = {
   companyName: string
@@ -28,6 +37,7 @@ type LeaveCalendarPageProps = {
     endDate: string
   }
   leaves: LeaveCalendarEntry[]
+  leaveIdsByDate: Record<string, string[]>
   loadError?: string
 }
 
@@ -39,26 +49,23 @@ const toDateKey = (value: Date): string =>
     day: "2-digit",
   }).format(value)
 
-const badgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-  if (status === "APPROVED") return "default"
-  if (status === "REJECTED") return "destructive"
-  if (status === "PENDING" || status === "SUPERVISOR_APPROVED") return "secondary"
-  return "outline"
-}
-
-export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, loadError }: LeaveCalendarPageProps) {
+export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, leaveIdsByDate, loadError }: LeaveCalendarPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [isMonthPending, startMonthTransition] = useTransition()
 
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(toPhDayStartUtcInstant(range.startDate) ?? undefined)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => undefined)
 
   const baseMonth = useMemo(() => {
     if (/^\d{4}-\d{2}$/.test(selectedMonth)) {
       const [year, month] = selectedMonth.split("-").map((part) => Number(part))
-      return new Date(Date.UTC(year, month - 1, 1))
+      return new Date(year, month - 1, 1)
     }
-    return new Date()
+
+    const fallback = new Date()
+    fallback.setDate(1)
+    return fallback
   }, [selectedMonth])
 
   const monthStart = startOfMonth(baseMonth)
@@ -68,31 +75,38 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
     end: endOfWeek(monthEnd),
   })
 
-  const leavesByDate = useMemo(() => {
-    const map = new Map<string, LeaveCalendarEntry[]>()
-    for (const leave of leaves) {
-      const start = new Date(leave.startDate)
-      const end = new Date(leave.endDate)
-      const cursor = new Date(start)
-      while (cursor <= end) {
-        const key = toDateKey(cursor)
-        const existing = map.get(key) ?? []
-        existing.push(leave)
-        map.set(key, existing)
-        cursor.setUTCDate(cursor.getUTCDate() + 1)
-      }
-    }
-    return map
+  const leaveById = useMemo(() => {
+    return new Map(leaves.map((leave) => [leave.id, leave]))
   }, [leaves])
 
-  const selectedDateKey = selectedDate ? toDateKey(selectedDate) : null
-  const selectedDateLeaves = selectedDateKey ? leavesByDate.get(selectedDateKey) ?? [] : []
+  const effectiveSelectedDate =
+    selectedDate &&
+    selectedDate.getMonth() === baseMonth.getMonth() &&
+    selectedDate.getFullYear() === baseMonth.getFullYear()
+      ? selectedDate
+      : undefined
+  const selectedDateKey = effectiveSelectedDate ? toDateKey(effectiveSelectedDate) : null
+  const selectedDateLeaves = useMemo(() => {
+    if (!selectedDateKey) {
+      return []
+    }
+
+    const leaveIds = leaveIdsByDate[selectedDateKey] ?? []
+    return leaveIds.map((leaveId) => leaveById.get(leaveId)).filter((leave): leave is LeaveCalendarEntry => Boolean(leave))
+  }, [leaveById, leaveIdsByDate, selectedDateKey])
 
   const setMonth = (monthDate: Date) => {
     const nextMonth = format(monthDate, "yyyy-MM")
     const params = new URLSearchParams(searchParams.toString())
     params.set("month", nextMonth)
-    router.push(`${pathname}?${params.toString()}`)
+    const nextQuery = params.toString()
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname
+    const currentUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname
+    if (nextUrl !== currentUrl) {
+      startMonthTransition(() => {
+        router.replace(nextUrl, { scroll: false })
+      })
+    }
   }
 
   return (
@@ -110,6 +124,7 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
                 type="button"
                 size="sm"
                 onClick={() => setMonth(subMonths(baseMonth, 1))}
+                disabled={isMonthPending}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 Previous
@@ -117,11 +132,13 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
               <div className="text-center">
                 <p className="text-sm text-foreground">{format(baseMonth, "MMMM yyyy")}</p>
                 <p className="text-xs text-muted-foreground">Coverage: {range.startDate} to {range.endDate}</p>
+                {isMonthPending ? <p className="text-[11px] text-muted-foreground">Loading month...</p> : null}
               </div>
               <Button
                 type="button"
                 size="sm"
                 onClick={() => setMonth(addMonths(baseMonth, 1))}
+                disabled={isMonthPending}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 Next
@@ -143,9 +160,19 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
             <div className="grid grid-cols-7">
               {calendarDays.map((day) => {
                 const dayKey = toDateKey(day)
-                const dayLeaves = leavesByDate.get(dayKey) ?? []
-                const inMonth = day.getUTCMonth() === baseMonth.getUTCMonth()
-                const isSelected = selectedDate ? toDateKey(selectedDate) === dayKey : false
+                const dayLeaveIds = leaveIdsByDate[dayKey] ?? []
+                const inMonth = day.getMonth() === baseMonth.getMonth() && day.getFullYear() === baseMonth.getFullYear()
+                const isSelected = selectedDateKey === dayKey
+
+                if (!inMonth) {
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className="min-h-[120px] border-r border-b border-border/60 bg-muted/10"
+                      aria-hidden="true"
+                    />
+                  )
+                }
 
                 return (
                   <button
@@ -154,39 +181,45 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
                     onClick={() => setSelectedDate(day)}
                     className={[
                       "min-h-[120px] border-r border-b border-border/60 p-2 text-left transition-colors",
-                      "hover:bg-primary/10",
-                      inMonth ? "bg-background" : "bg-muted/10 text-muted-foreground",
-                      isToday(day) ? "bg-primary/5" : "",
+                      "hover:bg-muted/40",
+                      "bg-background",
+                      isToday(day) ? "ring-1 ring-primary/40" : "",
                       isSelected ? "bg-primary text-primary-foreground ring-1 ring-primary hover:bg-primary/90" : "",
                     ].join(" ")}
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <span className={isSelected ? "text-xs text-primary-foreground" : "text-xs text-foreground"}>{format(day, "dd")}</span>
-                      {dayLeaves.length > 0 ? (
-                        <Badge
-                          variant={isSelected ? "outline" : "secondary"}
-                          className={isSelected ? "h-4 px-1 text-[10px] border-primary-foreground/40 text-primary-foreground bg-primary-foreground/20" : "h-4 px-1 text-[10px]"}
-                        >
-                          {dayLeaves.length}
-                        </Badge>
+                      <span
+                        className={isSelected ? "inline-flex h-5 min-w-5 items-center justify-center rounded bg-primary-foreground/20 px-1 text-xs text-primary-foreground" : "text-xs text-foreground"}
+                      >
+                        {format(day, "dd")}
+                      </span>
+                      {dayLeaveIds.length > 0 ? (
+                        <span className={isSelected ? "text-[10px] text-primary-foreground/90" : "text-[10px] text-muted-foreground"}>
+                          {dayLeaveIds.length} {dayLeaveIds.length === 1 ? "leave" : "leaves"}
+                        </span>
                       ) : null}
                     </div>
 
-                    {dayLeaves.length > 0 ? (
+                    {dayLeaveIds.length > 0 ? (
                       <div className="space-y-1">
-                        {dayLeaves.slice(0, 2).map((leave) => (
-                          <div
-                            key={`${leave.id}-${dayKey}`}
-                            className={[
-                              "rounded px-1.5 py-0.5 text-[10px] truncate",
-                              isSelected ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary",
-                            ].join(" ")}
-                          >
-                            {leave.employeeName}
-                          </div>
-                        ))}
-                        {dayLeaves.length > 2 ? (
-                          <p className={isSelected ? "text-[10px] text-primary-foreground/90" : "text-[10px] text-muted-foreground"}>+{dayLeaves.length - 2} more</p>
+                        {dayLeaveIds.slice(0, 2).map((leaveId) => {
+                          const leave = leaveById.get(leaveId)
+                          if (!leave) return null
+
+                          return (
+                            <div
+                              key={`${leave.id}-${dayKey}`}
+                              className={[
+                                "rounded px-1.5 py-0.5 text-[10px] truncate",
+                                isSelected ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary",
+                              ].join(" ")}
+                            >
+                              {leave.employeeName}
+                            </div>
+                          )
+                        })}
+                        {dayLeaveIds.length > 2 ? (
+                          <p className={isSelected ? "text-[10px] text-primary-foreground/90" : "text-[10px] text-muted-foreground"}>+{dayLeaveIds.length - 2} more</p>
                         ) : null}
                       </div>
                     ) : (
@@ -203,7 +236,7 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
           <div className="border-b border-border/60 px-4 py-3">
             <h2 className="text-base text-foreground">Submitted Leaves</h2>
             <p className="text-sm text-muted-foreground">
-              {selectedDate ? `Date: ${format(selectedDate, "PPP")}` : "Select a date to see submitted leaves."}
+              {effectiveSelectedDate ? `Date: ${format(effectiveSelectedDate, "PPP")}` : "Select a date to see submitted leaves."}
             </p>
             {loadError ? (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -212,24 +245,10 @@ export function LeaveCalendarPage({ companyName, selectedMonth, range, leaves, l
             ) : null}
           </div>
           <div className="px-4 py-3">
-            {selectedDateLeaves.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No submitted leaves for this date.</p>
+            {!selectedDateKey ? (
+              <p className="text-sm text-muted-foreground">Select a date to load submitted leaves.</p>
             ) : (
-              <div>
-                {selectedDateLeaves.map((leave) => (
-                  <div key={`${leave.id}-${selectedDateKey}`} className="border-b border-border/60 py-3 last:border-b-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-foreground">{leave.employeeName}</p>
-                      <Badge variant={badgeVariant(leave.status)}>{leave.status}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{leave.employeeNumber} - {leave.leaveType}</p>
-                    {leave.isHalfDay ? (
-                      <p className="text-xs text-muted-foreground">Half-day ({leave.halfDayPeriod ?? "N/A"})</p>
-                    ) : null}
-                    {leave.reason ? <p className="mt-1 text-xs text-muted-foreground">{leave.reason}</p> : null}
-                  </div>
-                ))}
-              </div>
+              <LeaveCalendarDetailsPanel selectedDateKey={selectedDateKey} selectedDateLeaves={selectedDateLeaves} />
             )}
           </div>
         </aside>

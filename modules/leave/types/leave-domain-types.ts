@@ -22,6 +22,23 @@ export type LeaveBalanceWorkspaceHistoryRow = {
   createdAtIso: string
 }
 
+export type LeaveBalanceWorkspaceHistoryMonth = {
+  month: number
+  filed: number
+  used: number
+}
+
+export type LeaveBalanceWorkspaceHistoryPage = {
+  rows: LeaveBalanceWorkspaceHistoryRow[]
+  page: number
+  pageSize: number
+  totalItems: number
+  totalPages: number
+  hasPrevPage: boolean
+  hasNextPage: boolean
+  monthlyTotals: LeaveBalanceWorkspaceHistoryMonth[]
+}
+
 export type LeaveBalanceSummaryReportEmployeeRow = {
   employeeNumber: string
   employeeName: string

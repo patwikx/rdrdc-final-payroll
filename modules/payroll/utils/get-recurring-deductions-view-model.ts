@@ -3,6 +3,14 @@ import { RecurringDeductionStatus } from "@prisma/client"
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 
+type GetRecurringDeductionsViewModelInput = {
+  page?: number
+  query?: string
+  status?: RecurringDeductionStatus | "ALL"
+}
+
+const PAGE_SIZE = 10
+
 const toNumber = (value: { toString(): string } | null | undefined): number => {
   if (!value) return 0
   return Number(value.toString())
@@ -33,6 +41,18 @@ const toDateInputValue = (value: Date | null): string => {
 export type RecurringDeductionsViewModel = {
   companyId: string
   companyName: string
+  filters: {
+    query: string
+    status: RecurringDeductionStatus | "ALL"
+  }
+  pagination: {
+    page: number
+    pageSize: number
+    totalPages: number
+    totalItems: number
+    hasPrevPage: boolean
+    hasNextPage: boolean
+  }
   employees: Array<{ id: string; label: string }>
   deductionTypes: Array<{ id: string; code: string; name: string }>
   records: Array<{
@@ -58,7 +78,10 @@ export type RecurringDeductionsViewModel = {
   }>
 }
 
-export async function getRecurringDeductionsViewModel(companyId: string): Promise<RecurringDeductionsViewModel> {
+export async function getRecurringDeductionsViewModel(
+  companyId: string,
+  input?: GetRecurringDeductionsViewModelInput
+): Promise<RecurringDeductionsViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
   const blockedDeductionCodes = [
@@ -72,7 +95,26 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
     "ADJUSTMENT",
   ]
 
-  const [employees, deductionTypes, recurringDeductions] = await Promise.all([
+  const query = input?.query?.trim() ?? ""
+  const status = input?.status && input.status !== "ALL" ? input.status : "ALL"
+  const page = Number.isFinite(input?.page) ? Math.max(1, Number(input?.page)) : 1
+
+  const listWhere = {
+    employee: { companyId: context.companyId },
+    ...(status !== "ALL" ? { statusCode: status } : {}),
+    ...(query
+      ? {
+          OR: [
+            { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
+            { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
+            { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
+            { deductionType: { name: { contains: query, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  }
+
+  const [employees, deductionTypes, totalItems, recurringDeductions] = await Promise.all([
     db.employee.findMany({
       where: { companyId: context.companyId, isActive: true },
       select: { id: true, employeeNumber: true, firstName: true, lastName: true },
@@ -88,10 +130,9 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
       select: { id: true, code: true, name: true },
       orderBy: [{ code: "asc" }],
     }),
+    db.recurringDeduction.count({ where: listWhere }),
     db.recurringDeduction.findMany({
-      where: {
-        employee: { companyId: context.companyId },
-      },
+      where: listWhere,
       include: {
         employee: {
           select: {
@@ -108,12 +149,53 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
         },
       },
       orderBy: [{ createdAt: "desc" }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     }),
   ])
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+
+  const pagedRecords =
+    safePage === page
+      ? recurringDeductions
+      : await db.recurringDeduction.findMany({
+          where: listWhere,
+          include: {
+            employee: {
+              select: {
+                employeeNumber: true,
+                firstName: true,
+                lastName: true,
+                photoUrl: true,
+              },
+            },
+            deductionType: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          orderBy: [{ createdAt: "desc" }],
+          skip: (safePage - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        })
 
   return {
     companyId: context.companyId,
     companyName: context.companyName,
+    filters: {
+      query,
+      status,
+    },
+    pagination: {
+      page: safePage,
+      pageSize: PAGE_SIZE,
+      totalPages,
+      totalItems,
+      hasPrevPage: safePage > 1,
+      hasNextPage: safePage < totalPages,
+    },
     employees: employees.map((employee) => ({
       id: employee.id,
       label: `${employee.lastName}, ${employee.firstName} (${employee.employeeNumber})`,
@@ -123,7 +205,7 @@ export async function getRecurringDeductionsViewModel(companyId: string): Promis
       code: type.code,
       name: type.name,
     })),
-    records: recurringDeductions.map((record) => ({
+    records: pagedRecords.map((record) => ({
       id: record.id,
       employeeId: record.employeeId,
       employeeName: `${record.employee.lastName}, ${record.employee.firstName}`,

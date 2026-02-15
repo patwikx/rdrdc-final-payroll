@@ -1,14 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   IconArrowLeft,
   IconCheck,
   IconFileText,
   IconLoader2,
-  IconRefresh,
   IconShieldCheck,
   IconScan,
   IconUpload,
@@ -26,8 +25,20 @@ type SyncBiometricsPageProps = {
   companyId: string
 }
 
+const PREVIEW_MAX_LINES = 100
+const PREVIEW_BYTE_LIMIT = 64 * 1024
+const PROCESS_LOG_MAX_ITEMS = 12
+const PROCESS_LOG_STEPS = [
+  "PARSING TIME ENTRIES...",
+  "MATCHING EMPLOYEE RECORDS...",
+  "VALIDATING TIME DATA...",
+  "UPDATING DTR RECORDS...",
+  "FINALIZING SYNC...",
+]
+
 export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const processLogTickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [loading, setLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ processedCount: number } | null>(null)
@@ -35,7 +46,36 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [processLogs, setProcessLogs] = useState<string[]>([])
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const stopProcessLogTicker = () => {
+    if (processLogTickerRef.current) {
+      clearInterval(processLogTickerRef.current)
+      processLogTickerRef.current = null
+    }
+  }
+
+  const startProcessLogTicker = () => {
+    stopProcessLogTicker()
+    let stepIndex = 0
+    processLogTickerRef.current = setInterval(() => {
+      const nextStep = PROCESS_LOG_STEPS[stepIndex % PROCESS_LOG_STEPS.length]
+      stepIndex += 1
+      setProcessLogs((previous) => {
+        const nextLogs = [...previous, nextStep]
+        if (nextLogs.length <= PROCESS_LOG_MAX_ITEMS) {
+          return nextLogs
+        }
+        return nextLogs.slice(-PROCESS_LOG_MAX_ITEMS)
+      })
+    }, 250)
+  }
+
+  useEffect(() => {
+    return () => {
+      stopProcessLogTicker()
+    }
+  }, [])
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -45,14 +85,18 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
       return
     }
 
-    setSelectedFile(file)
-    const reader = new FileReader()
-    reader.onload = (readerEvent) => {
-      const content = String(readerEvent.target?.result ?? "")
-      const lines = content.split(/\r?\n/).slice(0, 100).join("\n")
+    try {
+      setSelectedFile(file)
+      // Read only the first chunk for preview to keep file selection snappy on large exports.
+      const previewChunk = await file.slice(0, PREVIEW_BYTE_LIMIT).text()
+      const lines = previewChunk.split(/\r?\n/).slice(0, PREVIEW_MAX_LINES).join("\n")
       setFilePreview(lines)
+    } catch {
+      setSelectedFile(null)
+      setFilePreview(null)
+      event.target.value = ""
+      toast.error("Unable to read file preview.")
     }
-    reader.readAsText(file)
   }
 
   const handleSync = async () => {
@@ -62,20 +106,9 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
       setLoading(true)
       setIsProcessing(true)
       setProcessLogs(["INITIALIZING IMPORT...", "READING ATTENDANCE FILE..."])
+      startProcessLogTicker()
 
       const fullContent = await selectedFile.text()
-
-      const logSteps = [
-        "PARSING TIME ENTRIES...",
-        "MATCHING EMPLOYEE RECORDS...",
-        "VALIDATING TIME DATA...",
-        "UPDATING DTR RECORDS...",
-      ]
-
-      for (const log of logSteps) {
-        await new Promise((resolve) => setTimeout(resolve, 400))
-        setProcessLogs((previous) => [...previous, log])
-      }
 
       const response = await syncBiometricsAction({ companyId, fileContent: fullContent })
 
@@ -91,6 +124,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
       setIsProcessing(false)
       toast.error("A system error occurred during synchronization")
     } finally {
+      stopProcessLogTicker()
       setLoading(false)
     }
   }
@@ -101,6 +135,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
     setSyncResult(null)
     setIsProcessing(false)
     setProcessLogs([])
+    stopProcessLogTicker()
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -213,42 +248,42 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                         First 100 Lines
                       </Badge>
                     </div>
-                    <div className="bg-black p-0 rounded-md border border-zinc-800 shadow-lg h-[400px] relative">
+                    <div className="p-0 rounded-md border border-border/60 bg-muted/20 h-[400px] relative">
                       <ScrollArea className="h-full w-full">
-                        <div className="p-4 text-[11px] leading-relaxed text-zinc-400 whitespace-pre">
+                        <div className="p-4 text-[11px] leading-relaxed text-muted-foreground whitespace-pre">
                           {filePreview || "Reading data..."}
                           <div className="h-4 w-2 bg-primary inline-block animate-pulse ml-1 align-middle" />
                         </div>
-                        <ScrollBar orientation="vertical" className="bg-zinc-900/50" />
-                        <ScrollBar orientation="horizontal" className="bg-zinc-900/50" />
+                        <ScrollBar orientation="vertical" />
+                        <ScrollBar orientation="horizontal" />
                       </ScrollArea>
                     </div>
                   </div>
                 ) : null}
               </div>
             ) : isProcessing ? (
-              <div className="flex flex-col items-center justify-center py-16 bg-black rounded-md border border-zinc-800 space-y-10 relative overflow-hidden">
+              <div className="flex flex-col items-center justify-center py-16 rounded-md border border-border/60 bg-muted/10 space-y-10 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-primary/20 animate-pulse" />
 
                 <div className="relative">
                   <div className="h-32 w-32 border-4 border-primary/20 flex items-center justify-center animate-[spin_4s_linear_infinite]">
                     <div className="h-24 w-24 border-4 border-primary/40 flex items-center justify-center animate-[spin_2s_linear_infinite_reverse]">
-                      <div className="h-16 w-16 border-4 border-primary bg-primary/10" />
+                      <div className="h-16 w-16 border-4 border-primary bg-background/70" />
                     </div>
                   </div>
-                  <IconRefresh className="h-8 w-8 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" />
+                  <IconScan className="h-8 w-8 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
                 </div>
 
                 <div className="text-center space-y-4 z-10">
-                  <h3 className="text-2xl text-primary animate-pulse">
+                  <h3 className="text-2xl text-foreground">
                     Processing Import
                   </h3>
-                  <div className="h-40 w-[400px] bg-zinc-900/50 border border-zinc-800 p-4 text-[11px] text-zinc-500 overflow-hidden rounded-md">
+                  <div className="h-40 w-[400px] bg-background/80 border border-border/60 p-4 text-[11px] text-muted-foreground overflow-hidden rounded-md">
                     <div className="space-y-1">
                       {processLogs.map((log, index) => (
                         <div key={`${log}-${String(index)}`} className="flex gap-2 animate-in slide-in-from-left-2 duration-300">
-                          <span className="text-primary/40">&gt;&gt;</span>
-                          <span className="text-zinc-300">{log}</span>
+                          <span className="text-primary">&gt;&gt;</span>
+                          <span className="text-foreground/80">{log}</span>
                         </div>
                       ))}
                       <div className="h-3 w-1.5 bg-primary animate-pulse inline-block ml-1" />

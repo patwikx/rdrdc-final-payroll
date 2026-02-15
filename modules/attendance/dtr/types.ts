@@ -50,6 +50,7 @@ export type WorkbenchItem = {
   id: string
   employeeId: string
   employeeName: string
+  employeeNumber: string
   date: string
   type:
     | "LEAVE_REQUEST"
@@ -59,8 +60,12 @@ export type WorkbenchItem = {
     | "ATTENDANCE_EXCEPTION"
     | "FOR_APPROVAL"
   status: "PENDING" | "ANOMALY"
+  pendingStage?: "SUPERVISOR" | "HR"
   details: string
+  requestId?: string
   referenceId?: string
+  requestTypeLabel?: string | null
+  requestReason?: string | null
   data?: DtrLogItem
 }
 

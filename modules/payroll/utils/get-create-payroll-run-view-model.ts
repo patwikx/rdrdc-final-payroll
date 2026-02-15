@@ -22,6 +22,7 @@ export type CreatePayrollRunViewModel = {
   runTypes: Array<{ code: NonTrialRunType; label: string }>
   departments: Array<{ id: string; name: string }>
   branches: Array<{ id: string; name: string }>
+  employees: Array<{ id: string; employeeNumber: string; fullName: string }>
 }
 
 const runTypeOptions: Array<{ code: NonTrialRunType; label: string }> = [
@@ -34,7 +35,7 @@ const runTypeOptions: Array<{ code: NonTrialRunType; label: string }> = [
 export async function getCreatePayrollRunViewModel(companyId: string): Promise<CreatePayrollRunViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  const [periods, departments, branches] = await Promise.all([
+  const [periods, departments, branches, employees] = await Promise.all([
     db.payPeriod.findMany({
       where: {
         statusCode: "OPEN",
@@ -60,6 +61,21 @@ export async function getCreatePayrollRunViewModel(companyId: string): Promise<C
       select: { id: true, name: true },
       orderBy: [{ name: "asc" }],
     }),
+    db.employee.findMany({
+      where: {
+        companyId: context.companyId,
+        isActive: true,
+        deletedAt: null,
+        employeeNumber: { not: "admin" },
+      },
+      select: {
+        id: true,
+        employeeNumber: true,
+        firstName: true,
+        lastName: true,
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    }),
   ])
 
   const defaultPayPeriodId = periods[0]?.id ?? ""
@@ -75,5 +91,10 @@ export async function getCreatePayrollRunViewModel(companyId: string): Promise<C
     runTypes: runTypeOptions,
     departments,
     branches,
+    employees: employees.map((employee) => ({
+      id: employee.id,
+      employeeNumber: employee.employeeNumber,
+      fullName: `${employee.lastName}, ${employee.firstName}`,
+    })),
   }
 }

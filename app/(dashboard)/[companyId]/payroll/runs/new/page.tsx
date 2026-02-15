@@ -46,6 +46,7 @@ export default async function PayrollRunCreatePage({ params }: PayrollRunCreateP
         runTypes={viewModel.runTypes}
         departments={viewModel.departments}
         branches={viewModel.branches}
+        employees={viewModel.employees}
       />
     </main>
   )

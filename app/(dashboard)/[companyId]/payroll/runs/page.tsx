@@ -55,6 +55,7 @@ export default async function PayrollRunsPage({ params }: PayrollRunsPageProps) 
             runTypes: createViewModel.runTypes,
             departments: createViewModel.departments,
             branches: createViewModel.branches,
+            employees: createViewModel.employees,
           }}
         />
       </div>

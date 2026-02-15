@@ -57,6 +57,7 @@ type PayrollRunsListClientProps = {
     runTypes: Array<{ code: NonTrialRunType; label: string }>
     departments: Array<{ id: string; name: string }>
     branches: Array<{ id: string; name: string }>
+    employees: Array<{ id: string; employeeNumber: string; fullName: string }>
   }
   runs: Array<{
     id: string
@@ -217,6 +218,7 @@ export function PayrollRunsListClient({ companyId, runs, createOptions }: Payrol
               runTypes={createOptions.runTypes}
               departments={createOptions.departments}
               branches={createOptions.branches}
+              employees={createOptions.employees}
               embedded
               onSuccess={() => setCreateDialogOpen(false)}
             />

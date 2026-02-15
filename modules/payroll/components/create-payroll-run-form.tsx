@@ -30,6 +30,7 @@ type CreatePayrollRunFormProps = {
   runTypes: Array<{ code: NonTrialRunType; label: string }>
   departments: Array<{ id: string; name: string }>
   branches: Array<{ id: string; name: string }>
+  employees: Array<{ id: string; employeeNumber: string; fullName: string }>
   embedded?: boolean
   onSuccess?: () => void
 }
@@ -43,6 +44,7 @@ export function CreatePayrollRunForm({
   runTypes,
   departments,
   branches,
+  employees,
   embedded = false,
   onSuccess,
 }: CreatePayrollRunFormProps) {
@@ -54,6 +56,8 @@ export function CreatePayrollRunForm({
   const [isTrialRun, setIsTrialRun] = useState(false)
   const [departmentIds, setDepartmentIds] = useState<string[]>([])
   const [branchIds, setBranchIds] = useState<string[]>([])
+  const [employeeIds, setEmployeeIds] = useState<string[]>([])
+  const [employeeSearch, setEmployeeSearch] = useState("")
   const [payPeriodTooltipOpen, setPayPeriodTooltipOpen] = useState(false)
 
   const canSubmit = useMemo(() => payPeriodId.length > 0, [payPeriodId])
@@ -61,6 +65,14 @@ export function CreatePayrollRunForm({
     () => payPeriods.find((period) => period.id === payPeriodId)?.label ?? "No open pay period available",
     [payPeriodId, payPeriods]
   )
+  const filteredEmployees = useMemo(() => {
+    const query = employeeSearch.trim().toLowerCase()
+    if (!query) return employees
+
+    return employees.filter((employee) => {
+      return `${employee.fullName} ${employee.employeeNumber}`.toLowerCase().includes(query)
+    })
+  }, [employeeSearch, employees])
 
   const toggleValue = (values: string[], value: string): string[] => {
     if (values.includes(value)) return values.filter((entry) => entry !== value)
@@ -81,6 +93,7 @@ export function CreatePayrollRunForm({
         isTrialRun,
         departmentIds,
         branchIds,
+        employeeIds,
       })
 
       if (!result.ok) {
@@ -156,7 +169,7 @@ export function CreatePayrollRunForm({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <div className="space-y-2 rounded-lg border border-border/60 p-3">
           <p className="text-xs font-medium text-foreground">Departments (optional)</p>
           <div className="max-h-40 space-y-2 overflow-auto pr-1">
@@ -189,6 +202,33 @@ export function CreatePayrollRunForm({
                     onCheckedChange={() => setBranchIds((prev) => toggleValue(prev, branch.id))}
                   />
                   <Label className="text-xs font-normal">{branch.name}</Label>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="space-y-2 rounded-lg border border-border/60 p-3">
+          <p className="text-xs font-medium text-foreground">Employees (optional)</p>
+          <Input
+            value={employeeSearch}
+            onChange={(event) => setEmployeeSearch(event.target.value)}
+            placeholder="Search employee name or number..."
+            className="h-8"
+          />
+          <div className="max-h-40 space-y-2 overflow-auto pr-1">
+            {filteredEmployees.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No employees matched your search.</p>
+            ) : (
+              filteredEmployees.map((employee) => (
+                <div key={employee.id} className="flex items-center gap-2">
+                  <Checkbox
+                    checked={employeeIds.includes(employee.id)}
+                    onCheckedChange={() => setEmployeeIds((prev) => toggleValue(prev, employee.id))}
+                  />
+                  <Label className="text-xs font-normal">
+                    {employee.fullName}
+                    <span className="ml-1 text-muted-foreground">({employee.employeeNumber})</span>
+                  </Label>
                 </div>
               ))
             )}

@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { useCallback, useDeferredValue, useMemo, useState, useTransition } from "react"
 import { DateRange } from "react-day-picker"
 import { eachDayOfInterval, format, subDays } from "date-fns"
@@ -11,7 +10,6 @@ import {
   IconCheckupList,
   IconClock,
   IconDownload,
-  IconRefresh,
   IconSearch,
   IconUserCheck,
   IconUserX,
@@ -25,13 +23,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { exportDtrCsvAction } from "@/modules/attendance/dtr/actions/export-dtr-csv-action"
+import { overridePendingRequestApprovalAction } from "@/modules/attendance/dtr/actions/override-pending-request-approval-action"
 import { EmployeeDtrCalendar } from "@/modules/attendance/dtr/components/employee-dtr-calendar"
 import { ModifyDtrSheet } from "@/modules/attendance/dtr/components/modify-dtr-sheet"
 import type { DtrLogItem, LeaveOverlayItem, WorkbenchItem, WorkbenchStats } from "@/modules/attendance/dtr/types"
@@ -50,7 +53,15 @@ type DtrClientPageProps = {
     stats: WorkbenchStats
   }
   leaveOverlays: LeaveOverlayItem[]
+  payPeriodOptions: Array<{
+    id: string
+    label: string
+    startDate: string
+    endDate: string
+    isCurrent: boolean
+  }>
   filters: {
+    payPeriodId: string | null
     startDate: string
     endDate: string
   }
@@ -100,11 +111,31 @@ const YELLOW_METRIC_BADGE_CLASS = "h-5 min-w-10 justify-center border-none bg-ye
 
 type DtrViewTab = "directory" | "calendar" | "workbench"
 type WorkbenchFilter = "ALL" | "PENDING" | "ANOMALY"
+const CUSTOM_PAY_PERIOD_VALUE = "__CUSTOM__"
 
-export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOverlays, filters }: DtrClientPageProps) {
+const getCurrentStatusLabel = (item: WorkbenchItem): string => {
+  if (item.status !== "PENDING") return "Anomaly"
+  if (item.pendingStage === "SUPERVISOR") return "Supervisor Approval"
+  if (item.pendingStage === "HR") return "HR Approval"
+  return "Open"
+}
+
+const sanitizeRequestDetails = (value: string): string => {
+  const cleaned = value
+    .replace(/\b(?:LR|OT|MR)-[A-Z0-9]+(?:-[A-Z0-9]+)*\b/gi, "")
+    .replace(/\s*•\s*/g, " • ")
+    .replace(/^•\s*|\s*•$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+
+  return cleaned || "-"
+}
+
+export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOverlays, payPeriodOptions, filters }: DtrClientPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [isRangeRefreshPending, startRangeRefreshTransition] = useTransition()
+  const [isOverridePending, startOverrideTransition] = useTransition()
 
   const [currentTab, setCurrentTab] = useState<DtrViewTab>("directory")
   const [mountedTabs, setMountedTabs] = useState<Record<DtrViewTab, boolean>>({
@@ -118,6 +149,8 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
   const [editingRecord, setEditingRecord] = useState<DtrLogItem | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [overrideDialogItem, setOverrideDialogItem] = useState<WorkbenchItem | null>(null)
+  const [overrideRemarks, setOverrideRemarks] = useState("")
   const [localSearch, setLocalSearch] = useState("")
   const [localWbSearch, setLocalWbSearch] = useState("")
   const deferredSearchTerm = useDeferredValue(localSearch.trim().toLowerCase())
@@ -136,6 +169,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
     setCurrentPage(1)
     setWbPage(1)
     const params = new URLSearchParams()
+    params.delete("payPeriodId")
     params.set("startDate", format(range.from, "yyyy-MM-dd"))
     params.set("endDate", format(range.to, "yyyy-MM-dd"))
 
@@ -148,6 +182,25 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
     setCurrentTab(tab)
     setMountedTabs((previous) => (previous[tab] ? previous : { ...previous, [tab]: true }))
   }, [])
+
+  const handlePayPeriodChange = (value: string) => {
+    if (value === CUSTOM_PAY_PERIOD_VALUE) return
+
+    const selectedPayPeriod = payPeriodOptions.find((item) => item.id === value)
+    if (!selectedPayPeriod) return
+
+    const nextFrom = toPhDayStartUtcInstant(selectedPayPeriod.startDate) ?? date?.from ?? subDays(new Date(), 30)
+    const nextTo = toPhDayStartUtcInstant(selectedPayPeriod.endDate) ?? date?.to ?? new Date()
+    setDate({ from: nextFrom, to: nextTo })
+    setCurrentPage(1)
+    setWbPage(1)
+
+    const params = new URLSearchParams()
+    params.set("payPeriodId", selectedPayPeriod.id)
+    params.set("startDate", selectedPayPeriod.startDate)
+    params.set("endDate", selectedPayPeriod.endDate)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
 
   const logDateKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -263,6 +316,60 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
     setIsSheetOpen(true)
   }
 
+  const openOverrideApprovalDialog = (item: WorkbenchItem) => {
+    if (!item.requestId) {
+      toast.error("Unable to resolve request id for override.")
+      return
+    }
+
+    if (item.type !== "LEAVE_REQUEST" && item.type !== "OT_REQUEST") {
+      toast.error("Only leave or overtime requests can be override-approved.")
+      return
+    }
+
+    setOverrideDialogItem(item)
+    setOverrideRemarks("")
+  }
+
+  const submitOverrideApproval = (decision: "APPROVE" | "REJECT") => {
+    if (!overrideDialogItem?.requestId) {
+      toast.error("Unable to resolve request id for override.")
+      return
+    }
+
+    const remarks = overrideRemarks.trim()
+    if (remarks.length < 2) {
+      toast.error("Please provide at least 2 characters for remarks.")
+      return
+    }
+
+    const requestId = overrideDialogItem.requestId
+    const requestKind = overrideDialogItem.type === "LEAVE_REQUEST" ? "LEAVE" : "OVERTIME"
+    startOverrideTransition(async () => {
+      try {
+        const result = await overridePendingRequestApprovalAction({
+          companyId,
+          requestId,
+          requestKind,
+          decision,
+          remarks,
+        })
+
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
+
+        toast.success(result.message || (decision === "REJECT" ? "Request override-rejected." : "Request override-approved."))
+        setOverrideDialogItem(null)
+        setOverrideRemarks("")
+        router.refresh()
+      } catch {
+        toast.error("Unable to override approval right now.")
+      }
+    })
+  }
+
   return (
     <div className="w-full min-h-screen bg-background animate-in fade-in duration-500">
       <ModifyDtrSheet
@@ -275,6 +382,81 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
         }}
         record={editingRecord}
       />
+      <Dialog
+        open={Boolean(overrideDialogItem)}
+        onOpenChange={(open) => {
+          if (isOverridePending) return
+          if (!open) {
+            setOverrideDialogItem(null)
+            setOverrideRemarks("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Override Decision</DialogTitle>
+            <DialogDescription>Decide on behalf of supervisor, then finalize this request as HR.</DialogDescription>
+          </DialogHeader>
+          {overrideDialogItem ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Employee</p>
+                  <p className="text-foreground">{overrideDialogItem.employeeName}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Current Status</p>
+                  <Badge variant="outline" className="px-2 py-0.5">
+                    {getCurrentStatusLabel(overrideDialogItem)}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">{overrideDialogItem.type === "LEAVE_REQUEST" ? "Leave Type" : "Type"}</p>
+                  <p className="text-foreground">{overrideDialogItem.requestTypeLabel ?? overrideDialogItem.type.replaceAll("_", " ")}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Request Date</p>
+                  <p className="text-foreground">{formatDatePh(overrideDialogItem.date)}</p>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-muted-foreground">Reason</p>
+                <p className="text-foreground">{overrideDialogItem.requestReason?.trim() || "-"}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="override-remarks">
+                  Remarks <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="override-remarks"
+                  value={overrideRemarks}
+                  onChange={(event) => setOverrideRemarks(event.target.value)}
+                  placeholder="State why this request is being override-approved or override-rejected."
+                  rows={3}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOverrideDialogItem(null)
+                setOverrideRemarks("")
+              }}
+              disabled={isOverridePending}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => submitOverrideApproval("REJECT")} disabled={isOverridePending}>
+              {isOverridePending ? "Submitting..." : "Override Reject"}
+            </Button>
+            <Button onClick={() => submitOverrideApproval("APPROVE")} disabled={isOverridePending}>
+              {isOverridePending ? "Submitting..." : "Override Approve"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="px-6 py-6 border-b border-border/60 flex flex-col md:flex-row md:items-end justify-between gap-4 bg-muted/20">
         <div className="space-y-2">
@@ -288,14 +470,22 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={handleExport}>
+          <Select value={filters.payPeriodId ?? CUSTOM_PAY_PERIOD_VALUE} onValueChange={handlePayPeriodChange}>
+            <SelectTrigger className="h-9 w-[320px]">
+              <SelectValue placeholder="Current pay period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={CUSTOM_PAY_PERIOD_VALUE}>Custom Range</SelectItem>
+              {payPeriodOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.isCurrent ? `${option.label} (Current)` : option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button className="bg-green-600 text-white hover:bg-green-700" onClick={handleExport}>
             <IconDownload className="h-3.5 w-3.5" /> Export
           </Button>
-          <Link href={`/${companyId}/attendance/schedules`}>
-            <Button>
-              <IconRefresh className="h-3.5 w-3.5" /> Shifts & Schedules
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -335,10 +525,10 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
         {mountedTabs.directory ? (
           <div className={cn("flex flex-col lg:flex-row min-h-[calc(100vh-230px)]", currentTab === "directory" ? "flex" : "hidden")}>
-            <aside className="w-full lg:w-72 border-r border-border/60 p-6 space-y-6 shrink-0 bg-background/30">
+            <aside className="w-full lg:w-72 border-r border-border/60 p-3 space-y-3 shrink-0 bg-background/30">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("w-full h-9 justify-start text-left", !date && "text-muted-foreground")}>
+                  <Button variant="outline" className={cn("w-full h-8 justify-start text-left", !date && "text-muted-foreground")}>
                     <IconCalendarEvent className="mr-2 h-3.5 w-3.5 text-primary" />
                     {date?.from && date.to ? `${format(date.from, "yyyy.MM.dd")} - ${format(date.to, "yyyy.MM.dd")}` : "PICK DATE RANGE"}
                   </Button>
@@ -358,10 +548,10 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
               <Separator className="bg-border/60" />
 
-              <div className="space-y-3">
+              <div className="space-y-1">
                 <h3 className="text-sm text-muted-foreground">Search</h3>
                 <div className="relative group">
-                  <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <IconSearch className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="ID OR NAME"
                     value={localSearch}
@@ -369,27 +559,27 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                       setLocalSearch(event.target.value)
                       setCurrentPage(1)
                     }}
-                    className="pl-9 h-9"
+                    className="pl-9 h-8"
                   />
                 </div>
               </div>
 
               <Separator className="bg-border/60" />
 
-              <div className="space-y-6">
+              <div className="space-y-2">
                 <h3 className="text-sm text-muted-foreground">Snapshot</h3>
                 <div className="grid grid-cols-1 gap-px bg-border/60 border border-border/60">
-                  <div className="p-4 bg-background border-l-2 border-primary">
+                  <div className="px-3 py-2.5 bg-background border-l-2 border-primary">
                     <p className="text-xs text-muted-foreground flex items-center gap-2"><IconUsers className="h-3 w-3" /> Total</p>
-                    <p className="text-2xl mt-1">{stats.totalEmployees}</p>
+                    <p className="text-2xl">{stats.totalEmployees}</p>
                   </div>
-                  <div className="p-4 bg-background border-l-2 border-emerald-500">
+                  <div className="px-3 py-2.5 bg-background border-l-2 border-emerald-500">
                     <p className="text-xs text-emerald-600 flex items-center gap-2"><IconUserCheck className="h-3 w-3" /> Present</p>
-                    <p className="text-2xl mt-1">{stats.presentToday}</p>
+                    <p className="text-2xl">{stats.presentToday}</p>
                   </div>
-                  <div className="p-4 bg-background border-l-2 border-red-500">
+                  <div className="px-3 py-2.5 bg-background border-l-2 border-red-500">
                     <p className="text-xs text-red-600 flex items-center gap-2"><IconUserX className="h-3 w-3" /> Absent</p>
-                    <p className="text-2xl mt-1">{stats.absentToday}</p>
+                    <p className="text-2xl">{stats.absentToday}</p>
                   </div>
                 </div>
               </div>
@@ -500,8 +690,26 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
         {mountedTabs.workbench ? (
           <div className={cn("flex flex-col lg:flex-row min-h-[calc(100vh-230px)]", currentTab === "workbench" ? "flex" : "hidden")}>
-            <aside className="w-full lg:w-72 border-r border-border/60 p-6 space-y-6 shrink-0 bg-background/30">
-              <div className="space-y-6">
+            <aside className="w-full lg:w-72 border-r border-border/60 p-4 space-y-4 shrink-0 bg-background/30">
+              <div className="space-y-2">
+                <h3 className="text-sm text-muted-foreground">Search</h3>
+                <div className="relative">
+                  <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search item..."
+                    value={localWbSearch}
+                    onChange={(event) => {
+                      setLocalWbSearch(event.target.value)
+                      setWbPage(1)
+                    }}
+                    className="pl-9 h-9"
+                  />
+                </div>
+              </div>
+
+              <Separator className="bg-border/60" />
+
+              <div className="space-y-4">
                 <h3 className="text-sm text-muted-foreground">Queue Analysis</h3>
                 <div className="grid grid-cols-1 gap-3">
                   <div className="p-4 bg-muted/20 border-l-2 border-primary cursor-pointer" onClick={() => {
@@ -527,24 +735,6 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                   </div>
                 </div>
               </div>
-
-              <Separator className="bg-border/60" />
-
-              <div className="space-y-3">
-                <h3 className="text-sm text-muted-foreground">Search</h3>
-                <div className="relative">
-                  <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search item..."
-                    value={localWbSearch}
-                    onChange={(event) => {
-                      setLocalWbSearch(event.target.value)
-                      setWbPage(1)
-                    }}
-                    className="pl-9 h-9"
-                  />
-                </div>
-              </div>
             </aside>
 
             <main className="flex-1 p-0 bg-background flex flex-col">
@@ -568,8 +758,13 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                     </div>
                   </div>
                 ) : (
-                  paginatedWorkbench.map((item) => (
-                    <div key={item.id} className="grid grid-cols-12 px-8 py-4 items-center group hover:bg-muted/5 transition-colors">
+                  paginatedWorkbench.map((item) => {
+                    const isPendingRequestItem = item.type === "LEAVE_REQUEST" || item.type === "OT_REQUEST"
+                    const isAwaitingSupervisor = isPendingRequestItem && item.pendingStage === "SUPERVISOR"
+                    const cleanedDetails = sanitizeRequestDetails(item.details)
+
+                    return (
+                      <div key={item.id} className="grid grid-cols-12 px-8 py-4 items-center group hover:bg-muted/5 transition-colors">
                       <div className="col-span-4 flex items-center gap-4">
                         <div
                           className={cn(
@@ -585,7 +780,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                         </div>
                         <div className="space-y-0.5 truncate">
                           <p className="text-sm leading-none truncate">{item.employeeName}</p>
-                          <p className="text-xs text-foreground/70">{item.employeeId.slice(0, 8)}...</p>
+                          <p className="text-xs text-foreground/70">{item.employeeNumber}</p>
                         </div>
                       </div>
                       <div className="col-span-2 text-sm text-foreground/80">{formatDatePh(item.date)}</div>
@@ -602,23 +797,59 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                           {item.type.replaceAll("_", " ")}
                         </Badge>
                       </div>
-                      <div className="col-span-2 text-sm text-foreground/70 truncate" title={item.details}>{item.details}</div>
+                      <div className="col-span-2 text-sm text-foreground/70 truncate" title={cleanedDetails}>{cleanedDetails}</div>
                       <div className="col-span-2 text-right">
-                        <Button
-                          size="sm"
-                          className="h-7 border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"
-                          variant="outline"
-                          onClick={() => {
-                            if (item.data) {
-                              openModify(item.data)
-                            }
-                          }}
-                        >
-                          Fix
-                        </Button>
+                        {isAwaitingSupervisor ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                className={cn(
+                                  "h-7",
+                                  "border-border text-muted-foreground bg-muted/30 hover:bg-muted/30"
+                                )}
+                                variant="outline"
+                                disabled={isOverridePending}
+                                onClick={() => openOverrideApprovalDialog(item)}
+                              >
+                                Override
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Open override action to approve or reject on behalf of supervisor.</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className={cn(
+                              "h-7",
+                              isPendingRequestItem
+                                ? "border-primary/20 text-primary bg-primary/10 hover:bg-primary/15"
+                                : "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100"
+                            )}
+                            variant="outline"
+                            onClick={() => {
+                              if (item.data) {
+                                openModify(item.data)
+                                return
+                              }
+
+                              if (isPendingRequestItem) {
+                                const params = new URLSearchParams()
+                                params.set("kind", item.type === "LEAVE_REQUEST" ? "LEAVE" : "OVERTIME")
+                                if (item.referenceId) {
+                                  params.set("q", item.referenceId)
+                                }
+                                router.push(`/${companyId}/approvals?${params.toString()}`)
+                              }
+                            }}
+                          >
+                            {isPendingRequestItem ? "Review" : "Fix"}
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
 

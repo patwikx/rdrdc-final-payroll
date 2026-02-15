@@ -45,8 +45,17 @@ export const updateDtrRecordInputSchema = z.object({
   remarks: z.string().max(2000).optional(),
 })
 
+export const overridePendingRequestApprovalInputSchema = z.object({
+  companyId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  requestKind: z.enum(["LEAVE", "OVERTIME"]),
+  decision: z.enum(["APPROVE", "REJECT"]),
+  remarks: z.string().trim().min(2).max(1000),
+})
+
 export type DtrDateRangeInput = z.infer<typeof dtrDateRangeInputSchema>
 export type DtrCompanyInput = z.infer<typeof dtrCompanyInputSchema>
 export type DtrEmployeeDateRangeInput = z.infer<typeof dtrEmployeeDateRangeInputSchema>
 export type DtrEmployeeScheduleInput = z.infer<typeof dtrEmployeeScheduleInputSchema>
 export type UpdateDtrRecordInput = z.infer<typeof updateDtrRecordInputSchema>
+export type OverridePendingRequestApprovalInput = z.infer<typeof overridePendingRequestApprovalInputSchema>

@@ -76,7 +76,6 @@ export type UserAccessPreviewQuery = {
 
 export type UserAccessPreviewData = {
   rows: UserAccessPreviewRow[]
-  availableUsers: AvailableSystemUserOption[]
   systemUsers: SystemUserAccountRow[]
   companyOptions: UserAccessCompanyOption[]
   query: string
@@ -195,7 +194,7 @@ export async function getUserAccessPreviewData(
       : {}),
   }
 
-  const [employeeTotalItems, systemUserTotalItems, employees, users, companyUsers, companyOptions] = await Promise.all([
+  const [employeeTotalItems, systemUserTotalItems, employees, companyUsers, companyOptions] = await Promise.all([
     db.employee.count({
       where: employeeWhere,
     }),
@@ -246,30 +245,6 @@ export async function getUserAccessPreviewData(
       },
       skip: (employeePage - 1) * employeePageSize,
       take: employeePageSize,
-    }),
-    db.user.findMany({
-      where: {
-        isActive: true,
-        employee: null,
-      },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        companyAccess: {
-          where: {
-            companyId,
-            isActive: true,
-          },
-          select: {
-            role: true,
-          },
-          take: 1,
-        },
-      },
     }),
     db.userCompanyAccess.findMany({
       where: systemUserWhere,
@@ -349,14 +324,6 @@ export async function getUserAccessPreviewData(
     })),
   }))
 
-  const availableUsers: AvailableSystemUserOption[] = users.map((user) => ({
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    displayName: `${user.lastName}, ${user.firstName}`,
-    companyRole: user.companyAccess[0]?.role ?? null,
-  }))
-
   const systemUsers: SystemUserAccountRow[] = companyUsers.map((record) => ({
     id: record.user.id,
     username: record.user.username,
@@ -376,7 +343,6 @@ export async function getUserAccessPreviewData(
 
   return {
     rows,
-    availableUsers,
     systemUsers,
     companyOptions: companyOptions.map((company) => ({
       companyId: company.id,

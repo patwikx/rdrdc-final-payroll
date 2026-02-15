@@ -9,7 +9,23 @@ const actionBaseSchema = z.object({
   employeeId: z.string().uuid(),
 })
 
+const companyActionSchema = z.object({
+  companyId: z.string().uuid(),
+})
+
 export const createEmployeeSystemUserInputSchema = actionBaseSchema.extend({
+  username: z.string().trim().min(3).max(50),
+  email: z.string().trim().email(),
+  password: z.string().min(8).max(128),
+  companyRole: companyRoleSchema.default("EMPLOYEE"),
+  isRequestApprover: z.boolean().default(false),
+  isMaterialRequestPurchaser: z.boolean().default(false),
+  isMaterialRequestPoster: z.boolean().default(false),
+})
+
+export const createStandaloneSystemUserInputSchema = companyActionSchema.extend({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
   username: z.string().trim().min(3).max(50),
   email: z.string().trim().email(),
   password: z.string().min(8).max(128),
@@ -73,6 +89,7 @@ export const updateEmployeeCompanyAccessInputSchema = actionBaseSchema.extend({
 })
 
 export type CreateEmployeeSystemUserInput = z.infer<typeof createEmployeeSystemUserInputSchema>
+export type CreateStandaloneSystemUserInput = z.infer<typeof createStandaloneSystemUserInputSchema>
 export type LinkEmployeeToUserInput = z.infer<typeof linkEmployeeToUserInputSchema>
 export type UnlinkEmployeeUserInput = z.infer<typeof unlinkEmployeeUserInputSchema>
 export type UpdateEmployeeRequestApproverInput = z.infer<typeof updateEmployeeRequestApproverInputSchema>

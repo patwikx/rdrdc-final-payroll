@@ -131,7 +131,7 @@ export const getRequiredRolesForCompanyPath = (pathname: string): readonly Compa
   }
 
   if (matchesPrefix(modulePath, "/employee-portal")) {
-    return ["EMPLOYEE"]
+    return ["EMPLOYEE", "APPROVER", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN"]
   }
 
   const matchedModule = SIDEBAR_MODULES.find((module) =>

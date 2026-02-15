@@ -77,7 +77,6 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
       companyId={company.companyId}
       companyName={company.companyName}
       rows={data.rows}
-      availableUsers={data.availableUsers}
       systemUsers={data.systemUsers}
       companyOptions={data.companyOptions}
       query={data.query}

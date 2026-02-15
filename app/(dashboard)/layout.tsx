@@ -56,11 +56,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
       userId: session.user.id,
       companyId: activeCompanyId,
       deletedAt: null,
+      isActive: true,
     },
     select: {
+      id: true,
       photoUrl: true,
     },
   })
+  const activeCompanyRole =
+    companyOptions.find((company) => company.companyId === activeCompanyId)?.role ??
+    companyOptions[0]?.role ??
+    "EMPLOYEE"
+  const canSwitchToEmployeePortal =
+    (activeCompanyRole === "COMPANY_ADMIN" || activeCompanyRole === "HR_ADMIN" || activeCompanyRole === "PAYROLL_ADMIN") &&
+    Boolean(activeEmployee?.id)
 
   const userAvatar = activeEmployee?.photoUrl ?? session.user.image ?? null
 
@@ -97,6 +106,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     email: userEmail,
                     avatar: userAvatar,
                   }}
+                  workspaceItems={
+                    canSwitchToEmployeePortal
+                      ? [
+                          {
+                            id: "employee-portal",
+                            label: "Employee Portal",
+                            href: `/${activeCompanyId}/employee-portal`,
+                          },
+                        ]
+                      : []
+                  }
                   inSidebar={false}
                 />
               </div>

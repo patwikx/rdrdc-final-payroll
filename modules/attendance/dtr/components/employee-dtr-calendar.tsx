@@ -85,6 +85,16 @@ const formatTimeLabel = (value: string | null): string => {
   return formatWallClockLabel(value).replace("--:--", "MISSED")
 }
 
+const formatOvertimeLabel = (hours: number): string => {
+  if (hours <= 0) return "0m"
+  if (hours < 1) return `${Math.round(hours * 60)}m`
+  return `${hours.toFixed(2)}h`
+}
+
+const NEUTRAL_METRIC_BADGE_CLASS = "h-4 min-w-0 justify-center border-none bg-muted px-1 py-0 text-[9px] font-medium text-muted-foreground"
+const RED_METRIC_BADGE_CLASS = "h-4 min-w-0 justify-center border-none bg-red-500 px-1 py-0 text-[9px] font-medium text-white"
+const YELLOW_METRIC_BADGE_CLASS = "h-4 min-w-0 justify-center border-none bg-yellow-500 px-1 py-0 text-[9px] font-medium text-black"
+
 const calendarStatusClass = (status: AttendanceStatus): string => {
   if (status === AttendanceStatus.PRESENT) {
     return "bg-green-500 text-white"
@@ -420,6 +430,17 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
                         <Badge className={`text-[10px] px-1 py-0 rounded w-full justify-center border-none ${calendarStatusClass(log.attendanceStatus)}`}>
                           {log.attendanceStatus.replace(/_/g, " ")}
                         </Badge>
+                        <div className="grid grid-cols-3 gap-1">
+                          <Badge className={cn(log.tardinessMins > 0 ? RED_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                            L {log.tardinessMins}m
+                          </Badge>
+                          <Badge className={cn(log.undertimeMins > 0 ? RED_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                            U {log.undertimeMins}m
+                          </Badge>
+                          <Badge className={cn(Number(log.overtimeHours) > 0 ? YELLOW_METRIC_BADGE_CLASS : NEUTRAL_METRIC_BADGE_CLASS)}>
+                            O {formatOvertimeLabel(Number(log.overtimeHours))}
+                          </Badge>
+                        </div>
                       </div>
                     ) : leaveOverlay ? (
                       <Badge className="text-[10px] px-1 py-0 rounded w-full justify-center bg-purple-500/10 text-purple-600 border-none">

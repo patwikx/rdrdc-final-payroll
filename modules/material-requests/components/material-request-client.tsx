@@ -191,23 +191,43 @@ export function MaterialRequestClient({
       </div>
 
       <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
-          {[
+        {(() => {
+          const summaryItems = [
             { label: "Total Requests", value: String(summary.total), icon: IconChecklist },
             { label: "Draft", value: String(summary.draft), icon: IconEdit },
             { label: "Pending", value: String(summary.pending), icon: IconSend },
             { label: "Approved", value: String(summary.approved), icon: IconArrowNarrowRight },
             { label: "Total Amount", value: `PHP ${currency.format(summary.amount)}`, icon: IconPackage },
-          ].map((item) => (
-            <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <item.icon className="h-4 w-4 text-primary" />
+          ]
+
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                {summaryItems.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-border/60 bg-card p-3">
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-lg font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
               </div>
-              <span className="text-2xl font-semibold text-foreground">{item.value}</span>
-            </div>
-          ))}
-        </div>
+
+              <div className="hidden grid-cols-1 gap-3 sm:grid md:grid-cols-2 lg:grid-cols-5">
+                {summaryItems.map((item) => (
+                  <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-2xl font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        })()}
 
         <div>
           <div className="mb-3 flex items-center gap-2 border-t border-border/60 pt-3">
@@ -291,7 +311,187 @@ export function MaterialRequestClient({
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+              {filteredRequests.length > 0 ? (
+                <div className="space-y-2 p-3 md:hidden">
+                  {paginatedRows.map((request) => {
+                    const isExpanded = expandedRequestId === request.id
+                    const hasApprovalHistory = request.approvalSteps.some(
+                      (step) =>
+                        step.status !== "PENDING" ||
+                        step.actedAtLabel !== null ||
+                        step.actedByName !== null
+                    )
+                    const canEdit =
+                      request.status === "DRAFT" ||
+                      (request.status === "PENDING_APPROVAL" && !hasApprovalHistory)
+                    const canSubmit = request.status === "DRAFT" && request.items.length > 0
+                    const canCancel = request.status === "DRAFT" || request.status === "PENDING_APPROVAL"
+                    const requestHref = canEdit
+                      ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
+                      : `/${companyId}/employee-portal/material-requests/${request.id}`
+
+                    return (
+                      <div
+                        key={request.id}
+                        className={cn(
+                          "rounded-xl border border-border/60 bg-background transition-colors",
+                          isExpanded && "border-primary/40 bg-primary/10"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          className="w-full p-3 text-left"
+                          onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] text-muted-foreground">Request #</p>
+                              <p className="truncate text-sm font-medium text-foreground">{request.requestNumber}</p>
+                            </div>
+                            <Badge variant={statusVariant(request.status)} className="shrink-0 text-xs font-normal">
+                              {statusLabel(request.status)}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Type</p>
+                              <p className="text-foreground">{request.series}/{request.requestType}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Items</p>
+                              <p className="text-foreground">{request.items.length}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Prepared</p>
+                              <p className="text-foreground">{request.datePreparedLabel}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Required</p>
+                              <p className="text-foreground">{request.dateRequiredLabel}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-[11px] text-muted-foreground">Amount</p>
+                              <p className="text-foreground">PHP {currency.format(request.grandTotal)}</p>
+                            </div>
+                          </div>
+                        </button>
+
+                        {(canEdit || canSubmit || canCancel) ? (
+                          <div className="flex items-center gap-2 border-t border-border/60 px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                            {canEdit ? (
+                              <Button type="button" variant="outline" size="sm" className="h-8 flex-1 rounded-lg text-xs" asChild>
+                                <Link href={`/${companyId}/employee-portal/material-requests/${request.id}/edit`}>
+                                  <IconEdit className="mr-1.5 h-3.5 w-3.5" />
+                                  Edit
+                                </Link>
+                              </Button>
+                            ) : null}
+
+                            {canSubmit ? (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button type="button" size="sm" className="h-8 flex-1 rounded-lg text-xs" disabled={isPending}>
+                                    <IconSend className="mr-1.5 h-3.5 w-3.5" />
+                                    Submit
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-base font-semibold">Submit Request</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Submit this draft for department approval workflow?
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="rounded-lg">Not yet</AlertDialogCancel>
+                                    <AlertDialogAction className="rounded-lg" onClick={() => submitRequest(request.id)}>
+                                      Submit
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            ) : null}
+
+                            {canCancel ? (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button type="button" variant="destructive" size="sm" className="h-8 flex-1 rounded-lg text-xs" disabled={isPending}>
+                                    <IconCircleMinus className="mr-1.5 h-3.5 w-3.5" />
+                                    Cancel
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-base font-semibold">Cancel Request</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will mark the request as cancelled.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="rounded-lg">Keep request</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      onClick={() => cancelRequest(request.id)}
+                                    >
+                                      Cancel Request
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            ) : null}
+
+                            {!canEdit ? (
+                              <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" asChild>
+                                <Link href={requestHref}>
+                                  View
+                                </Link>
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {isExpanded ? (
+                          <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Department</p>
+                                <p className="text-foreground">{request.departmentName}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Current Step</p>
+                                <p className="text-foreground">{request.currentStep ? `${request.currentStep} / ${request.requiredSteps}` : "-"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Store Use</p>
+                                <p className="text-foreground">{request.isStoreUse ? "Yes" : "No"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Submitted At</p>
+                                <p className="text-foreground">{request.submittedAtLabel ?? "-"}</p>
+                              </div>
+                            </div>
+                            {request.purpose ? (
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Purpose</p>
+                                <p className="text-foreground">{request.purpose}</p>
+                              </div>
+                            ) : null}
+                            {request.remarks ? (
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Remarks</p>
+                                <p className="text-foreground">{request.remarks}</p>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Type</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared</p>
@@ -304,7 +504,8 @@ export function MaterialRequestClient({
 
               {filteredRequests.length > 0 ? (
                 <>
-                  {paginatedRows.map((request) => {
+                  <div className="hidden md:block">
+                    {paginatedRows.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       const hasApprovalHistory = request.approvalSteps.some(
                         (step) =>
@@ -533,8 +734,9 @@ export function MaterialRequestClient({
                         </div>
                       )
                     })}
+                  </div>
 
-                  <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                  <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-muted-foreground">
                         Page {safeCurrentPage} of {totalPages} • {filteredRequests.length} records

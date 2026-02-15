@@ -50,6 +50,7 @@ type LeaveApprovalClientProps = {
   initialHistoryPageSize: number
 }
 
+type QueueStatusFilter = "ALL" | "PENDING" | "SUPERVISOR_APPROVED"
 type HistoryStatusFilter = "ALL" | "APPROVED" | "REJECTED" | "SUPERVISOR_APPROVED"
 
 const toLabel = (statusCode: string): string => {
@@ -75,6 +76,8 @@ export function LeaveApprovalClient({
   const [actionType, setActionType] = useState<"approve" | "reject">("approve")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
+  const [queueSearch, setQueueSearch] = useState("")
+  const [queueStatus, setQueueStatus] = useState<QueueStatusFilter>("ALL")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
   const [historyFromDate, setHistoryFromDate] = useState("")
@@ -101,8 +104,38 @@ export function LeaveApprovalClient({
       employeeCount,
     }
   }, [rows])
+  const filteredRows = useMemo(() => {
+    const query = queueSearch.trim().toLowerCase()
+
+    return rows.filter((row) => {
+      if (queueStatus !== "ALL" && row.statusCode !== queueStatus) {
+        return false
+      }
+
+      if (!query) {
+        return true
+      }
+
+      const haystack = [
+        row.requestNumber,
+        row.employeeName,
+        row.employeeNumber,
+        row.leaveTypeName,
+        row.startDate,
+        row.endDate,
+        row.reason ?? "",
+        row.statusCode,
+        toLabel(row.statusCode),
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [queueSearch, queueStatus, rows])
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
+  const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL"
   const hasActiveHistoryFilters = historySearch.trim().length > 0 || historyStatus !== "ALL" || Boolean(historyFromDate) || Boolean(historyToDate)
 
   const loadHistoryPage = (params: {
@@ -187,108 +220,234 @@ export function LeaveApprovalClient({
       </div>
 
       <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {[
+        {(() => {
+          const statItems = [
             { label: "Requests In Queue", value: String(stats.totalRequests), icon: IconListCheck },
             { label: "Total Leave Days", value: `${stats.totalDays.toFixed(1)} days`, icon: IconCalendarStats },
             { label: "Employees", value: String(stats.employeeCount), icon: IconUserCircle },
             { label: "Approval Stage", value: isHR ? "HR Final" : "Supervisor", icon: IconClockHour4 },
-          ].map((stat) => (
-            <div key={stat.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-foreground/70">{stat.label}</p>
-                <stat.icon className="h-4 w-4 text-primary" />
-              </div>
-              <span className="text-2xl font-semibold text-foreground">{stat.value}</span>
-            </div>
-          ))}
-        </div>
+          ]
 
-        {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">No requests pending your approval.</div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-            <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Date Range</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Days</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Reason</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
-              <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
-            </div>
-            {(() => {
-              const totalPages = Math.ceil(rows.length / ITEMS_PER_PAGE)
-              const startIndex = (rowsPage - 1) * ITEMS_PER_PAGE
-              const paginatedRows = rows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-              return (
-                <>
-                  {paginatedRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20">
-                      <div className="col-span-1 min-w-0">
-                        <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-foreground">{row.employeeName}</p>
-                        <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
-                      </div>
-                      <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
-                      <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
-                        <p>{row.startDate}</p>
-                        <p className="text-foreground/70">to {row.endDate}</p>
-                      </div>
-                      <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
-                      <div className="col-span-1 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
-                      <div className="col-span-1">
-                        <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
-                          {toLabel(row.statusCode)}
-                        </Badge>
-                      </div>
-                      <div className="col-span-2 flex justify-end gap-2">
-                        <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
-                          <IconX className="mr-1 h-3.5 w-3.5" />
-                          Reject
-                        </Button>
-                        <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
-                          <IconCheck className="mr-1 h-3.5 w-3.5" />
-                          Approve
-                        </Button>
-                      </div>
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                {statItems.map((stat) => (
+                  <div key={stat.label} className="rounded-xl border border-border/60 bg-card p-3">
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <p className="text-xs text-foreground/70">{stat.label}</p>
+                      <stat.icon className="h-4 w-4 text-primary" />
                     </div>
-                  ))}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
-                      <p className="text-xs text-muted-foreground">
-                        Page {rowsPage} of {totalPages} • {rows.length} records
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-lg text-xs"
-                          disabled={rowsPage <= 1}
-                          onClick={() => setRowsPage(rowsPage - 1)}
-                        >
-                          Previous
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-lg text-xs"
-                          disabled={rowsPage >= totalPages}
-                          onClick={() => setRowsPage(rowsPage + 1)}
-                        >
-                          Next
-                        </Button>
-                      </div>
+                    <span className="text-lg font-semibold text-foreground">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden grid-cols-1 gap-3 sm:grid md:grid-cols-2 lg:grid-cols-4">
+                {statItems.map((stat) => (
+                  <div key={stat.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p className="text-xs text-foreground/70">{stat.label}</p>
+                      <stat.icon className="h-4 w-4 text-primary" />
                     </div>
-                  )}
-                </>
-              )
-            })()}
+                    <span className="text-2xl font-semibold text-foreground">{stat.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        })()}
+
+        <div className="space-y-3 border-t border-border/60 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
+            <span className="text-xs text-foreground/70">{filteredRows.length} records</span>
           </div>
-        )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-[280px] sm:w-[360px]">
+              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
+              <Input
+                placeholder="Search employee/request..."
+                value={queueSearch}
+                onChange={(event) => {
+                  setQueueSearch(event.target.value)
+                  setRowsPage(1)
+                }}
+                className="rounded-lg pl-8"
+              />
+            </div>
+            <Select
+              value={queueStatus}
+              onValueChange={(value) => {
+                setQueueStatus(value as QueueStatusFilter)
+                setRowsPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[180px] rounded-lg">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                <SelectItem value="ALL">All statuses</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg"
+              onClick={() => {
+                setQueueSearch("")
+                setQueueStatus("ALL")
+                setRowsPage(1)
+              }}
+              disabled={!hasActiveQueueFilters}
+            >
+              <IconFilterOff className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">No requests pending your approval.</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">
+              No requests match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Date Range</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Days</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Reason</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
+                <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
+              </div>
+              {(() => {
+                const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE))
+                const safeRowsPage = Math.min(rowsPage, totalPages)
+                const startIndex = (safeRowsPage - 1) * ITEMS_PER_PAGE
+                const paginatedRows = filteredRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+                return (
+                  <>
+                    <div className="space-y-2 p-3 md:hidden">
+                      {paginatedRows.map((row) => (
+                        <div key={row.id} className="rounded-xl border border-border/60 bg-background p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] text-foreground/70">Request #</p>
+                              <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                            </div>
+                            <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="shrink-0 text-xs">
+                              {toLabel(row.statusCode)}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-[11px] text-foreground/70">Employee</p>
+                              <p className="text-foreground">{row.employeeName}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-foreground/70">Leave Type</p>
+                              <p className="text-foreground">{row.leaveTypeName}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-[11px] text-foreground/70">Date Range</p>
+                              <p className="text-foreground">{row.startDate} to {row.endDate}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-foreground/70">Days</p>
+                              <p className="text-foreground">{row.numberOfDays}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-foreground/70">Reason</p>
+                              <p className="line-clamp-2 text-foreground">{row.reason ?? "-"}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, "reject")}>
+                              <IconX className="mr-1 h-3.5 w-3.5" />
+                              Reject
+                            </Button>
+                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                              <IconCheck className="mr-1 h-3.5 w-3.5" />
+                              Approve
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="hidden md:block">
+                      {paginatedRows.map((row) => (
+                        <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20 md:grid">
+                          <div className="col-span-1 min-w-0">
+                            <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-foreground">{row.employeeName}</p>
+                            <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
+                          </div>
+                          <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
+                          <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
+                            <p>{row.startDate}</p>
+                            <p className="text-foreground/70">to {row.endDate}</p>
+                          </div>
+                          <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
+                          <div className="col-span-1 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
+                          <div className="col-span-1">
+                            <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="w-full justify-center rounded-full text-xs">
+                              {toLabel(row.statusCode)}
+                            </Badge>
+                          </div>
+                          <div className="col-span-2 flex justify-end gap-2">
+                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
+                              <IconX className="mr-1 h-3.5 w-3.5" />
+                              Reject
+                            </Button>
+                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                              <IconCheck className="mr-1 h-3.5 w-3.5" />
+                              Approve
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {totalPages > 1 ? (
+                      <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Page {safeRowsPage} of {totalPages} • {filteredRows.length} records
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={safeRowsPage <= 1}
+                            onClick={() => setRowsPage(safeRowsPage - 1)}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={safeRowsPage >= totalPages}
+                            onClick={() => setRowsPage(safeRowsPage + 1)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+        </div>
 
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
@@ -450,7 +609,7 @@ export function LeaveApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
@@ -460,76 +619,133 @@ export function LeaveApprovalClient({
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
               </div>
 
-              {historyRowsState.map((row) => {
-                const isExpanded = expandedHistoryRequestId === row.id
-                return (
-                  <div key={`history-${row.id}`} className={cn("group border-b border-border/60 last:border-b-0 transition-colors", isExpanded && "bg-primary/10")}>
-                    <div
-                      className="grid cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20"
-                      onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
-                    >
-                      <div className="col-span-1 min-w-0">
-                        <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-foreground">{row.employeeName}</p>
-                        <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
-                      </div>
-                      <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
-                      <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
-                        <p>{row.startDate}</p>
-                        <p className="text-foreground/70">to {row.endDate}</p>
-                      </div>
-                      <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
-                      <div className="col-span-2 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
-                      <div className="col-span-2 space-y-1">
-                        <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
-                          {toLabel(row.statusCode)}
-                        </Badge>
-                        <p className="text-center text-[11px] text-foreground/70">{row.decidedAtLabel}</p>
-                      </div>
-                    </div>
-
-                    <AnimatePresence initial={false}>
+              <div className="space-y-2 p-3 md:hidden">
+                {historyRowsState.map((row) => {
+                  const isExpanded = expandedHistoryRequestId === row.id
+                  return (
+                    <div key={`history-mobile-${row.id}`} className={cn("rounded-xl border border-border/60 bg-background transition-colors", isExpanded && "border-primary/40 bg-primary/10")}>
+                      <button
+                        type="button"
+                        className="w-full p-3 text-left"
+                        onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] text-foreground/70">Request #</p>
+                            <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                          </div>
+                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="shrink-0 text-xs">
+                            {toLabel(row.statusCode)}
+                          </Badge>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          <div>
+                            <p className="text-[11px] text-foreground/70">Employee</p>
+                            <p className="text-foreground">{row.employeeName}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-foreground/70">Leave Type</p>
+                            <p className="text-foreground">{row.leaveTypeName}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-[11px] text-foreground/70">Date Range</p>
+                            <p className="text-foreground">{row.startDate} to {row.endDate}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-foreground/70">Days</p>
+                            <p className="text-foreground">{row.numberOfDays}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] text-foreground/70">Decided At</p>
+                            <p className="text-foreground">{row.decidedAtLabel}</p>
+                          </div>
+                        </div>
+                      </button>
                       {isExpanded ? (
-                        <motion.div
-                          key={`${row.id}-details`}
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
-                          className="overflow-hidden"
-                        >
-                          <motion.div
-                            initial={{ y: -6, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: -6, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
-                            className="grid grid-cols-1 gap-2 border-t border-border/60 bg-muted/30 px-4 py-3 text-xs text-foreground/70 md:grid-cols-3"
-                          >
-                            <div>
-                              <p className="font-medium text-foreground">Requested Date Range</p>
-                              <p>{row.startDate} to {row.endDate}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">Duration</p>
-                              <p>{row.numberOfDays} day(s)</p>
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">Decided At</p>
-                              <p>{row.decidedAtLabel}</p>
-                            </div>
-                            <div className="md:col-span-3">
-                              <p className="font-medium text-foreground">Reason</p>
-                              <p>{row.reason ?? "-"}</p>
-                            </div>
-                          </motion.div>
-                        </motion.div>
+                        <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
+                          <div>
+                            <p className="text-[11px] text-foreground/70">Reason</p>
+                            <p className="text-foreground">{row.reason ?? "-"}</p>
+                          </div>
+                        </div>
                       ) : null}
-                    </AnimatePresence>
-                  </div>
-                )
-              })}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="hidden md:block">
+                {historyRowsState.map((row) => {
+                  const isExpanded = expandedHistoryRequestId === row.id
+                  return (
+                    <div key={`history-${row.id}`} className={cn("group border-b border-border/60 last:border-b-0 transition-colors", isExpanded && "bg-primary/10")}>
+                      <div
+                        className="hidden cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20 md:grid"
+                        onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
+                      >
+                        <div className="col-span-1 min-w-0">
+                          <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-xs text-foreground">{row.employeeName}</p>
+                          <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
+                        </div>
+                        <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
+                        <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
+                          <p>{row.startDate}</p>
+                          <p className="text-foreground/70">to {row.endDate}</p>
+                        </div>
+                        <div className="col-span-1 text-sm text-foreground">{row.numberOfDays}</div>
+                        <div className="col-span-2 text-xs text-foreground/70 line-clamp-2">{row.reason ?? "-"}</div>
+                        <div className="col-span-2 space-y-1">
+                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="w-full justify-center rounded-full text-xs">
+                            {toLabel(row.statusCode)}
+                          </Badge>
+                          <p className="text-center text-[11px] text-foreground/70">{row.decidedAtLabel}</p>
+                        </div>
+                      </div>
+
+                      <AnimatePresence initial={false}>
+                        {isExpanded ? (
+                          <motion.div
+                            key={`${row.id}-details`}
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <motion.div
+                              initial={{ y: -6, opacity: 0 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              exit={{ y: -6, opacity: 0 }}
+                              transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                              className="grid grid-cols-1 gap-2 border-t border-border/60 bg-muted/30 px-4 py-3 text-xs text-foreground/70 md:grid-cols-3"
+                            >
+                              <div>
+                                <p className="font-medium text-foreground">Requested Date Range</p>
+                                <p>{row.startDate} to {row.endDate}</p>
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">Duration</p>
+                                <p>{row.numberOfDays} day(s)</p>
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">Decided At</p>
+                                <p>{row.decidedAtLabel}</p>
+                              </div>
+                              <div className="md:col-span-3">
+                                <p className="font-medium text-foreground">Reason</p>
+                                <p>{row.reason ?? "-"}</p>
+                              </div>
+                            </motion.div>
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
+                    </div>
+                  )
+                })}
+              </div>
 
               <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
@@ -627,6 +843,23 @@ export function LeaveApprovalClient({
                 <p className="text-xs text-foreground/70">Duration</p>
                 <p className="mt-1 text-sm font-medium text-foreground">{selected?.numberOfDays} Days</p>
               </div>
+              <div>
+                <p className="text-xs text-foreground/70">Start Date</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{selected?.startDate ?? "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-foreground/70">End Date</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{selected?.endDate ?? "-"}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs text-foreground">Request Reason</Label>
+              <Input
+                value={selected?.reason ?? "No reason provided."}
+                readOnly
+                className="rounded-lg text-sm"
+              />
             </div>
 
             <div className="space-y-3">

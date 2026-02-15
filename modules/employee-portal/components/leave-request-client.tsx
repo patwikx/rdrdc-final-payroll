@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition } from "react"
 import { format } from "date-fns"
 import {
@@ -110,6 +111,7 @@ const getLeaveTypeIcon = (name: string): Icon => {
 }
 
 export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, requests }: LeaveRequestClientProps) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -250,7 +252,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
       toast.success(result.message)
       setDialogOpen(false)
       resetForm()
-      window.location.reload()
+      router.refresh()
     })
   }
 
@@ -263,7 +265,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
       }
 
       toast.success(result.message)
-      window.location.reload()
+      router.refresh()
     })
   }
 
@@ -288,12 +290,15 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
           }}
         >
           <DialogTrigger asChild>
-            <Button className="rounded-lg bg-primary hover:bg-primary/90" onClick={openCreateDialog}>
+            <Button type="button" className="rounded-lg bg-primary hover:bg-primary/90" onClick={openCreateDialog}>
               <IconPlus className="mr-2 h-4 w-4" />
               New Request
             </Button>
           </DialogTrigger>
-          <DialogContent className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[450px]">
+          <DialogContent
+            className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[450px]"
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
             <DialogHeader className="mb-3 border-b border-border/60 pb-3">
               <DialogTitle className="text-base font-semibold">
                 {editingRequestId ? "Edit Leave Request" : "Submit Leave Request"}
@@ -348,7 +353,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                 </Select>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-3">
                   <Label className="text-xs text-foreground">Start Date <span className="text-destructive">*</span></Label>
                   <Popover>
@@ -475,8 +480,8 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
               </div>
 
               <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
-                <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg">Cancel</Button>
-                <Button onClick={submit} disabled={isPending} className="rounded-lg">
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg">Cancel</Button>
+                <Button type="button" onClick={submit} disabled={isPending} className="rounded-lg">
                   {isPending ? (editingRequestId ? "Updating..." : "Submitting...") : editingRequestId ? "Update Request" : "Submit"}
                 </Button>
               </div>
@@ -497,35 +502,65 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
               No leave types configured.
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-6">
-              {leaveTypeCards.map((leaveType) => {
-                const balance = leaveBalanceMap.get(leaveType.id)
-                const currentBalance = balance?.currentBalance ?? 0
-                const availableBalance = balance?.availableBalance ?? 0
-                const LeaveTypeIcon = getLeaveTypeIcon(leaveType.name)
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                {leaveTypeCards.map((leaveType) => {
+                  const balance = leaveBalanceMap.get(leaveType.id)
+                  const currentBalance = balance?.currentBalance ?? 0
+                  const availableBalance = balance?.availableBalance ?? 0
+                  const LeaveTypeIcon = getLeaveTypeIcon(leaveType.name)
 
-                return (
-                <div key={leaveType.id} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-xs text-muted-foreground" title={leaveType.name}>{leaveType.name}</p>
-                    <LeaveTypeIcon className="h-4 w-4 text-primary" />
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="text-xs text-muted-foreground">Current Available</p>
-                    <div className="mt-1 flex items-end gap-1.5">
-                      <span className="text-2xl font-semibold text-foreground">{formatDays(availableBalance)}</span>
-                      <span className="pb-0.5 text-xs text-muted-foreground">days</span>
+                  return (
+                    <div key={leaveType.id} className="rounded-xl border border-border/60 bg-card p-3">
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <p className="truncate text-xs text-muted-foreground" title={leaveType.name}>
+                          {leaveType.name}
+                        </p>
+                        <LeaveTypeIcon className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex items-end gap-1">
+                        <span className="text-xl font-semibold text-foreground">{formatDays(availableBalance)}</span>
+                        <span className="pb-0.5 text-xs text-muted-foreground">days</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Starting: {formatDays(currentBalance)} days
+                      </p>
                     </div>
-                  </div>
+                  )
+                })}
+              </div>
 
-                  <div className="mt-3 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-xs">
-                    <p className="text-muted-foreground">Starting Balance</p>
-                    <p className="font-medium text-foreground">{formatDays(currentBalance)} days</p>
-                  </div>
-                </div>
-              )})}
-            </div>
+              <div className="hidden grid-cols-1 gap-3 sm:grid md:grid-cols-3 lg:grid-cols-6">
+                {leaveTypeCards.map((leaveType) => {
+                  const balance = leaveBalanceMap.get(leaveType.id)
+                  const currentBalance = balance?.currentBalance ?? 0
+                  const availableBalance = balance?.availableBalance ?? 0
+                  const LeaveTypeIcon = getLeaveTypeIcon(leaveType.name)
+
+                  return (
+                    <div key={leaveType.id} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="truncate text-xs text-muted-foreground" title={leaveType.name}>{leaveType.name}</p>
+                        <LeaveTypeIcon className="h-4 w-4 text-primary" />
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="text-xs text-muted-foreground">Current Available</p>
+                        <div className="mt-1 flex items-end gap-1.5">
+                          <span className="text-2xl font-semibold text-foreground">{formatDays(availableBalance)}</span>
+                          <span className="pb-0.5 text-xs text-muted-foreground">days</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-xs">
+                        <p className="text-muted-foreground">Starting Balance</p>
+                        <p className="font-medium text-foreground">{formatDays(currentBalance)} days</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
 
@@ -597,7 +632,132 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                 </div>
               ) : null}
 
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              {filteredRequests.length > 0 ? (
+                <>
+                  <div className="space-y-2 p-3 md:hidden">
+                    {paginatedRequests.map((request) => {
+                      const isExpanded = expandedRequestId === request.id
+                      return (
+                        <div
+                          key={request.id}
+                          className={cn(
+                            "rounded-xl border border-border/60 bg-background transition-colors",
+                            isExpanded && "border-primary/40 bg-primary/10"
+                          )}
+                        >
+                          <button
+                            type="button"
+                            className="w-full p-3 text-left"
+                            onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[11px] text-muted-foreground">Request #</p>
+                                <p className="truncate text-sm font-medium text-foreground">{request.requestNumber}</p>
+                              </div>
+                              <Badge variant={statusVariant(request.statusCode)} className="shrink-0 text-xs font-normal">
+                                {statusLabel(request.statusCode)}
+                              </Badge>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Leave Type</p>
+                                <p className="text-foreground">{request.leaveTypeName}</p>
+                                {request.isHalfDay ? <p className="text-orange-600">Half Day ({request.halfDayPeriod})</p> : null}
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Days</p>
+                                <p className="text-foreground">{request.numberOfDays}</p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-[11px] text-muted-foreground">Date Range</p>
+                                <p className="text-foreground">{request.startDate} to {request.endDate}</p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-[11px] text-muted-foreground">Reason</p>
+                                <p className="line-clamp-2 text-foreground">{request.reason || "-"}</p>
+                              </div>
+                            </div>
+                          </button>
+
+                          {request.statusCode === "PENDING" ? (
+                            <div className="flex items-center gap-2 border-t border-border/60 px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 flex-1 rounded-lg text-xs"
+                                onClick={() => openEditDialog(request)}
+                                disabled={isPending}
+                              >
+                                <IconEdit className="mr-1.5 h-3.5 w-3.5" />
+                                Edit
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    className="h-8 flex-1 rounded-lg text-xs"
+                                    disabled={isPending}
+                                  >
+                                    <IconCircleMinus className="mr-1.5 h-3.5 w-3.5" />
+                                    Cancel
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-base font-semibold">Confirm Cancellation</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-sm">
+                                      Are you sure you want to cancel this request?
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="rounded-lg">Keep Request</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => cancel(request.id)}
+                                      className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Yes, Cancel
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          ) : null}
+
+                          {isExpanded && (request.supervisorApproverName || request.hrApproverName || request.statusCode !== "DRAFT") ? (
+                            <div className="border-t border-border/60 bg-muted/30 px-3 py-3">
+                              <p className="mb-2 text-xs text-muted-foreground">Approval Status</p>
+                              <div className="space-y-2">
+                                <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
+                                  {request.supervisorApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.statusCode === "PENDING" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-foreground">Supervisor</p>
+                                    {request.supervisorApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.supervisorApproverName}</p> : null}
+                                    {request.supervisorApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.supervisorApprovedAt}</p> : null}
+                                    {request.supervisorApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.supervisorApprovalRemarks}&quot;</p> : null}
+                                  </div>
+                                </div>
+                                <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">
+                                  {request.hrApprovedAt ? <IconCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : request.hrRejectedAt ? <IconAlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" /> : request.statusCode === "SUPERVISOR_APPROVED" ? <IconClockHour4 className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" /> : <IconUser className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-foreground">HR</p>
+                                    {request.hrApproverName ? <p className="mt-1 text-sm text-muted-foreground">{request.hrApproverName}</p> : null}
+                                    {request.hrApprovedAt ? <p className="mt-1 text-xs text-green-600">Approved {request.hrApprovedAt}</p> : null}
+                                    {request.hrApprovalRemarks ? <p className="mt-1 text-xs italic text-muted-foreground">&quot;{request.hrApprovalRemarks}&quot;</p> : null}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Leave Type</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Range</p>
@@ -606,8 +766,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
-              {filteredRequests.length > 0 ? (
-                <>
+                  <div className="hidden md:block">
                   {paginatedRequests.map((request) => {
                     const isExpanded = expandedRequestId === request.id
                     return (
@@ -724,7 +883,8 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                       </div>
                     )
                   })}
-                  <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
+                  </div>
+                  <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-muted-foreground">
                         Page {safeCurrentPage} of {totalPages} • {filteredRequests.length} records

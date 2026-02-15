@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
-  IconDotsVertical,
   IconFileCheck,
   IconFilterOff,
   IconSearch,
@@ -18,7 +17,6 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -82,6 +80,7 @@ export function MaterialRequestApprovalClient({
   const [decisionType, setDecisionType] = useState<"approve" | "reject">("approve")
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
+  const [queueSearch, setQueueSearch] = useState("")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
   const [isPending, startTransition] = useTransition()
@@ -106,6 +105,28 @@ export function MaterialRequestApprovalClient({
   const DECISION_ITEMS_PAGE_SIZE = 12
 
   const selectedRequest = useMemo(() => rows.find((row) => row.id === selectedRequestId) ?? null, [rows, selectedRequestId])
+  const filteredQueueRows = useMemo(() => {
+    const query = queueSearch.trim().toLowerCase()
+    if (!query) {
+      return rows
+    }
+
+    return rows.filter((row) => {
+      const haystack = [
+        row.requestNumber,
+        row.requesterName,
+        row.requesterEmployeeNumber,
+        row.departmentName,
+        row.datePreparedLabel,
+        row.dateRequiredLabel,
+        row.submittedAtLabel ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [queueSearch, rows])
 
   const queueStats = useMemo(() => {
     return rows.reduce(
@@ -125,6 +146,7 @@ export function MaterialRequestApprovalClient({
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
+  const hasQueueFilters = queueSearch.trim().length > 0
 
   const clearHistorySearchDebounceTimeout = () => {
     if (!historySearchDebounceTimeoutRef.current) {
@@ -292,125 +314,242 @@ export function MaterialRequestApprovalClient({
       </div>
 
       <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {[
+        {(() => {
+          const statItems = [
             { label: "Requests In Queue", value: String(queueStats.requests), icon: IconFileCheck },
             { label: "Total Amount", value: `PHP ${currency.format(queueStats.totalAmount)}`, icon: IconTimeline },
             { label: "Requesters", value: String(queueStats.requesters.size), icon: IconUserCircle },
             { label: "History Rows", value: String(historyTotal), icon: IconTimeline },
-          ].map((item) => (
-            <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <item.icon className="h-4 w-4 text-primary" />
+          ]
+
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                {statItems.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-border/60 bg-card p-3">
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-lg font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
               </div>
-              <span className="text-2xl font-semibold text-foreground">{item.value}</span>
-            </div>
-          ))}
-        </div>
 
-        {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-            No material requests pending your current approval step.
+              <div className="hidden grid-cols-1 gap-3 sm:grid md:grid-cols-2 lg:grid-cols-4">
+                {statItems.map((item) => (
+                  <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{item.label}</p>
+                      <item.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-2xl font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        })()}
+
+        <div className="space-y-3 border-t border-border/60 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
+            <span className="text-xs text-muted-foreground">{filteredQueueRows.length} records</span>
           </div>
-        ) : (
-          <div className="overflow-hidden border border-border/60 bg-card">
-            <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared / Required</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Step</p>
-              <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
-              <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Submitted</p>
-              <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-[280px] sm:w-[360px]">
+              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search request #, requester, department..."
+                value={queueSearch}
+                onChange={(event) => {
+                  setQueueSearch(event.target.value)
+                  setQueuePage(1)
+                }}
+                className="rounded-lg pl-8"
+              />
             </div>
+            <Button
+              variant="outline"
+              className="rounded-lg"
+              onClick={() => {
+                setQueueSearch("")
+                setQueuePage(1)
+              }}
+              disabled={!hasQueueFilters}
+            >
+              <IconFilterOff className="h-4 w-4" />
+            </Button>
+          </div>
 
-            {(() => {
-              const totalPages = Math.ceil(rows.length / ITEMS_PER_PAGE)
-              const startIndex = (queuePage - 1) * ITEMS_PER_PAGE
-              const paginatedRows = rows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+          {rows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+              No material requests pending your current approval step.
+            </div>
+          ) : filteredQueueRows.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+              No requests match the current filters.
+            </div>
+          ) : (
+            <div className="overflow-hidden border border-border/60 bg-card">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared / Required</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Step</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Submitted</p>
+                <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
+              </div>
 
-              return (
-                <>
-                  {paginatedRows.map((row) => (
-                    <div key={row.id} className="grid grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20">
-                      <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-foreground">{row.requesterName}</p>
-                      </div>
-                      <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
-                        {row.departmentName}
-                      </div>
-                      <div className="col-span-2 text-xs text-foreground">
-                        <p>{row.datePreparedLabel}</p>
-                        <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
-                      </div>
-                      <div className="col-span-1 text-sm text-foreground">{row.currentStep}/{row.requiredSteps}</div>
-                      <div className="col-span-2 text-sm font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
-                      <div className="col-span-1 text-xs text-muted-foreground">{row.submittedAtLabel ?? "-"}</div>
-                      <div className="col-span-2 flex justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon-sm" className="rounded-lg">
-                              <IconDotsVertical className="h-4 w-4" />
-                              <span className="sr-only">Open approval actions</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem
-                              onSelect={() => openDecisionDialog(row.id, "approve")}
-                              disabled={isPending || isDetailPending}
-                            >
-                              <IconCheck className="h-4 w-4" />
-                              Approve
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
+              {(() => {
+                const totalPages = Math.max(1, Math.ceil(filteredQueueRows.length / ITEMS_PER_PAGE))
+                const safeQueuePage = Math.min(queuePage, totalPages)
+                const startIndex = (safeQueuePage - 1) * ITEMS_PER_PAGE
+                const paginatedRows = filteredQueueRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+                return (
+                  <>
+                    <div className="space-y-2 p-3 md:hidden">
+                      {paginatedRows.map((row) => (
+                        <div key={`queue-mobile-${row.id}`} className="rounded-xl border border-border/60 bg-background p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] text-muted-foreground">Request #</p>
+                              <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                            </div>
+                            <Badge variant="secondary" className="shrink-0 text-xs">
+                              Step {row.currentStep}/{row.requiredSteps}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Requester</p>
+                              <p className="text-foreground">{row.requesterName}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Department</p>
+                              <p className="text-foreground">{row.departmentName}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-[11px] text-muted-foreground">Date Range</p>
+                              <p className="text-foreground">{row.datePreparedLabel} to {row.dateRequiredLabel}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Amount</p>
+                              <p className="text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Submitted</p>
+                              <p className="text-foreground">{row.submittedAtLabel ?? "-"}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <Button
+                              type="button"
                               variant="destructive"
-                              onSelect={() => openDecisionDialog(row.id, "reject")}
+                              size="sm"
+                              className="rounded-lg text-xs"
                               disabled={isPending || isDetailPending}
+                              onClick={() => openDecisionDialog(row.id, "reject")}
                             >
-                              <IconX className="h-4 w-4" />
+                              <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-lg bg-green-600 text-xs hover:bg-green-700"
+                              disabled={isPending || isDetailPending}
+                              onClick={() => openDecisionDialog(row.id, "approve")}
+                            >
+                              <IconCheck className="mr-1 h-3.5 w-3.5" />
+                              Approve
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
 
-                  {totalPages > 1 ? (
-                    <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3 py-3">
-                      <p className="text-xs text-muted-foreground">
-                        Page {queuePage} of {totalPages} • {rows.length} records
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-lg text-xs"
-                          disabled={queuePage <= 1}
-                          onClick={() => setQueuePage((previous) => previous - 1)}
-                        >
-                          Previous
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 rounded-lg text-xs"
-                          disabled={queuePage >= totalPages}
-                          onClick={() => setQueuePage((previous) => previous + 1)}
-                        >
-                          Next
-                        </Button>
-                      </div>
+                    <div className="hidden md:block">
+                      {paginatedRows.map((row) => (
+                        <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20 md:grid">
+                          <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-foreground">{row.requesterName}</p>
+                          </div>
+                          <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
+                            {row.departmentName}
+                          </div>
+                          <div className="col-span-2 text-xs text-foreground">
+                            <p>{row.datePreparedLabel}</p>
+                            <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
+                          </div>
+                          <div className="col-span-1 text-sm text-foreground">{row.currentStep}/{row.requiredSteps}</div>
+                          <div className="col-span-2 text-sm font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
+                          <div className="col-span-1 text-xs text-muted-foreground">{row.submittedAtLabel ?? "-"}</div>
+                          <div className="col-span-2 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="rounded-lg"
+                              disabled={isPending || isDetailPending}
+                              onClick={() => openDecisionDialog(row.id, "reject")}
+                            >
+                              <IconX className="mr-1 h-3.5 w-3.5" />
+                              Reject
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="rounded-lg bg-green-600 hover:bg-green-700"
+                              disabled={isPending || isDetailPending}
+                              onClick={() => openDecisionDialog(row.id, "approve")}
+                            >
+                              <IconCheck className="mr-1 h-3.5 w-3.5" />
+                              Approve
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ) : null}
-                </>
-              )
-            })()}
-          </div>
-        )}
+
+                    {totalPages > 1 ? (
+                      <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Page {safeQueuePage} of {totalPages} • {filteredQueueRows.length} records
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={safeQueuePage <= 1}
+                            onClick={() => setQueuePage(safeQueuePage - 1)}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs"
+                            disabled={safeQueuePage >= totalPages}
+                            onClick={() => setQueuePage(safeQueuePage + 1)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+        </div>
 
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
@@ -518,7 +657,7 @@ export function MaterialRequestApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden border border-border/60 bg-card">
-              <div className="grid grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
@@ -545,8 +684,41 @@ export function MaterialRequestApprovalClient({
                             isExpanded && "bg-primary/10"
                           )}
                         >
+                          <button
+                            type="button"
+                            className="w-full px-3 py-3 text-left hover:bg-muted/20 md:hidden"
+                            onClick={() => toggleHistoryDetails(row.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[11px] text-muted-foreground">Request #</p>
+                                <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              </div>
+                              <Badge variant={statusVariant(row.status)} className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]">
+                                {statusLabel(row.status)}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Requester</p>
+                                <p className="text-foreground">{row.requesterName}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Department</p>
+                                <p className="text-foreground">{row.departmentName}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Date Required</p>
+                                <p className="text-foreground">{row.dateRequiredLabel}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] text-muted-foreground">Amount</p>
+                                <p className="text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                              </div>
+                            </div>
+                          </button>
                           <div
-                            className="grid cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20"
+                            className="hidden cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20 md:grid"
                             onClick={() => toggleHistoryDetails(row.id)}
                           >
                             <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
@@ -599,7 +771,7 @@ export function MaterialRequestApprovalClient({
 
                               {detail ? (
                                 <>
-                                  <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-2 lg:grid-cols-4">
+                                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground lg:grid-cols-4">
                                     <div>
                                       <p className="font-medium text-foreground">Series / Type</p>
                                       <p>{detail.series}/{detail.requestType}</p>
@@ -641,28 +813,32 @@ export function MaterialRequestApprovalClient({
                                     </div>
                                   ) : null}
 
-                                  <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
-                                    <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
-                                      <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line</p>
-                                      <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Code</p>
-                                      <p className="col-span-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Description</p>
-                                      <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">UOM</p>
-                                      <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Qty</p>
-                                      <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line Total</p>
-                                      <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
-                                    </div>
-                                    <div className="max-h-56 overflow-y-auto">
-                                      {detail.items.map((item) => (
-                                        <div key={item.id} className="grid grid-cols-12 items-start gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                                          <div className="col-span-1 text-foreground">{item.lineNumber}</div>
-                                          <div className="col-span-2 text-muted-foreground">{item.itemCode ?? "-"}</div>
-                                          <div className="col-span-3 text-foreground">{item.description}</div>
-                                          <div className="col-span-1 text-foreground">{item.uom}</div>
-                                          <div className="col-span-1 text-foreground">{item.quantity.toFixed(3)}</div>
-                                          <div className="col-span-2 text-foreground">PHP {currency.format(item.lineTotal ?? 0)}</div>
-                                          <div className="col-span-2 text-muted-foreground">{item.remarks ?? "-"}</div>
+                                  <div className="overflow-hidden border border-border/60 bg-card">
+                                    <div className="overflow-x-auto">
+                                      <div className="min-w-[720px]">
+                                        <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
+                                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line</p>
+                                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Code</p>
+                                          <p className="col-span-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Description</p>
+                                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">UOM</p>
+                                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Qty</p>
+                                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line Total</p>
+                                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
                                         </div>
-                                      ))}
+                                        <div className="max-h-56 overflow-y-auto">
+                                          {detail.items.map((item) => (
+                                            <div key={item.id} className="grid grid-cols-12 items-start gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
+                                              <div className="col-span-1 text-foreground">{item.lineNumber}</div>
+                                              <div className="col-span-2 text-muted-foreground">{item.itemCode ?? "-"}</div>
+                                              <div className="col-span-3 text-foreground">{item.description}</div>
+                                              <div className="col-span-1 text-foreground">{item.uom}</div>
+                                              <div className="col-span-1 text-foreground">{item.quantity.toFixed(3)}</div>
+                                              <div className="col-span-2 text-foreground">PHP {currency.format(item.lineTotal ?? 0)}</div>
+                                              <div className="col-span-2 text-muted-foreground">{item.remarks ?? "-"}</div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
 

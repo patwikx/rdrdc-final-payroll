@@ -1,7 +1,9 @@
 "use client"
 
 import { Fragment, type ComponentType, useMemo, useState } from "react"
+import Link from "next/link"
 import {
+  IconArrowLeft,
   IconBuilding,
   IconCalendarEvent,
   IconChevronDown,
@@ -14,8 +16,10 @@ import {
   IconSearch,
   IconShieldCheck,
 } from "@tabler/icons-react"
+import type { PayrollRunType } from "@prisma/client"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -41,6 +45,14 @@ type PayrollStatutoryPageClientProps = {
   companyId: string
   companyName: string
   printedBy: string
+  payrollRegisterRuns: Array<{
+    runId: string
+    runNumber: string
+    runTypeCode: PayrollRunType
+    isTrialRun: boolean
+    periodLabel: string
+    createdAtIso: string
+  }>
   totals: {
     sssEmployee: string
     sssEmployer: string
@@ -108,9 +120,10 @@ type StatutoryDoleRow = {
   thirteenthMonthPay: string
 }
 
-type ReportKey = "sss" | "philhealth" | "pagibig" | "dole13th" | "bir-alphalist"
+type ReportKey = "sss" | "philhealth" | "pagibig" | "dole13th" | "bir-alphalist" | "payroll-register"
 
 const REPORT_OPTIONS: Array<{ key: ReportKey; label: string; frequency: string }> = [
+  { key: "payroll-register", label: "Payroll Register", frequency: "Per Run" },
   { key: "sss", label: "SSS Monthly Remittance", frequency: "Monthly" },
   { key: "philhealth", label: "PhilHealth EPRS Remittance", frequency: "Monthly" },
   { key: "pagibig", label: "Pag-IBIG MCRF (Contributions)", frequency: "Monthly" },
@@ -124,6 +137,7 @@ const reportIconByKey: Record<ReportKey, ComponentType<{ className?: string }>> 
   pagibig: IconBuilding,
   dole13th: IconCalendarEvent,
   "bir-alphalist": IconReceiptTax,
+  "payroll-register": IconFileText,
 }
 
 const parseAmount = (value: string): number => Number(value.replace(/[^0-9.-]/g, "")) || 0
@@ -142,6 +156,18 @@ const birthDateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "2-digit",
   timeZone: "Asia/Manila",
 })
+
+const toPhMonthKey = (value: Date): string => {
+  const parts = new Intl.DateTimeFormat("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    timeZone: "Asia/Manila",
+  }).formatToParts(value)
+
+  const year = parts.find((part) => part.type === "year")?.value ?? String(getPhYear())
+  const month = parts.find((part) => part.type === "month")?.value ?? "01"
+  return `${year}-${month}`
+}
 
 const extractNameParts = (fullName: string): { surname: string; firstName: string; middleName: string } => {
   const [surnamePart, firstPartRaw] = fullName.split(",")
@@ -189,8 +215,10 @@ const downloadCsvRows = (fileName: string, rows: string[][]): void => {
 }
 
 export function PayrollStatutoryPageClient({
+  companyId,
   companyName,
   printedBy,
+  payrollRegisterRuns,
   rows,
   trialRows,
   birRows,
@@ -202,41 +230,53 @@ export function PayrollStatutoryPageClient({
   const [searchText, setSearchText] = useState("")
   const [expandedBirTraceKey, setExpandedBirTraceKey] = useState<string | null>(null)
   const [showTrialRuns, setShowTrialRuns] = useState(false)
+  const [selectedRegisterRunId, setSelectedRegisterRunId] = useState("")
 
   const sourceRows = showTrialRuns ? trialRows : rows
   const sourceBirRows = showTrialRuns ? trialBirRows : birRows
   const sourceDoleRows = showTrialRuns ? trialDoleRows : doleRows
 
   const monthOptions = useMemo(() => {
-    const monthMap = new Map<string, Date>()
+    const yearSet = new Set<number>()
     for (const row of sourceRows) {
       const date = new Date(row.cutoffEndDateIso)
       if (Number.isNaN(date.getTime())) {
         continue
       }
-      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`
-      if (!monthMap.has(key)) {
-        monthMap.set(key, date)
+      yearSet.add(date.getUTCFullYear())
+    }
+
+    yearSet.add(getPhYear())
+
+    const sortedYears = Array.from(yearSet).sort((a, b) => a - b)
+    const options: Array<{ key: string; date: Date; label: string }> = []
+
+    for (const year of sortedYears) {
+      for (let month = 0; month <= 11; month += 1) {
+        const date = new Date(Date.UTC(year, month, 1))
+        const key = `${year}-${String(month + 1).padStart(2, "0")}`
+        options.push({
+          key,
+          date,
+          label: date.toLocaleDateString("en-PH", {
+            month: "long",
+            year: "numeric",
+            timeZone: "Asia/Manila",
+          }),
+        })
       }
     }
 
-    return Array.from(monthMap.entries())
-      .sort((a, b) => b[1].getTime() - a[1].getTime())
-      .map(([key, date]) => ({
-        key,
-        date,
-        label: date.toLocaleDateString("en-PH", {
-          month: "long",
-          year: "numeric",
-          timeZone: "Asia/Manila",
-        }),
-      }))
+    return options
   }, [sourceRows])
 
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>("")
+  const currentMonthKey = useMemo(() => toPhMonthKey(new Date()), [])
   const resolvedMonthKey = monthOptions.some((option) => option.key === selectedMonthKey)
     ? selectedMonthKey
-    : (monthOptions[0]?.key ?? "")
+    : monthOptions.some((option) => option.key === currentMonthKey)
+      ? currentMonthKey
+      : (monthOptions[0]?.key ?? "")
 
   const filteredOptions = useMemo(() => {
     const normalized = searchText.trim().toLowerCase()
@@ -248,6 +288,15 @@ export function PayrollStatutoryPageClient({
   }, [searchText])
 
   const resolvedReport = filteredOptions.find((option) => option.key === activeReport) ?? filteredOptions[0] ?? REPORT_OPTIONS[0]
+  const filteredRegisterRuns = useMemo(() => {
+    return payrollRegisterRuns.filter((run) =>
+      showTrialRuns ? run.isTrialRun : !run.isTrialRun
+    )
+  }, [payrollRegisterRuns, showTrialRuns])
+  const resolvedRegisterRunId = filteredRegisterRuns.some((row) => row.runId === selectedRegisterRunId)
+    ? selectedRegisterRunId
+    : (filteredRegisterRuns[0]?.runId ?? "")
+  const selectedRegisterRun = filteredRegisterRuns.find((row) => row.runId === resolvedRegisterRunId) ?? null
 
   const selectedMonthDate = monthOptions.find((option) => option.key === resolvedMonthKey)?.date ?? toPhDateOnlyUtc()
 
@@ -630,13 +679,60 @@ export function PayrollStatutoryPageClient({
     <>
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
       <header className="border-b border-border/60 px-4 py-6 sm:px-6 print:hidden">
-        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
-          <IconFileAnalytics className="size-5" />
-          {companyName} Statutory Reports
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Default view shows regular runs only. Enable trial mode to view the latest trial run per pay period.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
+              <IconFileAnalytics className="size-5" />
+              Payroll Reports
+            </h1>
+            <p className="text-xs text-muted-foreground">{companyName} • {resolvedReport.label} • {resolvedReport.frequency}</p>
+            <p className="text-xs text-muted-foreground">
+              Scope: {resolvedReport.key === "dole13th" || resolvedReport.key === "bir-alphalist"
+                ? `Calendar Year ${resolvedReportYear}`
+                : resolvedReport.key === "payroll-register"
+                  ? (selectedRegisterRun ? `Run ${selectedRegisterRun.runNumber}` : "No run selected")
+                  : monthYearFormatter.format(reportMonth)} • Source: {resolvedReport.key === "payroll-register"
+                ? (showTrialRuns ? "Trial runs" : "Regular runs")
+                : showTrialRuns
+                  ? "Trial runs (latest per pay period)"
+                  : "Regular runs"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild type="button" variant="outline">
+              <Link href={`/${companyId}/payroll/runs`}>
+                <IconArrowLeft className="mr-1.5 h-4 w-4" /> Back to Payroll Runs
+              </Link>
+            </Button>
+            {resolvedReport.key === "payroll-register" ? (
+              <>
+                <Button asChild className="bg-blue-600 text-white hover:bg-blue-700" disabled={!selectedRegisterRun}>
+                  <Link href={selectedRegisterRun ? `/${companyId}/payroll/runs/${selectedRegisterRun.runId}/report` : "#"}>
+                    <IconFileText className="size-4" />
+                    Open Report
+                  </Link>
+                </Button>
+                <Button asChild className="bg-green-600 text-white hover:bg-green-700" disabled={!selectedRegisterRun}>
+                  <Link href={selectedRegisterRun ? `/${companyId}/payroll/runs/${selectedRegisterRun.runId}/report/export` : "#"}>
+                    <IconFileText className="size-4" />
+                    Export CSV
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
+                  <IconFileText className="size-4" />
+                  Export CSV
+                </Button>
+                <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
+                  <IconPrinter className="size-4" />
+                  Print Report
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       </header>
 
       <section className="grid border-y border-border/60 lg:grid-cols-[320px_1fr] print:block">
@@ -644,7 +740,7 @@ export function PayrollStatutoryPageClient({
           <div className="space-y-2">
             <h2 className="inline-flex items-center gap-2 text-base font-medium">
             <IconReceiptTax className="size-4 text-primary" />
-            Agency Report Workspace
+            Payroll Report Workspace
             </h2>
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -713,18 +809,6 @@ export function PayrollStatutoryPageClient({
                   Source: {showTrialRuns ? "Trial runs (latest per pay period)" : "Regular runs"}
                 </p>
               </div>
-              {resolvedReport.key === "sss" || resolvedReport.key === "philhealth" || resolvedReport.key === "pagibig" || resolvedReport.key === "bir-alphalist" || resolvedReport.key === "dole13th" ? (
-                <div className="flex items-center gap-2">
-                  <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
-                    <IconFileText className="size-4" />
-                    Export CSV
-                  </Button>
-                  <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
-                    <IconPrinter className="size-4" />
-                    Print Report
-                  </Button>
-                </div>
-              ) : null}
             </div>
 
             {resolvedReport.key === "philhealth" ? (
@@ -890,6 +974,90 @@ export function PayrollStatutoryPageClient({
                   showPagIbig={false}
                   showDole13th
                 />
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "payroll-register" ? (
+              <div className="space-y-3">
+                <div className="print:hidden">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Select Payroll Run</p>
+                      <Select value={resolvedRegisterRunId} onValueChange={setSelectedRegisterRunId}>
+                        <SelectTrigger className="h-9 w-full md:w-[380px]">
+                          <SelectValue placeholder="Select payroll run" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredRegisterRuns.map((run) => (
+                            <SelectItem key={run.runId} value={run.runId}>
+                              {run.isTrialRun ? "[TRIAL]" : "[REGULAR]"} {run.runNumber} • {run.runTypeCode} • {run.periodLabel}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-border/60 bg-card p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Available Payroll Register Runs ({filteredRegisterRuns.length})
+                  </p>
+                  <div className="overflow-x-auto border border-border/60">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Run #</th>
+                          <th className="px-3 py-2 text-left">Type</th>
+                          <th className="px-3 py-2 text-left">Period</th>
+                          <th className="px-3 py-2 text-left">Created</th>
+                          <th className="px-3 py-2 text-left">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRegisterRuns.length === 0 ? (
+                          <tr className="border-t border-border/50">
+                            <td className="px-3 py-4 text-center text-muted-foreground" colSpan={5}>
+                              No payroll runs matched the selected mode.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredRegisterRuns.map((run) => (
+                            <tr key={run.runId} className="border-t border-border/50">
+                              <td className="px-3 py-2">{run.runNumber}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span>{run.runTypeCode}</span>
+                                  <Badge variant={run.isTrialRun ? "secondary" : "default"}>
+                                    {run.isTrialRun ? "TRIAL" : "REGULAR"}
+                                  </Badge>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">{run.periodLabel}</td>
+                              <td className="px-3 py-2">
+                                {new Intl.DateTimeFormat("en-PH", {
+                                  month: "short",
+                                  day: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  timeZone: "Asia/Manila",
+                                }).format(new Date(run.createdAtIso))}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Button asChild type="button" size="sm" className="bg-blue-600 text-white hover:bg-blue-700">
+                                  <Link href={`/${companyId}/payroll/runs/${run.runId}/report`}>
+                                    Open Register
+                                  </Link>
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             ) : null}
 

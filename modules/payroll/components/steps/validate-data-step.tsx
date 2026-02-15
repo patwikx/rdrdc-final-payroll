@@ -1,11 +1,22 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { IconAlertTriangle, IconLoader2, IconTerminal2 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { proceedToCalculatePayrollRunAction, validatePayrollRunAction } from "@/modules/payroll/actions/payroll-run-actions"
 
 type ValidateDataStepProps = {
@@ -18,6 +29,9 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [logs, setLogs] = useState<string[]>([])
+  const [summaryPage, setSummaryPage] = useState(1)
+  const [summaryPageSize, setSummaryPageSize] = useState("10")
+  const [confirmProceedOpen, setConfirmProceedOpen] = useState(false)
 
   const parsedNotes = useMemo(() => {
     if (!validationNotes) return null
@@ -71,13 +85,29 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
         return
       }
 
-      toast.success(result.message)
+      setConfirmProceedOpen(false)
       router.refresh()
     })
   }
 
   const canProceed = (parsedNotes?.errorCount ?? 0) === 0 && Boolean(parsedNotes)
   const attendanceDetails = parsedNotes?.dtrSummary?.details ?? []
+  const summaryPageSizeNumber = useMemo(() => Math.max(1, Number(summaryPageSize) || 10), [summaryPageSize])
+  const summaryTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(attendanceDetails.length / summaryPageSizeNumber)),
+    [attendanceDetails.length, summaryPageSizeNumber]
+  )
+  const safeSummaryPage = Math.min(summaryPage, summaryTotalPages)
+  const pagedAttendanceDetails = useMemo(() => {
+    const start = (safeSummaryPage - 1) * summaryPageSizeNumber
+    return attendanceDetails.slice(start, start + summaryPageSizeNumber)
+  }, [attendanceDetails, safeSummaryPage, summaryPageSizeNumber])
+  const showValidationLog = isPending || attendanceDetails.length === 0
+
+  useEffect(() => {
+    if (summaryPage <= summaryTotalPages) return
+    setSummaryPage(summaryTotalPages)
+  }, [summaryPage, summaryTotalPages])
 
   return (
     <div className="space-y-4">
@@ -86,32 +116,22 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
         <p className="text-sm text-muted-foreground">Automated checks on attendance, payroll profile readiness, and request diagnostics.</p>
       </div>
 
-      <div className="min-h-56 space-y-2 overflow-y-auto rounded-md border border-border/60 bg-card p-4 text-xs text-foreground">
-        <p className="flex items-center gap-2 font-medium text-foreground"><IconTerminal2 className="h-4 w-4 text-primary" /> Validation Log</p>
-        {logs.length === 0 ? (
-          <p className="text-muted-foreground">Ready to run validation...</p>
-        ) : (
-          logs.map((log, index) => (
-            <p key={`${log}-${index}`} className="text-muted-foreground">{log}</p>
-          ))
-        )}
-        {isPending ? (
-          <p className="flex items-center gap-2 text-primary">
-            <IconLoader2 className="h-4 w-4 animate-spin" />
-            Running validation...
-          </p>
-        ) : null}
-      </div>
-
-      {parsedNotes ? (
-        <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-4 text-sm">
-          {(parsedNotes.errors ?? []).slice(0, 4).map((error) => (
-            <p key={error} className="flex items-start gap-2 text-xs text-destructive"><IconAlertTriangle className="mt-0.5 h-3.5 w-3.5" /> {error}</p>
-          ))}
-          {(parsedNotes.warnings ?? []).slice(0, 4).map((warning) => (
-            <p key={warning} className="flex items-start gap-2 text-xs text-amber-600"><IconAlertTriangle className="mt-0.5 h-3.5 w-3.5" /> {warning}</p>
-          ))}
-
+      {showValidationLog ? (
+        <div className="min-h-56 space-y-2 overflow-y-auto rounded-md border border-border/60 bg-card p-4 text-xs text-foreground">
+          <p className="flex items-center gap-2 font-medium text-foreground"><IconTerminal2 className="h-4 w-4 text-primary" /> Validation Log</p>
+          {logs.length === 0 ? (
+            <p className="text-muted-foreground">Ready to run validation...</p>
+          ) : (
+            logs.map((log, index) => (
+              <p key={`${log}-${index}`} className="text-muted-foreground">{log}</p>
+            ))
+          )}
+          {isPending ? (
+            <p className="flex items-center gap-2 text-primary">
+              <IconLoader2 className="h-4 w-4 animate-spin" />
+              Running validation...
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -132,7 +152,7 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
                 </tr>
               </thead>
               <tbody>
-                {attendanceDetails.map((entry) => (
+                {pagedAttendanceDetails.map((entry) => (
                   <tr key={entry.employeeId} className="border-t border-border/50">
                     <td className="px-2 py-2">
                       <p className="font-medium">{entry.employeeName}</p>
@@ -149,6 +169,50 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
               </tbody>
             </table>
           </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Rows per page</span>
+              <Select
+                value={summaryPageSize}
+                onValueChange={(value) => {
+                  setSummaryPageSize(value)
+                  setSummaryPage(1)
+                }}
+              >
+                <SelectTrigger className="h-8 w-[84px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+              <span>
+                Page {safeSummaryPage} of {summaryTotalPages} • {attendanceDetails.length} records
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={safeSummaryPage <= 1}
+                onClick={() => setSummaryPage((previous) => Math.max(1, previous - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={safeSummaryPage >= summaryTotalPages}
+                onClick={() => setSummaryPage((previous) => Math.min(summaryTotalPages, previous + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -156,10 +220,33 @@ export function ValidateDataStep({ companyId, runId, validationNotes }: Validate
         <Button type="button" variant="outline" disabled={isPending} onClick={handleValidate}>
           Run Validation
         </Button>
-        <Button type="button" disabled={isPending || !canProceed} onClick={handleProceed}>
+        <Button type="button" disabled={isPending || !canProceed} onClick={() => setConfirmProceedOpen(true)}>
           Proceed to Next Step
         </Button>
       </div>
+
+      <AlertDialog open={confirmProceedOpen} onOpenChange={setConfirmProceedOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Proceed to Calculation Step?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirm that you reviewed the validation results and attendance summary. This will advance the payroll run to the calculation step.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                handleProceed()
+              }}
+            >
+              {isPending ? "Proceeding..." : "Yes, Proceed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { DtrApprovalStatus, RequestStatus, type Prisma } from "@prisma/client"
+import { AttendanceStatus, DtrApprovalStatus, RequestStatus, type Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
 
@@ -381,8 +381,10 @@ export async function validatePayrollRun(
         return key >= start && key <= end
       })
 
+      // A scheduled working day with no DTR counts as both missing-log and absence.
       if (!dtr && !isHoliday && !isRestDay && !onApprovedLeave) {
         missingDays += 1
+        absentDays += 1
         continue
       }
 
@@ -394,8 +396,9 @@ export async function validatePayrollRun(
         incompleteDays += 1
       }
 
-      if (dtr.attendanceStatus === "ABSENT") absentDays += 1
-      if (dtr.attendanceStatus === "PRESENT" || dtr.attendanceStatus === "HOLIDAY") presentDays += 1
+      if (dtr.attendanceStatus === AttendanceStatus.ABSENT) absentDays += 1
+      if (dtr.attendanceStatus === AttendanceStatus.ON_LEAVE && !onApprovedLeave) absentDays += 1
+      if (dtr.attendanceStatus === AttendanceStatus.PRESENT || dtr.attendanceStatus === AttendanceStatus.HOLIDAY) presentDays += 1
 
       const approvedOvertimeHours = approvedOvertimeHoursByEmployeeDate.get(`${employee.id}:${key}`) ?? 0
       overtimeHours += approvedOvertimeHours

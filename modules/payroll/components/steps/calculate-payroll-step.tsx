@@ -1,12 +1,23 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { IconCalculator, IconCircleCheck, IconProgress } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { calculatePayrollRunAction, proceedToReviewPayrollRunAction } from "@/modules/payroll/actions/payroll-run-actions"
 
 type CalculatePayrollStepProps = {
@@ -24,6 +35,9 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
   const [isPending, startTransition] = useTransition()
   const [progress, setProgress] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
+  const [summaryPage, setSummaryPage] = useState(1)
+  const [summaryPageSize, setSummaryPageSize] = useState("10")
+  const [confirmProceedOpen, setConfirmProceedOpen] = useState(false)
 
   const calculatedEmployees = useMemo(() => {
     if (!calculationNotes) return []
@@ -43,6 +57,21 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
       return []
     }
   }, [calculationNotes])
+  const summaryPageSizeNumber = useMemo(() => Math.max(1, Number(summaryPageSize) || 10), [summaryPageSize])
+  const summaryTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(calculatedEmployees.length / summaryPageSizeNumber)),
+    [calculatedEmployees.length, summaryPageSizeNumber]
+  )
+  const safeSummaryPage = Math.min(summaryPage, summaryTotalPages)
+  const pagedCalculatedEmployees = useMemo(() => {
+    const start = (safeSummaryPage - 1) * summaryPageSizeNumber
+    return calculatedEmployees.slice(start, start + summaryPageSizeNumber)
+  }, [calculatedEmployees, safeSummaryPage, summaryPageSizeNumber])
+
+  useEffect(() => {
+    if (summaryPage <= summaryTotalPages) return
+    setSummaryPage(summaryTotalPages)
+  }, [summaryPage, summaryTotalPages])
 
   const handleCalculate = () => {
     setProgress(15)
@@ -76,6 +105,7 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
         return
       }
 
+      setConfirmProceedOpen(false)
       toast.success(result.message)
       router.refresh()
     })
@@ -85,9 +115,9 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
       <div className="space-y-4 lg:col-span-8">
         {calculatedEmployees.length > 0 ? (
-          <div className="space-y-3 rounded-lg border border-border/60 bg-card p-4">
+          <div className="space-y-3 border border-border/60 bg-card p-4">
             <p className="text-sm font-medium text-foreground">Calculated Employee Payroll Summary</p>
-            <div className="overflow-x-auto rounded-md border border-border/60">
+            <div className="overflow-x-auto border border-border/60">
               <table className="w-full text-xs">
                 <thead className="bg-muted/40">
                   <tr>
@@ -98,7 +128,7 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
                   </tr>
                 </thead>
                 <tbody>
-                  {calculatedEmployees.map((entry) => (
+                  {pagedCalculatedEmployees.map((entry) => (
                     <tr key={entry.employeeId} className="border-t border-border/50">
                       <td className="px-2 py-2">
                         <p className="font-medium">{entry.employeeName}</p>
@@ -112,9 +142,53 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
                 </tbody>
               </table>
             </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Rows per page</span>
+                <Select
+                  value={summaryPageSize}
+                  onValueChange={(value) => {
+                    setSummaryPageSize(value)
+                    setSummaryPage(1)
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[84px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span>
+                  Page {safeSummaryPage} of {summaryTotalPages} • {calculatedEmployees.length} records
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={safeSummaryPage <= 1}
+                  onClick={() => setSummaryPage((previous) => Math.max(1, previous - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={safeSummaryPage >= summaryTotalPages}
+                  onClick={() => setSummaryPage((previous) => Math.min(summaryTotalPages, previous + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </div>
         ) : progress > 0 ? (
-          <div className="space-y-3 rounded-lg border border-border/60 bg-card p-5">
+          <div className="space-y-3 border border-border/60 bg-card p-5">
             <p className="flex items-center gap-2 text-sm font-medium">
               {isComplete ? <IconCircleCheck className="h-4 w-4 text-emerald-600" /> : <IconProgress className="h-4 w-4 text-primary" />}
               {isComplete ? "Calculation Complete" : "Processing Gross-to-Net"}
@@ -123,7 +197,7 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
             <p className="text-xs text-muted-foreground">{progress}%</p>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-muted/10 px-6 py-12 text-center">
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-border/60 bg-muted/10 px-6 py-12 text-center">
             <IconCalculator className="mb-3 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium">Ready to process payroll calculation.</p>
             <p className="mt-1 text-xs text-muted-foreground">This computes attendance-adjusted pay, statutory deductions, recurring deductions, and payslip lines.</p>
@@ -132,13 +206,13 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
       </div>
 
       <aside className="space-y-3 lg:col-span-4">
-        <div className="space-y-2 rounded-lg border border-border/60 bg-card p-4 text-sm">
+        <div className="space-y-2 border border-border/60 bg-card p-4 text-sm">
           <p className="font-medium">Current Totals</p>
           <div className="flex items-center justify-between"><span>Employees</span><span>{employeeCount}</span></div>
           <div className="flex items-center justify-between"><span>Net Pay</span><span>{money.format(totalNetPay)}</span></div>
         </div>
         {calculatedEmployees.length > 0 ? (
-          <Button type="button" className="w-full" disabled={isPending} onClick={handleProceed}>
+          <Button type="button" className="w-full" disabled={isPending} onClick={() => setConfirmProceedOpen(true)}>
             Proceed to Next Step
           </Button>
         ) : (
@@ -147,6 +221,29 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
           </Button>
         )}
       </aside>
+
+      <AlertDialog open={confirmProceedOpen} onOpenChange={setConfirmProceedOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Proceed to Review Step?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Confirm that you reviewed the calculated employee payroll summary. This will move the run to the review step.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                handleProceed()
+              }}
+            >
+              {isPending ? "Proceeding..." : "Yes, Proceed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1,8 +1,9 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconLock } from "@tabler/icons-react"
+import { IconAlertTriangle, IconLock, IconReportAnalytics } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -75,6 +76,11 @@ export function CloseRunStep({ companyId, runId, statusCode, totalEmployees, tot
           </div>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
+          <Button asChild type="button" className="min-w-44 bg-blue-600 text-white hover:bg-blue-700">
+            <Link href={`/${companyId}/payroll/runs/${runId}/report`}>
+              <IconReportAnalytics className="mr-1.5 h-4 w-4" /> Generate Payroll Register Report
+            </Link>
+          </Button>
           <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
             <AlertDialogTrigger asChild>
               <Button type="button" variant="destructive" className="min-w-44" disabled={isPending || isLocked}>

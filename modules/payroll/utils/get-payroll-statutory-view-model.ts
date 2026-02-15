@@ -77,6 +77,14 @@ export type PayrollStatutoryViewModel = {
   companyId: string
   companyName: string
   printedBy: string
+  payrollRegisterRuns: Array<{
+    runId: string
+    runNumber: string
+    runTypeCode: PayrollRunType
+    isTrialRun: boolean
+    periodLabel: string
+    createdAtIso: string
+  }>
   totals: {
     sssEmployee: string
     sssEmployer: string
@@ -410,6 +418,51 @@ const buildDoleRows = (payslips: StatutorySourcePayslip[]): StatutoryDoleRow[] =
     })
 }
 
+const buildPayrollRegisterRuns = (
+  payslips: StatutorySourcePayslip[]
+): Array<{
+  runId: string
+  runNumber: string
+  runTypeCode: PayrollRunType
+  isTrialRun: boolean
+  periodLabel: string
+  createdAtIso: string
+}> => {
+  const runMap = new Map<
+    string,
+    {
+      runId: string
+      runNumber: string
+      runTypeCode: PayrollRunType
+      isTrialRun: boolean
+      periodLabel: string
+      createdAtIso: string
+      createdAtMs: number
+    }
+  >()
+
+  for (const payslip of payslips) {
+    const run = payslip.payrollRun
+    if (runMap.has(run.id)) {
+      continue
+    }
+
+    runMap.set(run.id, {
+      runId: run.id,
+      runNumber: run.runNumber,
+      runTypeCode: run.runTypeCode,
+      isTrialRun: run.isTrialRun,
+      periodLabel: `${toDateLabel(run.payPeriod.cutoffStartDate)} - ${toDateLabel(run.payPeriod.cutoffEndDate)}`,
+      createdAtIso: run.createdAt.toISOString(),
+      createdAtMs: run.createdAt.getTime(),
+    })
+  }
+
+  return Array.from(runMap.values())
+    .sort((a, b) => b.createdAtMs - a.createdAtMs)
+    .map(({ createdAtMs: _createdAtMs, ...row }) => row)
+}
+
 export async function getPayrollStatutoryViewModel(companyId: string): Promise<PayrollStatutoryViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
@@ -534,6 +587,7 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
     companyId: context.companyId,
     companyName: context.companyName,
     printedBy,
+    payrollRegisterRuns: buildPayrollRegisterRuns(payslips),
     totals: {
       sssEmployee: toPhp(totalsRaw.sssEmployee),
       sssEmployer: toPhp(totalsRaw.sssEmployer),

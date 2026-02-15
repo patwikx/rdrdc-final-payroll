@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useDeferredValue, useMemo, useState, useTransition } from "react"
 import { DateRange } from "react-day-picker"
 import { eachDayOfInterval, format, subDays } from "date-fns"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   IconAlertCircle,
   IconCalendarEvent,
@@ -58,6 +58,10 @@ type DtrClientPageProps = {
     stats: WorkbenchStats
   }
   leaveOverlays: LeaveOverlayItem[]
+  filters: {
+    startDate: string
+    endDate: string
+  }
 }
 
 const toLocalDateString = (value: Date): string =>
@@ -92,70 +96,57 @@ const getStatusColor = (status: string): string => {
   }
 }
 
-export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOverlays }: DtrClientPageProps) {
+type DtrViewTab = "directory" | "calendar" | "workbench"
+type WorkbenchFilter = "ALL" | "PENDING" | "ANOMALY"
+
+export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOverlays, filters }: DtrClientPageProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const [isRangeRefreshPending, startRangeRefreshTransition] = useTransition()
 
-  const currentTab = searchParams.get("tab") || "directory"
-  const searchTerm = searchParams.get("q") || ""
-  const currentPage = Number(searchParams.get("page") || "1")
-
-  const wbFilter = searchParams.get("wbFilter") || "ALL"
-  const wbSearch = searchParams.get("wbQ") || ""
-  const wbPage = Number(searchParams.get("wbPage") || "1")
+  const [currentTab, setCurrentTab] = useState<DtrViewTab>("directory")
+  const [mountedTabs, setMountedTabs] = useState<Record<DtrViewTab, boolean>>({
+    directory: true,
+    calendar: false,
+    workbench: false,
+  })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [wbFilter, setWbFilter] = useState<WorkbenchFilter>("ALL")
+  const [wbPage, setWbPage] = useState(1)
 
   const [editingRecord, setEditingRecord] = useState<DtrLogItem | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
-  const [localSearch, setLocalSearch] = useState(searchTerm)
-  const [localWbSearch, setLocalWbSearch] = useState(wbSearch)
+  const [localSearch, setLocalSearch] = useState("")
+  const [localWbSearch, setLocalWbSearch] = useState("")
+  const deferredSearchTerm = useDeferredValue(localSearch.trim().toLowerCase())
+  const deferredWorkbenchSearchTerm = useDeferredValue(localWbSearch.trim().toLowerCase())
 
-  const startParam = searchParams.get("startDate")
-  const endParam = searchParams.get("endDate")
+  const startParam = filters.startDate
+  const endParam = filters.endDate
   const [date, setDate] = useState<DateRange | undefined>({
     from: startParam ? (toPhDayStartUtcInstant(startParam) ?? subDays(new Date(), 30)) : subDays(new Date(), 30),
     to: endParam ? (toPhDayStartUtcInstant(endParam) ?? new Date()) : new Date(),
   })
 
-  const updateParams = useCallback((updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams.toString())
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null) {
-        params.delete(key)
-      } else {
-        params.set(key, value)
-      }
-    }
-    router.push(`${pathname}?${params.toString()}`)
-  }, [pathname, router, searchParams])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localSearch !== searchTerm) {
-        updateParams({ q: localSearch || null, page: "1" })
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [localSearch, searchTerm, updateParams])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localWbSearch !== wbSearch) {
-        updateParams({ wbQ: localWbSearch || null, wbPage: "1" })
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [localWbSearch, wbSearch, updateParams])
-
   const updateDateRange = (range: DateRange | undefined) => {
+    setDate(range)
     if (!range?.from || !range.to) return
-    updateParams({
-      startDate: format(range.from, "yyyy-MM-dd"),
-      endDate: format(range.to, "yyyy-MM-dd"),
-      page: "1",
-      wbPage: "1",
+    setCurrentPage(1)
+    setWbPage(1)
+
+    const params = new URLSearchParams()
+    params.set("startDate", format(range.from, "yyyy-MM-dd"))
+    params.set("endDate", format(range.to, "yyyy-MM-dd"))
+
+    startRangeRefreshTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
     })
   }
+
+  const setTab = useCallback((tab: DtrViewTab) => {
+    setCurrentTab(tab)
+    setMountedTabs((previous) => (previous[tab] ? previous : { ...previous, [tab]: true }))
+  }, [])
 
   const logDateKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -207,29 +198,34 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
   }, [logs, leaveRows])
 
   const filteredLogs = useMemo(() => {
+    if (!deferredSearchTerm) return combinedLogs
     return combinedLogs.filter((log) => {
       const fullName = `${log.employee.firstName} ${log.employee.lastName}`.toLowerCase()
-      return fullName.includes(searchTerm.toLowerCase()) || log.employee.employeeNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      return fullName.includes(deferredSearchTerm) || log.employee.employeeNumber.toLowerCase().includes(deferredSearchTerm)
     })
-  }, [combinedLogs, searchTerm])
+  }, [combinedLogs, deferredSearchTerm])
 
   const itemsPerPage = 10
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage)
-  const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const paginatedLogs = filteredLogs.slice((safeCurrentPage - 1) * itemsPerPage, safeCurrentPage * itemsPerPage)
 
   const filteredWorkbench = useMemo(() => {
     return workbenchData.items.filter((item) => {
       const matchesFilter =
         wbFilter === "ALL" || (wbFilter === "PENDING" && item.status === "PENDING") || (wbFilter === "ANOMALY" && item.status === "ANOMALY")
       const matchesSearch =
-        item.employeeName.toLowerCase().includes(wbSearch.toLowerCase()) || item.details.toLowerCase().includes(wbSearch.toLowerCase())
+        !deferredWorkbenchSearchTerm ||
+        item.employeeName.toLowerCase().includes(deferredWorkbenchSearchTerm) ||
+        item.details.toLowerCase().includes(deferredWorkbenchSearchTerm)
       return matchesFilter && matchesSearch
     })
-  }, [workbenchData.items, wbFilter, wbSearch])
+  }, [deferredWorkbenchSearchTerm, wbFilter, workbenchData.items])
 
   const wbItemsPerPage = 10
-  const wbTotalPages = Math.ceil(filteredWorkbench.length / wbItemsPerPage)
-  const paginatedWorkbench = filteredWorkbench.slice((wbPage - 1) * wbItemsPerPage, wbPage * wbItemsPerPage)
+  const wbTotalPages = Math.max(1, Math.ceil(filteredWorkbench.length / wbItemsPerPage))
+  const safeWorkbenchPage = Math.min(wbPage, wbTotalPages)
+  const paginatedWorkbench = filteredWorkbench.slice((safeWorkbenchPage - 1) * wbItemsPerPage, safeWorkbenchPage * wbItemsPerPage)
 
   const handleExport = async () => {
     const from = (date?.from && format(date.from, "yyyy-MM-dd")) || startParam
@@ -310,7 +306,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                 type="button"
                 size="sm"
                 variant={currentTab === "directory" ? "default" : "ghost"}
-                onClick={() => updateParams({ tab: "directory" })}
+                onClick={() => setTab("directory")}
               >
                 Directory View
               </Button>
@@ -318,7 +314,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                 type="button"
                 size="sm"
                 variant={currentTab === "calendar" ? "default" : "ghost"}
-                onClick={() => updateParams({ tab: "calendar" })}
+                onClick={() => setTab("calendar")}
               >
                 Individual Calendar
               </Button>
@@ -326,17 +322,18 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                 type="button"
                 size="sm"
                 variant={currentTab === "workbench" ? "default" : "ghost"}
-                onClick={() => updateParams({ tab: "workbench" })}
+                onClick={() => setTab("workbench")}
               >
                 Workbench
                 {workbenchData.items.length > 0 ? <Badge className="ml-1 h-4 px-1 rounded-full bg-amber-500 text-[10px] text-white">{workbenchData.items.length}</Badge> : null}
               </Button>
             </div>
+            {isRangeRefreshPending ? <p className="mt-2 text-xs text-muted-foreground">Refreshing records...</p> : null}
           </div>
         </div>
 
-        {currentTab === "directory" ? (
-          <div className="flex flex-col lg:flex-row min-h-[calc(100vh-230px)]">
+        {mountedTabs.directory ? (
+          <div className={cn("flex flex-col lg:flex-row min-h-[calc(100vh-230px)]", currentTab === "directory" ? "flex" : "hidden")}>
             <aside className="w-full lg:w-72 border-r border-border/60 p-6 space-y-6 shrink-0 bg-background/30">
               <Popover>
                 <PopoverTrigger asChild>
@@ -351,10 +348,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                     mode="range"
                     defaultMonth={date?.from}
                     selected={date}
-                    onSelect={(range) => {
-                      setDate(range)
-                      updateDateRange(range)
-                    }}
+                    onSelect={updateDateRange}
                     numberOfMonths={2}
                     className="rounded-md"
                   />
@@ -370,7 +364,10 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                   <Input
                     placeholder="ID OR NAME"
                     value={localSearch}
-                    onChange={(event) => setLocalSearch(event.target.value)}
+                    onChange={(event) => {
+                      setLocalSearch(event.target.value)
+                      setCurrentPage(1)
+                    }}
                     className="pl-9 h-9"
                   />
                 </div>
@@ -407,7 +404,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                   <div className="col-span-2 text-center">Hours</div>
                   <div className="col-span-1 text-center">Late</div>
                   <div className="col-span-1 text-center">UT</div>
-                  <div className="col-span-1 text-center">DTR OT</div>
+                  <div className="col-span-1 text-center">OT</div>
                   <div className="col-span-1 text-right">Action</div>
                 </div>
               </div>
@@ -447,7 +444,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                       <div className="col-span-2 text-center text-sm text-foreground/80">{Number(log.hoursWorked).toFixed(2)}</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.tardinessMins}m</div>
                       <div className="col-span-1 text-center text-sm text-foreground/70">{log.undertimeMins}m</div>
-                      <div className="col-span-1 text-center text-sm text-foreground/70">DTR {Number(log.overtimeHours).toFixed(2)}h</div>
+                      <div className="col-span-1 text-center text-sm text-foreground/70">{log.overtimeHours}h</div>
                       <div className="col-span-1 flex justify-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -469,12 +466,12 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
               {filteredLogs.length > 0 ? (
                 <div className="px-8 h-12 border-t border-border/60 bg-background flex items-center justify-between sticky bottom-0">
-                  <div className="text-xs text-muted-foreground">Page {currentPage} of {totalPages || 1} - {filteredLogs.length} Records</div>
+                  <div className="text-xs text-muted-foreground">Page {safeCurrentPage} of {totalPages} - {filteredLogs.length} Records</div>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: String(Math.max(1, currentPage - 1)) })}>
+                    <Button variant="outline" size="sm" disabled={safeCurrentPage === 1} onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}>
                       Prev
                     </Button>
-                    <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => updateParams({ page: String(Math.min(totalPages, currentPage + 1)) })}>
+                    <Button variant="outline" size="sm" disabled={safeCurrentPage >= totalPages} onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}>
                       Next
                     </Button>
                   </div>
@@ -484,27 +481,36 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
           </div>
         ) : null}
 
-        {currentTab === "calendar" ? (
-          <div className="m-0 border-none outline-none p-8 bg-background min-h-[calc(100vh-230px)]">
+        {mountedTabs.calendar ? (
+          <div className={cn("m-0 border-none outline-none p-8 bg-background min-h-[calc(100vh-230px)]", currentTab === "calendar" ? "block" : "hidden")}>
           <EmployeeDtrCalendar companyId={companyId} leaveOverlays={leaveOverlays} />
           </div>
         ) : null}
 
-        {currentTab === "workbench" ? (
-          <div className="flex flex-col lg:flex-row min-h-[calc(100vh-230px)]">
+        {mountedTabs.workbench ? (
+          <div className={cn("flex flex-col lg:flex-row min-h-[calc(100vh-230px)]", currentTab === "workbench" ? "flex" : "hidden")}>
             <aside className="w-full lg:w-72 border-r border-border/60 p-6 space-y-6 shrink-0 bg-background/30">
               <div className="space-y-6">
                 <h3 className="text-sm text-muted-foreground">Queue Analysis</h3>
                 <div className="grid grid-cols-1 gap-3">
-                  <div className="p-4 bg-muted/20 border-l-2 border-primary cursor-pointer" onClick={() => updateParams({ wbFilter: "ALL", wbPage: "1" })}>
+                  <div className="p-4 bg-muted/20 border-l-2 border-primary cursor-pointer" onClick={() => {
+                    setWbFilter("ALL")
+                    setWbPage(1)
+                  }}>
                     <p className="text-xs text-muted-foreground flex justify-between"><span>Total Items</span>{wbFilter === "ALL" ? <IconCheckupList className="h-3 w-3 text-primary" /> : null}</p>
                     <p className="text-2xl mt-1">{workbenchData.items.length}</p>
                   </div>
-                  <div className="p-4 bg-blue-500/[0.03] border-l-2 border-blue-500 cursor-pointer" onClick={() => updateParams({ wbFilter: "PENDING", wbPage: "1" })}>
+                  <div className="p-4 bg-blue-500/[0.03] border-l-2 border-blue-500 cursor-pointer" onClick={() => {
+                    setWbFilter("PENDING")
+                    setWbPage(1)
+                  }}>
                     <p className="text-xs text-blue-600">Pending</p>
                     <p className="text-2xl mt-1">{workbenchData.stats.pendingLeaves + workbenchData.stats.pendingOTs}</p>
                   </div>
-                  <div className="p-4 bg-amber-500/[0.03] border-l-2 border-amber-500 cursor-pointer" onClick={() => updateParams({ wbFilter: "ANOMALY", wbPage: "1" })}>
+                  <div className="p-4 bg-amber-500/[0.03] border-l-2 border-amber-500 cursor-pointer" onClick={() => {
+                    setWbFilter("ANOMALY")
+                    setWbPage(1)
+                  }}>
                     <p className="text-xs text-amber-600">Exceptions</p>
                     <p className="text-2xl mt-1">{workbenchData.stats.missingLogs + workbenchData.stats.absences}</p>
                   </div>
@@ -517,7 +523,15 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                 <h3 className="text-sm text-muted-foreground">Search</h3>
                 <div className="relative">
                   <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search item..." value={localWbSearch} onChange={(event) => setLocalWbSearch(event.target.value)} className="pl-9 h-9" />
+                  <Input
+                    placeholder="Search item..."
+                    value={localWbSearch}
+                    onChange={(event) => {
+                      setLocalWbSearch(event.target.value)
+                      setWbPage(1)
+                    }}
+                    className="pl-9 h-9"
+                  />
                 </div>
               </div>
             </aside>
@@ -546,10 +560,16 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                   paginatedWorkbench.map((item) => (
                     <div key={item.id} className="grid grid-cols-12 px-8 py-4 items-center group hover:bg-muted/5 transition-colors">
                       <div className="col-span-4 flex items-center gap-4">
-                        <div className={cn("h-8 w-8 shrink-0 flex items-center justify-center border border-border/60 bg-background", item.type.includes("REQUEST") ? "text-blue-500" : "text-amber-500")}>
+                        <div
+                          className={cn(
+                            "h-8 w-8 shrink-0 flex items-center justify-center border border-border/60 bg-background",
+                            item.status === "PENDING" ? "text-blue-500" : "text-amber-500"
+                          )}
+                        >
                           {item.type === "LEAVE_REQUEST" ? <IconCalendarEvent className="h-4 w-4" /> : null}
                           {item.type === "OT_REQUEST" ? <IconClock className="h-4 w-4" /> : null}
                           {item.type === "MISSING_LOG" ? <IconAlertCircle className="h-4 w-4" /> : null}
+                          {item.type === "ATTENDANCE_EXCEPTION" ? <IconAlertCircle className="h-4 w-4" /> : null}
                           {item.type === "ABSENCE" ? <IconX className="h-4 w-4" /> : null}
                         </div>
                         <div className="space-y-0.5 truncate">
@@ -559,7 +579,17 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                       </div>
                       <div className="col-span-2 text-sm text-foreground/80">{formatDatePh(item.date)}</div>
                       <div className="col-span-2">
-                        <Badge variant="outline" className={cn("border px-1.5 py-0.5 text-[11px] rounded", item.status === "PENDING" ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-amber-500/10 text-amber-600 border-amber-500/20")}>{item.type.replace("_", " ")}</Badge>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "border px-1.5 py-0.5 text-[11px] rounded",
+                            item.status === "PENDING"
+                              ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                              : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                          )}
+                        >
+                          {item.type.replaceAll("_", " ")}
+                        </Badge>
                       </div>
                       <div className="col-span-2 text-sm text-foreground/70 truncate" title={item.details}>{item.details}</div>
                       <div className="col-span-2 text-right">
@@ -583,10 +613,10 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
               {filteredWorkbench.length > 0 ? (
                 <div className="px-8 h-12 border-t border-border/60 bg-background flex items-center justify-between sticky bottom-0">
-                  <div className="text-xs text-muted-foreground">Page {wbPage} of {wbTotalPages || 1} - {filteredWorkbench.length} Items</div>
+                  <div className="text-xs text-muted-foreground">Page {safeWorkbenchPage} of {wbTotalPages} - {filteredWorkbench.length} Items</div>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" disabled={wbPage === 1} onClick={() => updateParams({ wbPage: String(Math.max(1, wbPage - 1)) })}>Prev</Button>
-                    <Button variant="outline" size="sm" disabled={wbPage >= wbTotalPages} onClick={() => updateParams({ wbPage: String(Math.min(wbTotalPages, wbPage + 1)) })}>Next</Button>
+                    <Button variant="outline" size="sm" disabled={safeWorkbenchPage === 1} onClick={() => setWbPage((previous) => Math.max(1, previous - 1))}>Prev</Button>
+                    <Button variant="outline" size="sm" disabled={safeWorkbenchPage >= wbTotalPages} onClick={() => setWbPage((previous) => Math.min(wbTotalPages, previous + 1))}>Next</Button>
                   </div>
                 </div>
               ) : null}

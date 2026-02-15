@@ -164,25 +164,21 @@ export async function getDashboardActionCenterData(
     db.leaveRequest.findMany({
       where: { employee: { companyId }, statusCode: { in: ["PENDING", "SUPERVISOR_APPROVED"] }, startDate: { lte: periodEnd }, endDate: { gte: periodStart } },
       orderBy: { updatedAt: "desc" },
-      take: 4,
       include: { employee: { select: { firstName: true, lastName: true } } },
     }),
     db.overtimeRequest.findMany({
       where: { employee: { companyId }, statusCode: { in: ["PENDING", "SUPERVISOR_APPROVED"] }, overtimeDate: { gte: periodStart, lte: periodEnd } },
       orderBy: { updatedAt: "desc" },
-      take: 4,
       include: { employee: { select: { firstName: true, lastName: true } } },
     }),
     db.dailyTimeRecord.findMany({
       where: { employee: { companyId }, approvalStatusCode: "PENDING", attendanceDate: { gte: periodStart, lte: periodEnd } },
       orderBy: { updatedAt: "desc" },
-      take: 4,
       include: { employee: { select: { firstName: true, lastName: true } } },
     }),
     db.payrollRun.findMany({
       where: { companyId, statusCode: { in: ["DRAFT", "VALIDATING", "PROCESSING", "COMPUTED", "FOR_REVIEW"] }, payPeriod: { cutoffStartDate: { lte: periodEnd }, cutoffEndDate: { gte: periodStart } } },
       orderBy: { updatedAt: "desc" },
-      take: 4,
       select: { runNumber: true, totalNetPay: true },
     }),
     db.dailyTimeRecord.findMany({
@@ -197,7 +193,6 @@ export async function getDashboardActionCenterData(
         ],
       },
       orderBy: { attendanceDate: "desc" },
-      take: 4,
       include: { employee: { select: { firstName: true, lastName: true } } },
     }),
     db.dailyTimeRecord.count({
@@ -241,7 +236,7 @@ export async function getDashboardActionCenterData(
       amount: toCurrency(item.totalNetPay),
       priority: "Critical" as const,
     })),
-  ].slice(0, 8)
+  ]
 
   const timekeepingExceptionsRows = timekeepingRecords.map((record) => {
     const issue =

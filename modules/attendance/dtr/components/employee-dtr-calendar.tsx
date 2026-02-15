@@ -113,9 +113,9 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(monthStart)
-  const startDate = startOfWeek(monthStart)
-  const endDate = endOfWeek(monthEnd)
-  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate })
+  const calendarStartDate = startOfWeek(monthStart)
+  const calendarEndDate = endOfWeek(monthEnd)
+  const calendarDays = eachDayOfInterval({ start: calendarStartDate, end: calendarEndDate })
 
   const leaveOverlaysByEmployeeId = useMemo(() => {
     const useEmployeeOverlays =

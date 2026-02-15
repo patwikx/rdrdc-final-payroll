@@ -40,10 +40,9 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
   }
 
   const todayPh = toPhDateOnlyUtc()
-  const defaultStart = new Date(todayPh.getTime() - 30 * 24 * 60 * 60 * 1000)
   const parsedStart = range?.startDate ? parsePhDateInputToUtcDateOnly(range.startDate) : null
   const parsedEnd = range?.endDate ? parsePhDateInputToUtcDateOnly(range.endDate) : null
-
+  const defaultStart = new Date(todayPh.getTime() - 30 * 24 * 60 * 60 * 1000)
   const rawStart = parsedStart ?? defaultStart
   const rawEnd = parsedEnd ?? todayPh
   const [startDate, endDate] = rawStart.getTime() <= rawEnd.getTime() ? [rawStart, rawEnd] : [rawEnd, rawStart]
@@ -131,12 +130,8 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
         employee: { companyId: context.companyId },
         attendanceDate: { gte: startDate, lte: endDate },
         OR: [
-          { attendanceStatus: AttendanceStatus.ABSENT },
-          { approvalStatusCode: "PENDING" },
           { actualTimeIn: null },
           { actualTimeOut: null },
-          { tardinessMins: { gt: 0 } },
-          { undertimeMins: { gt: 0 } },
         ],
       },
       take: 100,
@@ -213,19 +208,22 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
   }))
 
   const workbenchItems: WorkbenchItem[] = anomalies.map((log) => {
-    const isAbsence = log.attendanceStatus === AttendanceStatus.ABSENT
+    const missingIn = !log.actualTimeIn
+    const missingOut = !log.actualTimeOut
+    const details = missingIn && missingOut
+      ? "Missing clock-in and clock-out"
+      : missingIn
+        ? "Missing clock-in"
+        : "Missing clock-out"
+
     return {
       id: `WB-${log.id}`,
       employeeId: log.employeeId,
       employeeName: `${log.employee.lastName}, ${log.employee.firstName}`,
       date: log.attendanceDate.toISOString(),
-      type: isAbsence ? "ABSENCE" : "MISSING_LOG",
+      type: "MISSING_LOG",
       status: "ANOMALY",
-      details: isAbsence
-        ? "Marked absent"
-        : log.actualTimeIn && log.actualTimeOut
-          ? "For approval"
-          : "Missing biometric punches",
+      details,
       data: {
         id: log.id,
         employeeId: log.employeeId,
@@ -269,7 +267,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
         pendingLeaves,
         pendingOTs,
         missingLogs: anomalyCount,
-        absences: workbenchItems.filter((item) => item.type === "ABSENCE").length,
+        absences: 0,
         readinessScore,
       },
     },

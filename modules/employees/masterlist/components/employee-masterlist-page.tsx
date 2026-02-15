@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -65,6 +65,7 @@ export function EmployeeMasterlistPage({
   canDeleteEmployees,
 }: EmployeeMasterlistPageProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [searchTerm, setSearchTerm] = useState("")
   const [activeDept, setActiveDept] = useState<string | null>(null)
@@ -73,7 +74,13 @@ export function EmployeeMasterlistPage({
   const [showFilter, setShowFilter] = useState<"active" | "all" | "inactive">("active")
   const [sortColumn, setSortColumn] = useState<SortColumn>("name")
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
-  const [currentPage, setCurrentPage] = useState(1)
+  const initialPage = useMemo(() => {
+    const rawPage = searchParams.get("page")
+    if (!rawPage) return 1
+    const parsed = Number(rawPage)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+  }, [searchParams])
+  const [currentPage, setCurrentPage] = useState(initialPage)
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string
     employeeNumber: string
@@ -418,7 +425,12 @@ export function EmployeeMasterlistPage({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button asChild variant="outline" size="sm" className="gap-1 border-border/60">
-                            <Link href={`/${companyId}/employees/${employee.id}`}>
+                            <Link
+                              href={{
+                                pathname: `/${companyId}/employees/${employee.id}`,
+                                query: { page: String(safeCurrentPage) },
+                              }}
+                            >
                               <IconEye className="h-3.5 w-3.5" />
                               View Profile
                             </Link>

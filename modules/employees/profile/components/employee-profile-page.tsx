@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react"
 import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconArrowLeft,
   IconAward,
@@ -343,6 +343,7 @@ const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDr
 export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const employee = data.employee
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isSaving, startSaving] = useTransition()
   const [isLifecyclePending, startLifecycleTransition] = useTransition()
   const [isCreatingOption, startCreateOption] = useTransition()
@@ -353,6 +354,17 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const [profileOptions, setProfileOptions] = useState(data.options)
   const [createTarget, setCreateTarget] = useState<DynamicCreateTarget | null>(null)
   const [createName, setCreateName] = useState("")
+  const backToMasterlistHref = useMemo(() => {
+    const rawPage = searchParams.get("page")
+    if (!rawPage) return `/${data.companyId}/employees`
+
+    const parsed = Number(rawPage)
+    if (!Number.isInteger(parsed) || parsed <= 1) {
+      return `/${data.companyId}/employees`
+    }
+
+    return `/${data.companyId}/employees?page=${parsed}`
+  }, [data.companyId, searchParams])
 
   const initialDraft = useMemo(() => buildInitialDraft(employee), [employee])
   const [draft, setDraft] = useState<EmployeeProfileDraft>(initialDraft)
@@ -623,7 +635,7 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href={`/${data.companyId}/employees`}>
+            <Link href={backToMasterlistHref}>
               <Button variant="outline">
                 <IconArrowLeft className="size-4" /> Back to Masterlist
               </Button>

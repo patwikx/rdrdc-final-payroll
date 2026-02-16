@@ -67,6 +67,7 @@ type WorkScheduleSnapshot = {
   workStartTime: Date
   workEndTime: Date
   gracePeriodMins: number
+  restDays: unknown
   dayOverrides: unknown
 } | null
 
@@ -74,6 +75,64 @@ type DayOverride = {
   isWorkingDay?: boolean
   timeIn?: string
   timeOut?: string
+}
+
+const DEFAULT_REST_DAYS = new Set(["SATURDAY", "SUNDAY"])
+
+const toPhDayName = (value: Date): string => {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    timeZone: "Asia/Manila",
+  }).format(value)
+
+  return weekday.toUpperCase()
+}
+
+const getDateRange = (start: Date, end: Date): Date[] => {
+  const startKey = toPhDateInputValue(start)
+  const endKey = toPhDateInputValue(end)
+  const startDate = parsePhDateInputToUtcDateOnly(startKey)
+  const endDate = parsePhDateInputToUtcDateOnly(endKey)
+  if (!startDate || !endDate) {
+    return []
+  }
+
+  const cursor = new Date(startDate)
+  const dates: Date[] = []
+
+  while (cursor.getTime() <= endDate.getTime()) {
+    dates.push(new Date(cursor))
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  return dates
+}
+
+const getIsScheduledWorkingDay = (attendanceDate: Date, workSchedule: WorkScheduleSnapshot): boolean => {
+  const dayName = toPhDayName(attendanceDate)
+  const overrides =
+    workSchedule?.dayOverrides && typeof workSchedule.dayOverrides === "object" && !Array.isArray(workSchedule.dayOverrides)
+      ? (workSchedule.dayOverrides as Record<string, DayOverride>)
+      : null
+  const dayOverride = overrides?.[dayName]
+
+  if (typeof dayOverride?.isWorkingDay === "boolean") {
+    return dayOverride.isWorkingDay
+  }
+
+  const restDays = (() => {
+    if (!workSchedule?.restDays || !Array.isArray(workSchedule.restDays)) {
+      return DEFAULT_REST_DAYS
+    }
+
+    return new Set(
+      workSchedule.restDays
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.toUpperCase())
+    )
+  })()
+
+  return !restDays.has(dayName)
 }
 
 const parseTimeOnAttendanceDate = (attendanceDate: Date, value: Date): Date | null => {
@@ -255,7 +314,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
   const rawEnd = hasExplicitCustomRange ? parsedEnd ?? todayPh : selectedPayPeriod?.cutoffEndDate ?? parsedEnd ?? todayPh
   const [startDate, endDate] = rawStart.getTime() <= rawEnd.getTime() ? [rawStart, rawEnd] : [rawEnd, rawStart]
 
-  const [logs, leaves, activeEmployees, presentToday, pendingLeaveRequests, pendingOvertimeRequests, anomalies] = await Promise.all([
+  const [logs, leaves, presentToday, pendingLeaveRequests, pendingOvertimeRequests, holidays, scopedEmployees] = await Promise.all([
     db.dailyTimeRecord.findMany({
       where: {
         employee: { companyId: context.companyId },
@@ -290,6 +349,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
                 workStartTime: true,
                 workEndTime: true,
                 gracePeriodMins: true,
+                restDays: true,
                 dayOverrides: true,
               },
             },
@@ -323,7 +383,6 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
         },
       },
     }),
-    db.employee.count({ where: { companyId: context.companyId, isActive: true, deletedAt: null } }),
     db.dailyTimeRecord.count({
       where: {
         employee: { companyId: context.companyId },
@@ -385,48 +444,39 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
         },
       },
     }),
-    db.dailyTimeRecord.findMany({
+    db.holiday.findMany({
       where: {
-        employee: { companyId: context.companyId },
-        attendanceDate: { gte: startDate, lte: endDate },
+        holidayDate: { gte: startDate, lte: endDate },
+        isActive: true,
         OR: [
-          { actualTimeIn: null },
-          { actualTimeOut: null },
+          { companyId: null },
+          { companyId: context.companyId },
         ],
       },
-      take: 100,
-      orderBy: [{ attendanceDate: "desc" }],
       select: {
         id: true,
-        employeeId: true,
-        attendanceDate: true,
-        scheduledTimeIn: true,
-        scheduledTimeOut: true,
-        actualTimeIn: true,
-        actualTimeOut: true,
-        hoursWorked: true,
-        tardinessMins: true,
-        undertimeMins: true,
-        overtimeHours: true,
-        nightDiffHours: true,
-        attendanceStatus: true,
-        approvalStatusCode: true,
-        remarks: true,
-        employee: {
+        holidayDate: true,
+      },
+    }),
+    db.employee.findMany({
+      where: {
+        companyId: context.companyId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employeeNumber: true,
+        photoUrl: true,
+        workSchedule: {
           select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            employeeNumber: true,
-            photoUrl: true,
-            workSchedule: {
-              select: {
-                workStartTime: true,
-                workEndTime: true,
-                gracePeriodMins: true,
-                dayOverrides: true,
-              },
-            },
+            workStartTime: true,
+            workEndTime: true,
+            gracePeriodMins: true,
+            restDays: true,
+            dayOverrides: true,
           },
         },
       },
@@ -495,7 +545,21 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
     },
   }))
 
-  const anomalyWorkbenchItems: WorkbenchItem[] = anomalies.map((log) => {
+  const dtrDateByEmployee = new Set(logs.map((log) => `${log.employeeId}:${toPhDateInputValue(log.attendanceDate)}`))
+  const holidayDateSet = new Set(holidays.map((holiday) => toPhDateInputValue(holiday.holidayDate)))
+  const approvedLeaveDateByEmployee = new Set<string>()
+  for (const leave of leaves) {
+    const leaveDates = getDateRange(leave.startDate, leave.endDate)
+    for (const leaveDate of leaveDates) {
+      approvedLeaveDateByEmployee.add(`${leave.employeeId}:${toPhDateInputValue(leaveDate)}`)
+    }
+  }
+
+  let incompleteLogsCount = 0
+  let absencesCount = 0
+
+  const anomalyWorkbenchItems: WorkbenchItem[] = []
+  for (const log of logs) {
     const computedMetrics = computeScheduleBasedAttendanceMetrics({
       attendanceDate: log.attendanceDate,
       actualTimeIn: log.actualTimeIn,
@@ -512,13 +576,11 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
 
     const missingIn = !log.actualTimeIn
     const missingOut = !log.actualTimeOut
-    const details = missingIn && missingOut
-      ? "Missing clock-in and clock-out"
-      : missingIn
-        ? "Missing clock-in"
-        : "Missing clock-out"
+    if (!missingIn && !missingOut) {
+      continue
+    }
 
-    return {
+    const baseData: WorkbenchItem = {
       id: `WB-${log.id}`,
       employeeId: log.employeeId,
       employeeName: `${log.employee.lastName}, ${log.employee.firstName}`,
@@ -526,7 +588,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
       date: log.attendanceDate.toISOString(),
       type: "MISSING_LOG",
       status: "ANOMALY",
-      details,
+      details: "",
       data: {
         id: log.id,
         employeeId: log.employeeId,
@@ -552,7 +614,80 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
         },
       },
     }
-  })
+
+    if (missingIn && missingOut) {
+      if (log.attendanceStatus === AttendanceStatus.ON_LEAVE || log.attendanceStatus === AttendanceStatus.HOLIDAY) {
+        continue
+      }
+
+      absencesCount += 1
+      anomalyWorkbenchItems.push({
+        ...baseData,
+        type: "ABSENCE",
+        details: "No clock-in and clock-out (marked absent/no logs).",
+      })
+      continue
+    }
+
+    incompleteLogsCount += 1
+    anomalyWorkbenchItems.push({
+      ...baseData,
+      type: "ATTENDANCE_EXCEPTION",
+      details: missingIn ? "Incomplete logs: missing clock-in." : "Incomplete logs: missing clock-out.",
+    })
+  }
+
+  const periodDates = getDateRange(startDate, endDate)
+  for (const employee of scopedEmployees) {
+    for (const date of periodDates) {
+      const dateKey = toPhDateInputValue(date)
+      const employeeDateKey = `${employee.id}:${dateKey}`
+
+      if (dtrDateByEmployee.has(employeeDateKey)) continue
+      if (approvedLeaveDateByEmployee.has(employeeDateKey)) continue
+      if (holidayDateSet.has(dateKey)) continue
+      if (!getIsScheduledWorkingDay(date, employee.workSchedule)) continue
+
+      const attendanceDate = parsePhDateInputToUtcDateOnly(dateKey)
+      if (!attendanceDate) continue
+
+      absencesCount += 1
+      anomalyWorkbenchItems.push({
+        id: `WB-ABS-${employee.id}-${dateKey}`,
+        employeeId: employee.id,
+        employeeName: `${employee.lastName}, ${employee.firstName}`,
+        employeeNumber: employee.employeeNumber,
+        date: attendanceDate.toISOString(),
+        type: "ABSENCE",
+        status: "ANOMALY",
+        details: "No DTR record on a scheduled workday.",
+        data: {
+          id: `draft-${employee.id}-${dateKey}`,
+          employeeId: employee.id,
+          attendanceDate: attendanceDate.toISOString(),
+          scheduledTimeIn: null,
+          scheduledTimeOut: null,
+          actualTimeIn: null,
+          actualTimeOut: null,
+          hoursWorked: 0,
+          tardinessMins: 0,
+          undertimeMins: 0,
+          overtimeHours: 0,
+          nightDiffHours: 0,
+          attendanceStatus: AttendanceStatus.ABSENT,
+          approvalStatusCode: "PENDING",
+          remarks: "Auto-detected from missing workday DTR.",
+          employee: {
+            id: employee.id,
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            employeeNumber: employee.employeeNumber,
+            photoUrl: employee.photoUrl,
+          },
+        },
+      })
+    }
+  }
 
   const pendingLeaveItems: WorkbenchItem[] = pendingLeaveRequests.map((request) => {
     const startLabel = toPhDateInputValue(request.startDate)
@@ -605,6 +740,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
   const pendingOTs = pendingOvertimeRequests.length
   const anomalyCount = anomalyWorkbenchItems.length
   const readinessScore = Math.max(0, Math.min(100, Math.round(100 - anomalyCount * 3 - pendingLeaves * 2 - pendingOTs * 2)))
+  const activeEmployees = scopedEmployees.length
 
   return {
     companyId: context.companyId,
@@ -620,8 +756,8 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
       stats: {
         pendingLeaves,
         pendingOTs,
-        missingLogs: anomalyCount,
-        absences: 0,
+        missingLogs: incompleteLogsCount,
+        absences: absencesCount,
         readinessScore,
       },
     },

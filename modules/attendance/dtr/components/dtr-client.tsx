@@ -802,16 +802,13 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                         {isAwaitingSupervisor ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                className={cn(
-                                  "h-7",
-                                  "border-border text-muted-foreground bg-muted/30 hover:bg-muted/30"
-                                )}
-                                variant="outline"
-                                disabled={isOverridePending}
-                                onClick={() => openOverrideApprovalDialog(item)}
-                              >
+                            <Button
+                              size="sm"
+                              className="h-7"
+                              variant="destructive"
+                              disabled={isOverridePending}
+                              onClick={() => openOverrideApprovalDialog(item)}
+                            >
                                 Override
                               </Button>
                             </TooltipTrigger>

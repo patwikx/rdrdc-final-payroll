@@ -165,8 +165,10 @@ export async function updateCompanyProfileAction(
 
       const primaryContact = await tx.companyContact.findFirst({
         where: { companyId: context.companyId, isPrimary: true },
-        select: { id: true },
+        select: { id: true, number: true },
       })
+
+      const normalizedContactNumber = payload.primaryContact.number?.trim() || undefined
 
       if (primaryContact) {
         await tx.companyContact.update({
@@ -175,19 +177,19 @@ export async function updateCompanyProfileAction(
             contactTypeId: payload.primaryContact.contactTypeId,
             countryCode: toNullable(payload.primaryContact.countryCode),
             areaCode: toNullable(payload.primaryContact.areaCode),
-            number: payload.primaryContact.number,
+            number: normalizedContactNumber ?? primaryContact.number,
             extension: toNullable(payload.primaryContact.extension),
             isActive: true,
           },
         })
-      } else {
+      } else if (normalizedContactNumber) {
         await tx.companyContact.create({
           data: {
             companyId: context.companyId,
             contactTypeId: payload.primaryContact.contactTypeId,
             countryCode: toNullable(payload.primaryContact.countryCode) ?? "+63",
             areaCode: toNullable(payload.primaryContact.areaCode),
-            number: payload.primaryContact.number,
+            number: normalizedContactNumber,
             extension: toNullable(payload.primaryContact.extension),
             isPrimary: true,
             isActive: true,

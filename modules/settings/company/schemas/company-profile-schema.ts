@@ -86,7 +86,7 @@ const companyProfileContactSchema = z
     contactTypeId: z.enum(CONTACT_TYPE_OPTIONS),
     countryCode: optionalText(6),
     areaCode: optionalText(8),
-    number: z.string().trim().min(1).max(30),
+    number: optionalText(30),
     extension: optionalText(10),
   })
 

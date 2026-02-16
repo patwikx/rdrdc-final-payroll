@@ -46,6 +46,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
     items: [
       { id: "dtr", label: "Daily Time Record", path: "/attendance/dtr" },
       { id: "sync-biometrics", label: "Sync Biometrics", path: "/attendance/sync-biometrics" },
+      { id: "sync-biometrics-device", label: "Device Sync", path: "/attendance/sync-biometrics/device" },
       { id: "schedules", label: "Leave Calendar", path: "/attendance/schedules" },
     ],
   },

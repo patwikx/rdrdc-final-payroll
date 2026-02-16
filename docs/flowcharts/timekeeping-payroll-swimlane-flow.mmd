@@ -1,26 +1,34 @@
 %%{init: {"theme": "base", "themeVariables": {"fontSize": "11px"}, "flowchart": {"htmlLabels": true, "nodeSpacing": 40, "rankSpacing": 55}}}%%
 flowchart LR
   subgraph TK[Timekeeping and HR]
-    TK1[Capture Attendance<br/>Biometric Sync and DTR Corrections]
-    TK2[Validate Timekeeping Data]
+    TK1[Collect Attendance and Corrections]
+    TK2[Check Timekeeping Readiness]
     TKD{Timekeeping Ready?}
-    TK3[Resolve Attendance Issues<br/>Correct and Revalidate]
+    TK3[Resolve Issues and Recheck]
   end
 
-  subgraph PA[Payroll Admin]
+  subgraph PA[HR Payroll Staff]
     PA1[Create Payroll Run]
     PA2[Review Payroll Register]
     PAD{Adjustments Needed?}
     PA3[Apply Manual Adjustments]
-    PA4[Close Run and Lock Period]
+    PA4[Close Payroll Run]
+    PA6[Reopen Run for Corrections]
+    PA7{Need Reopen?}
   end
 
   subgraph SYS[System]
-    SYS1[Validate Run<br/>Readiness and Policy Checks]
+    SYS1[Validate Run Inputs]
     SYSD{Validation Passed?}
-    SYS2[Calculate Payroll<br/>Earnings, Deductions, Net Pay]
-    SYS3[Generate Payslips<br/>Preview, Download, Email]
-    SYS4[Generate Statutory Reports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
+    SYS2[Proceed to Calculation]
+    SYS3[Calculate Payroll Values]
+    SYSD2{Calculation Successful?}
+    SYS4[Generate Payslips]
+    SYS5[Payslip Release Tools<br/>Preview, Download, Send Email]
+    SYS6{Regular Payroll Period?}
+    SYS7[Lock Pay Period]
+    SYS8[Keep Pay Period Open]
+    SYS9[Generate Statutory Reports and Exports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
   end
 
   subgraph EMP[Employee]
@@ -31,8 +39,14 @@ flowchart LR
   TKD -- No --> TK3 --> TK2
   TKD -- Yes --> PA1 --> SYS1 --> SYSD
   SYSD -- No --> PA1
-  SYSD -- Yes --> SYS2 --> PA2 --> PAD
-  PAD -- Yes --> PA3 --> PA2
-  PAD -- No --> SYS3 --> EMP1 --> PA4 --> SYS4
+  SYSD -- Yes --> SYS2 --> SYS3 --> SYSD2
+  SYSD2 -- No --> SYS2
+  SYSD2 -- Yes --> PA2 --> PAD
+  PAD -- Yes --> PA3 --> SYS3
+  PAD -- No --> SYS4 --> SYS5 --> EMP1 --> PA4 --> SYS6
+  SYS6 -- Yes --> SYS7 --> PA7
+  SYS6 -- No --> SYS8 --> PA7
+  PA7 -- Yes --> PA6 --> PA2
+  PA7 -- No --> SYS9
 
   classDef default fill:#ffffff,stroke:#000000,color:#000000;

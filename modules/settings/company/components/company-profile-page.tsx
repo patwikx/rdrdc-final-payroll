@@ -685,7 +685,7 @@ function ContactFields({ form, updateContactField }: LayoutProps) {
           </SelectContent>
         </Select>
       </Field>
-      <Field label="Contact Number" required>
+      <Field label="Contact Number">
         <Input value={form.primaryContact.number ?? ""} onChange={(event) => updateContactField("number", event.target.value)} />
       </Field>
       <Field label="Country Code"><Input value={form.primaryContact.countryCode ?? ""} onChange={(event) => updateContactField("countryCode", event.target.value)} /></Field>

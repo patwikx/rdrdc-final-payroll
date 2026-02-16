@@ -100,6 +100,7 @@ const subItemIconMap: Record<string, ReactNode> = {
   // Time Keeping
   dtr: <IconClock className="size-3.5" />,
   "sync-biometrics": <IconClipboardList className="size-3.5" />,
+  "sync-biometrics-device": <IconClipboardList className="size-3.5" />,
   schedules: <IconCalendarTime className="size-3.5" />,
   // Payroll
   "payroll-runs": <IconReceipt2 className="size-3.5" />,

@@ -1,43 +1,33 @@
 flowchart TD
-  A[Employee Submits Request<br/>Leave or Overtime]
-  B[Validate Input, Company Scope, and Access]
-  C{Request Type}
-
-  D[Leave Request<br/>Reserve Leave Credits on Submit]
-  E[Overtime Request<br/>Validate Minimum Duration and Eligibility]
-
-  F[Set Request Status to Pending Supervisor Approval]
+  A[Employee Submits Leave or Overtime Request]
+  B[System Checks Request Details and Employee Eligibility]
+  C[Route Request to Immediate Supervisor]
+  D{Employee Updates Request Before Supervisor Action?}
+  E[Employee Edits Request]
+  F[Employee Withdraws Request]
   G[Supervisor Reviews Request]
   H{Supervisor Decision}
-  I[Supervisor Rejects<br/>Status Rejected and Notify Employee]
-  J[Supervisor Approves<br/>Status Supervisor Approved]
+  I[Supervisor Rejects Request]
+  J[Supervisor Approves and Routes to HR]
+  K[HR Final Review]
+  L{HR Decision}
+  M[HR Rejects Request]
+  N[HR Approves Request]
+  O{Request Type}
+  P[Leave: Apply Final Leave Balance Movement]
+  Q[Overtime: Apply Final Overtime Outcome<br/>Payroll OT or CTO Based on Policy]
+  R[Record Decision and Notify Employee]
+  S[End]
 
-  K[Route to HR Final Approval Queue]
-  L[HR Reviews with Required Remarks]
-  M{HR Decision}
-
-  N[HR Rejects<br/>Status Rejected]
-  O[HR Approves<br/>Status Approved]
-
-  P{Approved Request Type}
-  Q[Leave Finalization<br/>Consume Reserved Credits and Update Leave Ledger]
-  R[Overtime Finalization<br/>Apply OT Pay or Convert to CTO Credits]
-
-  S[If Rejected Leave<br/>Release Reserved Leave Credits]
-  T[Write Audit Log and Notify Employee]
-  U[End]
-
-  A --> B --> C
-  C -- Leave --> D --> F
-  C -- Overtime --> E --> F
-
-  F --> G --> H
-  H -- Reject --> I --> S --> T --> U
-  H -- Approve --> J --> K --> L --> M
-
-  M -- Reject --> N --> S --> T --> U
-  M -- Approve --> O --> P
-  P -- Leave --> Q --> T --> U
-  P -- Overtime --> R --> T --> U
+  A --> B --> C --> D
+  D -- Edit --> E --> B
+  D -- Withdraw --> F --> R --> S
+  D -- No --> G --> H
+  H -- Reject --> I --> R --> S
+  H -- Approve --> J --> K --> L
+  L -- Reject --> M --> R --> S
+  L -- Approve --> N --> O
+  O -- Leave --> P --> R --> S
+  O -- Overtime --> Q --> R --> S
 
   classDef default fill:#ffffff,stroke:#000000,color:#000000;

@@ -162,6 +162,11 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
         </div>
 
         <div className="flex items-center gap-2">
+          <Link href={`/${companyId}/attendance/sync-biometrics/device`}>
+            <Button variant="outline" className="gap-2">
+              Device Sync
+            </Button>
+          </Link>
           <Link href={`/${companyId}/attendance/dtr`}>
             <Button variant="outline" className="gap-2">
               <IconArrowLeft className="h-3.5 w-3.5" /> Back to DTR

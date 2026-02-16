@@ -1,30 +1,42 @@
 flowchart TD
-  A[Capture Attendance Data<br/>Biometric Sync and Manual DTR Corrections]
-  B[Validate Timekeeping Completeness<br/>Present, Absent, Tardiness, Undertime, OT]
+  A[Collect and Finalize Attendance Inputs<br/>Biometric Data and Manual Corrections]
+  B[Check Timekeeping Readiness<br/>Attendance, Leaves, Overtime, and Required Inputs]
   C{Timekeeping Ready?}
-  D[Resolve Attendance Issues<br/>Corrections and Revalidation]
-  E[Create Payroll Run<br/>Regular or Bonus Type]
-  F[Validate Payroll Run<br/>Employee Readiness and Policy Checks]
+  D[Resolve Missing or Incorrect Records<br/>Then Recheck]
+  E[Create Payroll Run for Selected Period and Employee Scope]
+  F[Run Pre-Calculation Validation]
   G{Validation Passed?}
-  H[Fix Validation Findings<br/>Then Re-run Validation]
-  I[Calculate Payroll]
-  J[Compute Earnings<br/>Basic Pay, Leave Pay, OT, Night Differential]
-  K[Compute Deductions<br/>Statutory, Recurring, Loans, Attendance-Based]
-  L[Compute Net Pay and Persist Payslip Line Items]
-  M[Review Payroll Register and Employee Results]
+  H[Fix Validation Findings<br/>Then Validate Again]
+  I[Proceed to Payroll Calculation]
+  J[System Calculates Payroll Values]
+  K{Calculation Successful?}
+  L[Review Calculation Issue<br/>Return to Validation or Recalculation]
+  M[HR Reviews Payroll Register and Employee Results]
   N{Adjustments Needed?}
-  O[Apply Manual Adjustments<br/>Earnings or Deductions]
-  P[Generate Payslips<br/>Preview, Download, Email]
-  Q[Close Payroll Run and Lock Pay Period]
-  R[Generate Statutory Reports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
-  S[End Payroll Cycle]
+  O[Apply Approved Adjustments<br/>Then Recalculate]
+  P[Generate Payslips]
+  Q[Release or Send Payslips to Employees]
+  R[Close Payroll Run]
+  S{Regular Payroll Period?}
+  T[Lock Pay Period]
+  U[Keep Pay Period Open]
+  V{Need to Reopen for Corrections?}
+  W[Reopen Payroll Run and Return to Review]
+  X[Generate Statutory Reports and Exports<br/>SSS, PhilHealth, Pag-IBIG, DOLE, BIR]
+  Y[End Payroll Cycle]
 
   A --> B --> C
   C -- No --> D --> B
   C -- Yes --> E --> F --> G
   G -- No --> H --> F
-  G -- Yes --> I --> J --> K --> L --> M --> N
-  N -- Yes --> O --> M
+  G -- Yes --> I --> J --> K
+  K -- No --> L --> I
+  K -- Yes --> M --> N
+  N -- Yes --> O --> J
   N -- No --> P --> Q --> R --> S
+  S -- Yes --> T --> V
+  S -- No --> U --> V
+  V -- Yes --> W --> M
+  V -- No --> X --> Y
 
   classDef default fill:#ffffff,stroke:#000000,color:#000000;

@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconCalendarClock, IconCheck, IconChevronLeft, IconChevronRight, IconPlus, IconX } from "@tabler/icons-react"
+import {
+  IconBuilding,
+  IconCalendarClock,
+  IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlus,
+  IconX,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -167,6 +175,7 @@ const StatusBadge = ({ active }: { active: boolean }) => {
     </Badge>
   )
 }
+const fieldLabelClass = "text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
 
 export function LeaveOtPoliciesPage({
   companyId,
@@ -279,39 +288,61 @@ export function LeaveOtPoliciesPage({
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconCalendarClock className="size-5" /> {companyName} Leave / OT Policies</h1>
-            <p className="text-sm text-muted-foreground">Manage leave and overtime policies using live configuration records.</p>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System Settings</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconCalendarClock className="size-6 text-primary" />
+                Leave & Overtime Setup
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                <IconBuilding className="mr-1 size-3.5" />
+                {companyName}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Configure leave entitlements and overtime multipliers with live company policy records.
+            </p>
           </div>
-          <div className="inline-flex rounded-md border border-border/60 bg-background p-1">
-            <Button type="button" size="sm" variant={tab === "leave" ? "default" : "ghost"} onClick={() => setTab("leave")}>Leave Policies</Button>
-            <Button type="button" size="sm" variant={tab === "ot" ? "default" : "ghost"} onClick={() => setTab("ot")}>OT Policies</Button>
+          <div className="flex items-center gap-2 border border-border/60 bg-background/90 p-2">
+            <Badge variant="outline">{leaveTypes.length} Leave Types</Badge>
+            <Badge variant="outline">{overtimeRates.length} OT Rules</Badge>
+            <div className="inline-flex border border-border/60 bg-background p-1">
+              <Button type="button" size="sm" className="h-8 px-2" variant={tab === "leave" ? "default" : "ghost"} onClick={() => setTab("leave")}>
+                Leave Policies
+              </Button>
+              <Button type="button" size="sm" className="h-8 px-2" variant={tab === "ot" ? "default" : "ghost"} onClick={() => setTab("ot")}>
+                OT Policies
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
-      <section className="grid border-y border-border/60 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="xl:border-r xl:border-border/60">
+      <section className="grid gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="border border-border/60">
           {tab === "leave" ? (
-            <div className="border-b border-border/60 px-4 py-3 sm:px-6">
+            <div className="border-b border-border/60 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-xs font-semibold text-foreground">Leave Balance Initialization</h3>
-                  <p className="text-xs text-muted-foreground">Initialize yearly leave balances based on active leave policies.</p>
+                  <h3 className="text-base font-medium text-foreground">Leave Balance Initialization</h3>
+                  <p className="text-sm text-muted-foreground">Initialize yearly leave balances based on active leave policies.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs">Year<Required /></Label>
+                  <Label className={fieldLabelClass}>Year<Required /></Label>
                   <Input
                     type="number"
                     value={initializationYear}
                     min={2000}
                     max={2100}
                     onChange={(event) => setInitializationYear(Number(event.target.value) || 0)}
-                    className="h-7 w-28"
+                    className="h-8 w-28"
                   />
-                  <Button type="button" onClick={handleInitializeLeaveBalances} disabled={isInitializing}>
+                  <Button type="button" size="sm" className="h-8 px-2" onClick={handleInitializeLeaveBalances} disabled={isInitializing}>
                     {isInitializing ? "Initializing..." : "Initialize"}
                   </Button>
                 </div>
@@ -319,20 +350,22 @@ export function LeaveOtPoliciesPage({
             </div>
           ) : null}
 
-          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
+          <div className="border-b border-border/60 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-xs font-semibold text-foreground">{tab === "leave" ? "Leave Types" : "OT Policy Rules"}</h2>
-                <p className="text-xs text-muted-foreground">
+                <h2 className="text-base font-medium text-foreground">{tab === "leave" ? "Leave Types" : "OT Policy Rules"}</h2>
+                <p className="text-sm text-muted-foreground">
                   {tab === "leave"
                     ? "Company leave types with primary entitlement policy."
                     : "Current overtime multipliers per overtime type."}
                 </p>
               </div>
-              <Button type="button" onClick={tab === "leave" ? handleCreateNewLeave : handleCreateNewOt}><IconPlus className="size-3.5" /> Add New</Button>
+              <Button type="button" size="sm" className="h-8 px-2" onClick={tab === "leave" ? handleCreateNewLeave : handleCreateNewOt}>
+                <IconPlus className="size-3.5" /> Add New
+              </Button>
             </div>
           </div>
-          <div className="px-4 py-3 sm:px-6">
+          <div className="px-4 py-3">
             {tab === "leave" ? (
               <div className="space-y-3">
                 <div className="overflow-x-auto border border-border/60">
@@ -469,7 +502,7 @@ export function LeaveOtPoliciesPage({
           </div>
         </section>
 
-        <aside className="xl:sticky xl:top-20 xl:h-fit">
+        <aside className="border border-border/60 xl:sticky xl:top-20 xl:h-fit">
           <div className="border-b border-border/60 px-4 py-3">
             <h2 className="text-base font-medium text-foreground">
               {tab === "leave"
@@ -491,21 +524,21 @@ export function LeaveOtPoliciesPage({
               <>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Code<Required /></Label>
+                    <Label className={fieldLabelClass}>Code<Required /></Label>
                     <Input value={leaveForm.code} onChange={(event) => setLeaveForm((prev) => ({ ...prev, code: event.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Name<Required /></Label>
+                    <Label className={fieldLabelClass}>Name<Required /></Label>
                     <Input value={leaveForm.name} onChange={(event) => setLeaveForm((prev) => ({ ...prev, name: event.target.value }))} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Description</Label>
+                  <Label className={fieldLabelClass}>Description</Label>
                   <Textarea value={leaveForm.description ?? ""} onChange={(event) => setLeaveForm((prev) => ({ ...prev, description: event.target.value }))} className="h-16" />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Employment Status<Required /></Label>
+                    <Label className={fieldLabelClass}>Employment Status<Required /></Label>
                     <Select value={leaveForm.employmentStatusId} onValueChange={(value) => setLeaveForm((prev) => ({ ...prev, employmentStatusId: value }))}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -516,13 +549,13 @@ export function LeaveOtPoliciesPage({
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Annual Entitlement<Required /></Label>
+                    <Label className={fieldLabelClass}>Annual Entitlement<Required /></Label>
                     <Input type="number" min={0} step="0.25" value={leaveForm.annualEntitlement} onChange={(event) => setLeaveForm((prev) => ({ ...prev, annualEntitlement: Number(event.target.value) || 0 }))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Accrual Method<Required /></Label>
+                    <Label className={fieldLabelClass}>Accrual Method<Required /></Label>
                     <Select value={leaveForm.accrualMethodCode} onValueChange={(value) => setLeaveForm((prev) => ({ ...prev, accrualMethodCode: value as UpsertLeaveTypePolicySettingsInput["accrualMethodCode"] }))}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -533,7 +566,7 @@ export function LeaveOtPoliciesPage({
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Proration Method<Required /></Label>
+                    <Label className={fieldLabelClass}>Proration Method<Required /></Label>
                     <Select value={leaveForm.prorationMethodCode} onValueChange={(value) => setLeaveForm((prev) => ({ ...prev, prorationMethodCode: value as UpsertLeaveTypePolicySettingsInput["prorationMethodCode"] }))}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -545,7 +578,7 @@ export function LeaveOtPoliciesPage({
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Effective From<Required /></Label>
+                  <Label className={fieldLabelClass}>Effective From<Required /></Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-full justify-start text-left", !leaveForm.effectiveFrom && "text-muted-foreground")}>
@@ -563,7 +596,7 @@ export function LeaveOtPoliciesPage({
                   </Popover>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Leave Eligibility<Required /></Label>
+                  <Label className={fieldLabelClass}>Leave Eligibility<Required /></Label>
                   <Select
                     value={leaveForm.statusApplicability}
                     onValueChange={(value) =>
@@ -581,31 +614,31 @@ export function LeaveOtPoliciesPage({
                   </Select>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                     <span className="text-xs text-muted-foreground">Paid leave</span>
                     <Switch checked={leaveForm.isPaid} onCheckedChange={(value) => setLeaveForm((prev) => ({ ...prev, isPaid: value }))} />
                   </div>
-                  <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                     <span className="text-xs text-muted-foreground">Allow half day</span>
                     <Switch checked={leaveForm.allowHalfDay} onCheckedChange={(value) => setLeaveForm((prev) => ({ ...prev, allowHalfDay: value }))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                     <span className="text-xs text-muted-foreground">Carry-over enabled</span>
                     <Switch checked={leaveForm.isCarriedOver} onCheckedChange={(value) => setLeaveForm((prev) => ({ ...prev, isCarriedOver: value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Max Carry-over Days</Label>
+                    <Label className={fieldLabelClass}>Max Carry-over Days</Label>
                     <Input type="number" min={0} step="0.25" value={leaveForm.maxCarryOverDays ?? 0} onChange={(event) => setLeaveForm((prev) => ({ ...prev, maxCarryOverDays: Number(event.target.value) || 0 }))} />
                   </div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                     <span className="text-xs text-muted-foreground">Requires approval</span>
                     <Switch checked={leaveForm.requiresApproval} onCheckedChange={(value) => setLeaveForm((prev) => ({ ...prev, requiresApproval: value }))} />
                   </div>
-                  <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                     <span className="text-xs text-muted-foreground">Active</span>
                     <Switch checked={leaveForm.isActive} onCheckedChange={(value) => setLeaveForm((prev) => ({ ...prev, isActive: value }))} />
                   </div>
@@ -618,7 +651,7 @@ export function LeaveOtPoliciesPage({
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Overtime Type<Required /></Label>
+                  <Label className={fieldLabelClass}>Overtime Type<Required /></Label>
                   <Select value={otForm.overtimeTypeCode} onValueChange={(value) => setOtForm((prev) => ({ ...prev, overtimeTypeCode: value as UpsertOvertimeRateSettingsInput["overtimeTypeCode"] }))}>
                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -629,11 +662,11 @@ export function LeaveOtPoliciesPage({
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Multiplier<Required /></Label>
+                  <Label className={fieldLabelClass}>Multiplier<Required /></Label>
                   <Input type="number" min={0.5} max={10} step="0.05" value={otForm.rateMultiplier} onChange={(event) => setOtForm((prev) => ({ ...prev, rateMultiplier: Number(event.target.value) || 0 }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Effective From<Required /></Label>
+                  <Label className={fieldLabelClass}>Effective From<Required /></Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-full justify-start text-left", !otForm.effectiveFrom && "text-muted-foreground")}>
@@ -651,10 +684,10 @@ export function LeaveOtPoliciesPage({
                   </Popover>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Description</Label>
+                  <Label className={fieldLabelClass}>Description</Label>
                   <Textarea className="h-20" value={otForm.description ?? ""} onChange={(event) => setOtForm((prev) => ({ ...prev, description: event.target.value }))} />
                 </div>
-                <div className="flex h-9 items-center justify-between rounded-md border border-input bg-background px-3">
+                <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
                   <span className="text-xs text-muted-foreground">Active</span>
                   <Switch checked={otForm.isActive} onCheckedChange={(value) => setOtForm((prev) => ({ ...prev, isActive: value }))} />
                 </div>

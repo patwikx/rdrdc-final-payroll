@@ -91,6 +91,7 @@ export default async function DailyTimeRecordRoutePage({ params, searchParams }:
   return (
     <DtrClientPage
       companyId={data.companyId}
+      companyName={data.companyName}
       logs={data.logs}
       stats={data.stats}
       workbenchData={data.workbenchData}

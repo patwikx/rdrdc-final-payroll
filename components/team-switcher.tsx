@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -22,6 +23,7 @@ type TeamOption = {
   id: string
   name: string
   code: string
+  logoUrl?: string | null
   plan: string
 }
 
@@ -52,9 +54,12 @@ export function TeamSwitcher({
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <IconBuilding className="size-4" />
-              </div>
+              <Avatar className="size-8 rounded-lg border border-sidebar-border/60 bg-sidebar-primary/5 [&_*]:rounded-lg">
+                <AvatarImage src={activeTeam.logoUrl ?? undefined} alt={activeTeam.name} className="object-cover" />
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                  <IconBuilding className="size-4" />
+                </AvatarFallback>
+              </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{activeTeam.name}</span>
                 <span className="truncate text-xs text-muted-foreground">
@@ -81,9 +86,12 @@ export function TeamSwitcher({
                 onClick={() => void onTeamChange?.(team.id)}
                 className="gap-2 p-2"
               >
-                <div className="flex size-6 items-center justify-center rounded-md border bg-background">
-                  <IconBuilding className="size-3.5" />
-                </div>
+                <Avatar className="size-6 rounded-md border border-border/60 bg-background [&_*]:rounded-md">
+                  <AvatarImage src={team.logoUrl ?? undefined} alt={team.name} className="object-cover" />
+                  <AvatarFallback className="bg-background text-foreground">
+                    <IconBuilding className="size-3.5" />
+                  </AvatarFallback>
+                </Avatar>
                 <div className="grid flex-1 leading-tight">
                   <span className="truncate text-sm font-medium">{team.name}</span>
                   <span className="truncate text-xs text-muted-foreground">

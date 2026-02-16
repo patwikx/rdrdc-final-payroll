@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
@@ -249,18 +250,33 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconScale className="size-5" /> {companyName} Statutory Tables</h1>
-            <p className="text-sm text-muted-foreground">Simple bracket setup for SSS, PhilHealth, Pag-IBIG, and semi-monthly withholding tax.</p>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System Settings</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconScale className="size-6 text-primary" />
+                Statutory Tables
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                <IconBuilding className="mr-1 size-3.5" />
+                {companyName}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Configure contribution brackets for SSS, PhilHealth, Pag-IBIG, and semi-monthly withholding tax.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={handleReset} disabled={isPending}>
+          <div className="flex flex-wrap items-center gap-2 border border-border/60 bg-background/90 p-2">
+            <Badge variant="outline">{form.sssRows.length + form.philHealthRows.length + form.pagIbigRows.length + form.taxRows.length} total rows</Badge>
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={handleReset} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset
             </Button>
-            <Button type="button" onClick={handleSave} disabled={isPending}>
+            <Button type="button" size="sm" className="h-8 px-2" onClick={handleSave} disabled={isPending}>
               <IconCheck className="size-4" />
               {isPending ? "Saving..." : "Save Tables"}
             </Button>
@@ -268,17 +284,17 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
         </div>
       </header>
 
-      <div className="space-y-4 py-6">
-        <section className="border-y border-border/60 px-4 py-3 sm:px-6">
-          <div className="inline-flex w-fit rounded-md border border-border/60 bg-background p-1">
-            <Button size="sm" type="button" variant={tab === "sss" ? "default" : "ghost"} onClick={() => setTab("sss")}><IconShieldCheck className="size-3.5" /> SSS</Button>
-            <Button size="sm" type="button" variant={tab === "philhealth" ? "default" : "ghost"} onClick={() => setTab("philhealth")}><IconHeartRateMonitor className="size-3.5" /> PhilHealth</Button>
-            <Button size="sm" type="button" variant={tab === "pagibig" ? "default" : "ghost"} onClick={() => setTab("pagibig")}><IconBuilding className="size-3.5" /> Pag-IBIG</Button>
-            <Button size="sm" type="button" variant={tab === "wtax" ? "default" : "ghost"} onClick={() => setTab("wtax")}><IconReceiptTax className="size-3.5" /> WTAX (Semi-Monthly)</Button>
+      <div className="space-y-4 px-4 py-4 sm:px-6">
+        <section className="border border-border/60 p-3">
+          <div className="inline-flex w-fit border border-border/60 bg-background p-1">
+            <Button size="sm" className="h-8 px-2" type="button" variant={tab === "sss" ? "default" : "ghost"} onClick={() => setTab("sss")}><IconShieldCheck className="size-3.5" /> SSS</Button>
+            <Button size="sm" className="h-8 px-2" type="button" variant={tab === "philhealth" ? "default" : "ghost"} onClick={() => setTab("philhealth")}><IconHeartRateMonitor className="size-3.5" /> PhilHealth</Button>
+            <Button size="sm" className="h-8 px-2" type="button" variant={tab === "pagibig" ? "default" : "ghost"} onClick={() => setTab("pagibig")}><IconBuilding className="size-3.5" /> Pag-IBIG</Button>
+            <Button size="sm" className="h-8 px-2" type="button" variant={tab === "wtax" ? "default" : "ghost"} onClick={() => setTab("wtax")}><IconReceiptTax className="size-3.5" /> WTAX (Semi-Monthly)</Button>
           </div>
         </section>
 
-        <div className="px-4 sm:px-6">
+        <div>
 
       {tab === "sss" ? (
         <SssSection
@@ -328,7 +344,7 @@ export function StatutoryTablesPage({ companyName, initialData }: StatutoryTable
           onEffectiveFromChange={(value) => setForm((prev) => ({ ...prev, effectiveFrom: value }))}
         />
       ) : null}
-        </div>
+      </div>
       </div>
     </main>
   )
@@ -643,18 +659,28 @@ function BracketCard({
   addDisabled?: boolean
 }) {
   return (
-    <section className="space-y-3 border border-border/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
-        <div>
-          <h3 className="inline-flex items-center gap-1.5 text-base font-semibold text-foreground">{icon}<span>{title}</span></h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
+    <section className="border border-border/60 bg-background">
+      <div className="border-b border-border/60 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
+              {icon}
+              <span>{title}</span>
+            </h3>
+            <p className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={onAdd} disabled={addDisabled}>
+            <IconPlus className="size-3.5" />
+            Add Row
+          </Button>
         </div>
-        <div className="flex items-center gap-2">
-          {extraAction}
-          <Button type="button" variant="outline" onClick={onAdd} disabled={addDisabled}><IconPlus className="size-3.5" /> Add Row</Button>
-        </div>
+        {extraAction ? (
+          <div className="mt-3 border-t border-border/60 pt-3">
+            {extraAction}
+          </div>
+        ) : null}
       </div>
-      <div className="space-y-3">{children}</div>
+      <div className="space-y-3 p-4">{children}</div>
     </section>
   )
 }

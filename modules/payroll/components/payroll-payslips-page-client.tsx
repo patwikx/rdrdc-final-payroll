@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import {
+  IconBuildingBank,
   IconChevronLeft,
   IconChevronRight,
   IconCashBanknote,
@@ -18,6 +19,7 @@ import {
 } from "@tabler/icons-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -161,233 +163,249 @@ export function PayrollPayslipsPageClient({
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
-          <IconFileInvoice className="size-5" />
-          {companyName} Payslips History
-        </h1>
-        <p className="text-sm text-muted-foreground">Select an employee on the left to review all generated payslips.</p>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Payroll Operations</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <IconFileInvoice className="size-6 text-primary" />
+              Payslips History
+            </h1>
+            <Badge variant="outline" className="h-6 px-2 text-[11px]">
+              <IconBuildingBank className="mr-1 size-3.5" />
+              {companyName}
+            </Badge>
+            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+              {defaultStartDate} to {defaultEndDate}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">Select an employee on the left to review all generated payslips.</p>
+        </div>
       </header>
 
-      <div
-        className="space-y-4 py-6"
-      >
-        <section className="overflow-hidden border border-border/60">
-          <div className="grid sm:grid-cols-2 xl:grid-cols-4 sm:divide-x sm:divide-border/60">
-            <div className="border-b border-border/60 p-3 sm:border-b-0">
-              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
-                <IconUsers className="size-4" />
-              </div>
-              <p className="text-xs text-muted-foreground">Employees</p>
-              <p className="text-lg font-semibold text-foreground">{String(stats.totalEmployees)}</p>
+      <div className="space-y-4 px-4 py-4 sm:px-6">
+        <section className="overflow-hidden border border-border/60 bg-background">
+          <div className="grid grid-cols-2 gap-px bg-border/60 xl:grid-cols-4">
+            <div className="bg-background px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <IconUsers className="size-3.5" /> Employees
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{String(stats.totalEmployees)}</p>
             </div>
-            <div className="border-b border-border/60 p-3 sm:border-b-0">
-              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
-                <IconReceipt className="size-4" />
-              </div>
-              <p className="text-xs text-muted-foreground">Total Payslips</p>
-              <p className="text-lg font-semibold text-foreground">{String(stats.totalPayslips)}</p>
+            <div className="bg-background px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <IconReceipt className="size-3.5" /> Total Payslips
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{String(stats.totalPayslips)}</p>
             </div>
-            <div className="border-b border-border/60 p-3 sm:border-b-0">
-              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
-                <IconChecklist className="size-4" />
-              </div>
-              <p className="text-xs text-muted-foreground">Released Payslips</p>
-              <p className="text-lg font-semibold text-foreground">{String(stats.releasedCount)}</p>
+            <div className="bg-background px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <IconChecklist className="size-3.5" /> Released
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{String(stats.releasedCount)}</p>
             </div>
-            <div className="p-3">
-              <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
-                <IconCashBanknote className="size-4" />
-              </div>
-              <p className="text-xs text-muted-foreground">Aggregate Net</p>
-              <p className="text-lg font-semibold text-foreground">{stats.totalNet}</p>
+            <div className="bg-background px-3 py-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <IconCashBanknote className="size-3.5" /> Aggregate Net
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.totalNet}</p>
             </div>
           </div>
         </section>
 
-        <section className="overflow-hidden border-y border-border/60">
-          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
-            <h2 className="inline-flex items-center gap-2 text-base font-medium">
-            <IconReceipt className="size-4 text-primary" />
-            Payslip Review Workspace
+        <section className="overflow-hidden border border-border/60 bg-background">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
+              <IconReceipt className="size-4 text-primary" />
+              Payslip Review Workspace
             </h2>
           </div>
-          <div className="grid lg:grid-cols-[340px_1fr]">
-          <aside className="space-y-3 border-r border-border/60 p-4 sm:p-6">
-            <div className="relative">
-              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder="Search employee"
-                className="pl-8"
-              />
-            </div>
-            <ScrollArea className="h-[560px] pr-1">
-              <div className="space-y-2">
-                {isLoading && !hasEmployeeRows ? (
-                  <p className="px-2 py-4 text-xs text-muted-foreground">Loading employees...</p>
-                ) : employees.length === 0 ? (
-                  <p className="px-2 py-4 text-xs text-muted-foreground">No employees found.</p>
-                ) : (
-                  employees.map((employee) => (
-                    <button
-                      key={employee.employeeId}
-                      type="button"
-                      onClick={() => {
-                        setCurrentPage(1)
-                        setSelectedEmployeeId(employee.employeeId)
-                        void fetchData({ employeeId: employee.employeeId, page: 1 })
-                      }}
-                      className={cn(
-                        "w-full border px-3 py-2 text-left text-xs",
-                        selectedEmployeeId === employee.employeeId
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-border/60 bg-background hover:bg-muted/40"
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                          <AvatarImage
-                            src={employee.employeePhotoUrl ?? undefined}
-                            alt={employee.employeeName}
-                            className="!rounded-md object-cover"
-                          />
-                          <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                            {employee.employeeName
-                              .split(",")
-                              .map((part) => part.trim()[0] ?? "")
-                              .slice(0, 2)
-                              .join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{employee.employeeName}</p>
-                          <p className="text-muted-foreground">{employee.employeeNumber}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                )}
+
+          <div className="grid lg:grid-cols-[330px_minmax(0,1fr)]">
+            <aside className="space-y-3 border-b border-border/60 p-4 lg:border-b-0 lg:border-r">
+              <div className="relative">
+                <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="Search employee"
+                  className="h-9 pl-8"
+                />
               </div>
-            </ScrollArea>
-          </aside>
-
-          <section className="space-y-3 p-4 sm:p-6">
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
-            {selectedEmployee ? (
-              <>
-                <div>
-                  <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold">
-                    <IconUser className="size-3.5 text-primary" />
-                    <span>{selectedEmployee.employeeName}</span>
-                  </h2>
-                  <p className="text-xs text-muted-foreground">{selectedEmployee.employeeNumber}</p>
+              <ScrollArea className="h-[420px] pr-1 lg:h-[calc(100vh-360px)]">
+                <div className="space-y-2">
+                  {isLoading && !hasEmployeeRows ? (
+                    <p className="px-2 py-4 text-xs text-muted-foreground">Loading employees...</p>
+                  ) : employees.length === 0 ? (
+                    <p className="px-2 py-4 text-xs text-muted-foreground">No employees found.</p>
+                  ) : (
+                    employees.map((employee) => (
+                      <button
+                        key={employee.employeeId}
+                        type="button"
+                        onClick={() => {
+                          setCurrentPage(1)
+                          setSelectedEmployeeId(employee.employeeId)
+                          void fetchData({ employeeId: employee.employeeId, page: 1 })
+                        }}
+                        className={cn(
+                          "w-full border-l-2 border-transparent border-y border-r border-border/60 bg-background px-3 py-2 text-left text-xs transition-colors hover:bg-muted/30",
+                          selectedEmployeeId === employee.employeeId ? "border-l-primary bg-primary/5" : ""
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <Avatar className="h-9 w-9 shrink-0 border border-border/60">
+                            <AvatarImage
+                              src={employee.employeePhotoUrl ?? undefined}
+                              alt={employee.employeeName}
+                              className="object-cover"
+                            />
+                            <AvatarFallback className="bg-primary/5 text-[10px] font-semibold text-primary">
+                              {employee.employeeName
+                                .split(",")
+                                .map((part) => part.trim()[0] ?? "")
+                                .slice(0, 2)
+                                .join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">{employee.employeeName}</p>
+                            <p className="text-muted-foreground">{employee.employeeNumber}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
+              </ScrollArea>
+            </aside>
 
-                <div className="overflow-x-auto border border-border/60">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Payslip #</th>
-                        <th className="px-3 py-2 text-left">Run</th>
-                        <th className="px-3 py-2 text-left">Period</th>
-                        <th className="px-3 py-2 text-left">Gross</th>
-                        <th className="px-3 py-2 text-left">Deductions</th>
-                        <th className="px-3 py-2 text-left">Net</th>
-                        <th className="px-3 py-2 text-left">Released</th>
-                        <th className="px-3 py-2 text-left">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isLoading ? (
-                        <tr>
-                          <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">Loading payslips...</td>
+            <section className="space-y-3 p-4">
+              {error ? <p className="text-xs text-destructive">{error}</p> : null}
+              {selectedEmployee ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                        <IconUser className="size-3.5 text-primary" />
+                        <span>{selectedEmployee.employeeName}</span>
+                      </h3>
+                      <p className="text-xs text-muted-foreground">{selectedEmployee.employeeNumber}</p>
+                    </div>
+                    <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                      {selectedEmployee.payslipCount} payslip{selectedEmployee.payslipCount === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+
+                  <div className="overflow-x-auto border border-border/60">
+                    <table className="w-full min-w-[860px]">
+                      <thead className="bg-muted/20">
+                        <tr className="border-b border-border/60">
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Payslip #</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Run</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Period</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Gross</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Deductions</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Net</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Released</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</th>
                         </tr>
-                      ) : payslips.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">No payslips found.</td>
-                        </tr>
-                      ) : (
-                        payslips.map((payslip) => (
-                          <tr key={payslip.id} className="border-t border-border/50">
-                            <td className="px-3 py-2 font-medium">{payslip.payslipNumber}</td>
-                            <td className="px-3 py-2">{payslip.runNumber}</td>
-                            <td className="px-3 py-2">{payslip.runPeriodLabel}</td>
-                            <td className="px-3 py-2">{payslip.grossPay}</td>
-                            <td className="px-3 py-2">{payslip.totalDeductions}</td>
-                            <td className="px-3 py-2 font-medium">{payslip.netPay}</td>
-                            <td className="px-3 py-2">{payslip.releasedAt}</td>
-                            <td className="px-3 py-2">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button type="button" size="icon-sm" variant="ghost">
-                                    <IconDots className="size-4 rotate-90" />
-                                    <span className="sr-only">Open actions</span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-40">
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1.5">
-                                      <IconEye className="size-3.5" />
-                                      View
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1.5">
-                                      <IconDownload className="size-3.5" />
-                                      Download
-                                    </Link>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </td>
+                      </thead>
+                      <tbody>
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">Loading payslips...</td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        ) : payslips.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-3 py-8 text-center text-sm text-muted-foreground">No payslips found.</td>
+                          </tr>
+                        ) : (
+                          payslips.map((payslip) => (
+                            <tr key={payslip.id} className="border-b border-border/50 hover:bg-muted/20">
+                              <td className="px-3 py-2.5 text-sm font-medium text-foreground">{payslip.payslipNumber}</td>
+                              <td className="px-3 py-2.5 text-sm text-foreground">{payslip.runNumber}</td>
+                              <td className="px-3 py-2.5 text-sm text-foreground">{payslip.runPeriodLabel}</td>
+                              <td className="px-3 py-2.5 text-sm text-foreground">{payslip.grossPay}</td>
+                              <td className="px-3 py-2.5 text-sm text-foreground">{payslip.totalDeductions}</td>
+                              <td className="px-3 py-2.5 text-sm font-medium text-foreground">{payslip.netPay}</td>
+                              <td className="px-3 py-2.5 text-sm text-foreground">{payslip.releasedAt}</td>
+                              <td className="px-3 py-2.5">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button type="button" size="icon-sm" variant="ghost">
+                                      <IconDots className="size-4 rotate-90" />
+                                      <span className="sr-only">Open actions</span>
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem asChild>
+                                      <Link href={`/${companyId}/payroll/payslips/${payslip.id}`} className="inline-flex items-center gap-1.5">
+                                        <IconEye className="size-3.5" />
+                                        View
+                                      </Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                      <Link href={`/${companyId}/payroll/payslips/${payslip.id}/download`} className="inline-flex items-center gap-1.5">
+                                        <IconDownload className="size-3.5" />
+                                        Download
+                                      </Link>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
 
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const next = Math.max(1, currentPage - 1)
-                      setCurrentPage(next)
-                      void fetchData({ page: next })
-                    }}
-                    disabled={currentPage <= 1 || isLoading}
-                  >
-                    <IconChevronLeft className="size-3.5" />
-                    Previous
-                  </Button>
-                  <span className="text-xs text-muted-foreground">Page {currentPage}</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const next = currentPage + 1
-                      setCurrentPage(next)
-                      void fetchData({ page: next })
-                    }}
-                    disabled={!hasMorePayslips || isLoading}
-                  >
-                    Next
-                    <IconChevronRight className="size-3.5" />
-                  </Button>
+                  <div className="flex items-center justify-between border-t border-border/60 pt-2">
+                    <p className="text-xs text-muted-foreground">Page {currentPage}</p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const next = Math.max(1, currentPage - 1)
+                          setCurrentPage(next)
+                          void fetchData({ page: next })
+                        }}
+                        disabled={currentPage <= 1 || isLoading}
+                      >
+                        <IconChevronLeft className="size-3.5" />
+                        Previous
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const next = currentPage + 1
+                          setCurrentPage(next)
+                          void fetchData({ page: next })
+                        }}
+                        disabled={!hasMorePayslips || isLoading}
+                      >
+                        Next
+                        <IconChevronRight className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex min-h-[280px] items-center justify-center border border-dashed border-border/60">
+                  <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <IconUsers className="size-4" />
+                    Select an employee to view payslips.
+                  </p>
                 </div>
-              </>
-            ) : (
-              <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <IconUsers className="size-3.5" />
-                No employee selected.
-              </p>
-            )}
-          </section>
+              )}
+            </section>
           </div>
         </section>
       </div>

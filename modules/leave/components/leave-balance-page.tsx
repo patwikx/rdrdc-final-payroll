@@ -271,87 +271,133 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
     }
   }
 
+  const selectedMonthMetrics = historyByMonth[timelineSelectedMonth] ?? { month: timelineSelectedMonth, filed: 0, used: 0 }
+  const selectedMonthText = monthLabel.format(new Date(Date.UTC(selectedYear, timelineSelectedMonth, 1)))
+  const totalEmployeeCount = employees.length
+  const filteredEmployeeCount = filteredEmployees.length
+
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconUsersGroup className="size-5" /> Leave Balance</h1>
-            <p className="text-sm text-muted-foreground">Employee directory with filters, timeline, and leave history drilldown.</p>
+      <section className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Timekeeping</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconUsersGroup className="size-6 text-primary" /> Leave Balances
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                {selectedYear}
+              </Badge>
+              <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                {filteredEmployeeCount}/{totalEmployeeCount} Employees
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">Track employee balances with timeline trends and filtered leave history.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {years.map((year) => (
-              <Button key={year} asChild size="sm" variant={year === selectedYear ? "default" : "outline"}>
+              <Button key={year} asChild size="sm" variant={year === selectedYear ? "default" : "outline"} className="h-8 px-2">
                 <Link href={`/${companyId}/leave/balances?year=${year}`}>{year}</Link>
               </Button>
             ))}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className="h-8 px-2">
               <Link href={`/${companyId}/leave/balances/report?year=${selectedYear}`}>
-                <IconPrinter className="mr-1.5 size-4" /> Leave Balance Summary Report
+                <IconPrinter className="size-4" /> Leave Balance Summary Report
               </Link>
             </Button>
           </div>
         </div>
-      </header>
+      </section>
 
-      <div className="grid border-y border-border/60 xl:grid-cols-[320px_1fr]">
-        <aside className="space-y-3 border-r border-border/60 p-4 sm:p-6">
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground"><IconFilter className="size-4" /> Employee Directory</p>
+      <div className="grid border-y border-border/60 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="border-r border-border/60 p-4 sm:p-5">
+          <div className="space-y-3 border border-border/60 bg-background p-3">
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+              <IconFilter className="size-4" /> Employee Directory
+            </p>
             <div className="relative">
-              <IconSearch className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search employee" className="pl-8" />
+              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name or number"
+                className="h-8 pl-8"
+              />
             </div>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Department" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-full">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
                 {departments.map((department) => (
-                  <SelectItem key={department} value={department}>{department}</SelectItem>
+                  <SelectItem key={department} value={department}>
+                    {department}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Leave Type" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-full">
+                <SelectValue placeholder="Leave Type" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Leave Types</SelectItem>
                 {leaveTypes.map((leaveType) => (
-                  <SelectItem key={leaveType} value={leaveType}>{leaveType}</SelectItem>
+                  <SelectItem key={leaveType} value={leaveType}>
+                    {leaveType}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as RequestStatus | "all")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Request Status" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-full">
+                <SelectValue placeholder="Request Status" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 {statuses.map((status) => (
-                  <SelectItem key={status} value={status}>{toStatusLabel(status)}</SelectItem>
+                  <SelectItem key={status} value={status}>
+                    {toStatusLabel(status)}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
 
-            <ScrollArea className="h-[560px] pr-1">
-              <div className="space-y-2">
-                {filteredEmployees.length === 0 ? (
-                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">No employees match current filters.</p>
-                ) : (
-                  filteredEmployees.map((employee) => {
+          <div className="mt-3 border border-border/60 bg-background">
+            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Employees</p>
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                {filteredEmployeeCount}
+              </Badge>
+            </div>
+            <ScrollArea className="h-[540px] p-2">
+              {filteredEmployees.length === 0 ? (
+                <p className="px-2 py-8 text-center text-sm text-muted-foreground">No employees match current filters.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredEmployees.map((employee) => {
                     const isActive = employee.employeeId === selectedEmployee?.employeeId
                     return (
                       <button
                         key={employee.employeeId}
                         type="button"
                         className={cn(
-                          "w-full border px-3 py-2 text-left text-xs",
+                          "w-full border px-2.5 py-2 text-left",
                           isActive
                             ? "border-primary bg-primary/10 text-foreground"
-                            : "border-border/60 bg-background hover:bg-muted/40"
+                            : "border-border/60 bg-background hover:bg-muted/30"
                         )}
                         onClick={() => setSelectedEmployeeId(employee.employeeId)}
                       >
                         <div className="flex items-start gap-2">
                           <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md [&_*]:rounded-md">
-                            <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.employeeName} className="!aspect-auto h-full w-full !rounded-md object-cover" />
-                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                            <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.employeeName} className="h-full w-full object-cover" />
+                            <AvatarFallback className="bg-primary/5 text-[10px] font-semibold text-primary">
                               {employee.employeeName
                                 .split(" ")
                                 .map((part) => part[0])
@@ -361,36 +407,63 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{employee.employeeName}</p>
-                            <p className="truncate text-muted-foreground">{employee.employeeNumber}</p>
+                            <p className="truncate text-sm font-medium text-foreground">{employee.employeeName}</p>
+                            <p className="truncate text-xs text-muted-foreground">{employee.employeeNumber}</p>
                           </div>
                         </div>
                       </button>
                     )
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </ScrollArea>
+          </div>
         </aside>
 
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex min-h-[calc(100vh-220px)] flex-col gap-4 p-4 sm:p-6"
+          className="flex min-h-[calc(100vh-220px)] flex-col gap-4 p-4 sm:p-5"
         >
           {!selectedEmployee ? (
-            <div className="border border-border/60 py-10 text-center text-sm text-muted-foreground">Select an employee from the sidebar.</div>
+            <section className="border border-border/60 bg-background px-4 py-12 text-center text-sm text-muted-foreground">
+              Select an employee from the directory to view leave balances and history.
+            </section>
           ) : (
             <>
-              <section className="border border-border/60 px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.08em] text-muted-foreground"><IconUserCircle className="size-3.5" /> Selected Employee</p>
-                    <p className="text-lg font-semibold text-foreground">{selectedEmployee.employeeName}</p>
-                    <p className="text-xs text-muted-foreground">{selectedEmployee.employeeNumber} - {selectedEmployee.departmentName}</p>
+              <section className="border border-border/60 bg-background px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar className="h-12 w-12 rounded-md border border-border/60 after:rounded-md [&_*]:rounded-md">
+                      <AvatarImage src={selectedEmployee.photoUrl ?? undefined} alt={selectedEmployee.employeeName} className="h-full w-full object-cover" />
+                      <AvatarFallback className="bg-primary/5 text-sm font-semibold text-primary">
+                        {selectedEmployee.employeeName
+                          .split(" ")
+                          .map((part) => part[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <IconUserCircle className="size-3.5" /> Selected Employee
+                      </p>
+                      <p className="truncate text-lg font-semibold text-foreground">{selectedEmployee.employeeName}</p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {selectedEmployee.employeeNumber} - {selectedEmployee.departmentName}
+                      </p>
+                    </div>
                   </div>
-                  <Badge variant="outline" className="text-xs">Timeline Drilldown</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                      {selectedMonthText}
+                    </Badge>
+                    <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                      Filed {days.format(selectedMonthMetrics.filed)}
+                    </Badge>
+                  </div>
                 </div>
               </section>
 
@@ -401,147 +474,202 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
                 <StatCard title="Compensary Time Off" value={days.format(leaveTypeStatValues.compensaryTimeOff)} icon={IconClockHour4} />
               </div>
 
-              <section className="border border-border/60">
-                <div className="border-b border-border/60 px-4 py-3">
-                  <p className="inline-flex items-center gap-2 text-sm font-medium"><IconRoute className="size-4" /> Leave Journey Timeline</p>
+              <section className="border border-border/60 bg-background">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium">
+                    <IconRoute className="size-4" /> Leave Journey Timeline
+                  </p>
+                  <p className="text-xs text-muted-foreground">Use the controls to navigate yearly trends.</p>
                 </div>
                 <div className="space-y-3 p-4">
-                  <div className="overflow-hidden">
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                      {visibleTimelineMonths.map((item) => {
-                        const isCurrentMonth = selectedYear === currentYear && item.month === currentMonthIndex
-                        const isSelectedMonth = item.month === timelineSelectedMonth
-                        return (
-                          <motion.div
-                            key={item.month}
-                            layout
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className={cn(
-                              "min-w-0 rounded-md border border-border/60 p-2",
-                              isSelectedMonth ? "border-primary bg-primary text-primary-foreground ring-2 ring-primary" : "",
-                              !isSelectedMonth && isCurrentMonth ? "border-primary/40" : ""
-                            )}
-                          >
-                            <p className={cn("text-[11px]", isSelectedMonth ? "text-primary-foreground/80" : "text-muted-foreground")}>{monthLabel.format(new Date(Date.UTC(selectedYear, item.month, 1)))}</p>
-                            <p className="text-sm font-semibold">Filed {days.format(item.filed)}</p>
-                            <p className={cn("text-[11px]", isSelectedMonth ? "text-primary-foreground/80" : "text-muted-foreground")}>Used {days.format(item.used)}</p>
-                            <div className="mt-1 h-1.5 rounded-full bg-muted">
-                              <div
-                                className={cn("h-1.5 rounded-full", isSelectedMonth ? "bg-blue-600" : "bg-primary")}
-                                style={{ width: `${maxMonth > 0 ? (item.filed / maxMonth) * 100 : 0}%` }}
-                              />
-                            </div>
-                          </motion.div>
-                        )
-                      })}
-                    </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                    {visibleTimelineMonths.map((item) => {
+                      const isCurrentMonth = selectedYear === currentYear && item.month === currentMonthIndex
+                      const isSelectedMonth = item.month === timelineSelectedMonth
+                      return (
+                        <button
+                          key={item.month}
+                          type="button"
+                          onClick={() => setTimelineSelectedMonth(item.month)}
+                          className={cn(
+                            "min-w-0 border px-2 py-2 text-left transition-colors",
+                            isSelectedMonth ? "border-primary bg-primary text-primary-foreground" : "border-border/60 hover:bg-muted/30",
+                            !isSelectedMonth && isCurrentMonth ? "border-primary/50" : ""
+                          )}
+                        >
+                          <p className={cn("text-[11px]", isSelectedMonth ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                            {monthLabel.format(new Date(Date.UTC(selectedYear, item.month, 1)))}
+                          </p>
+                          <p className="text-sm font-semibold">Filed {days.format(item.filed)}</p>
+                          <p className={cn("text-[11px]", isSelectedMonth ? "text-primary-foreground/80" : "text-muted-foreground")}>
+                            Used {days.format(item.used)}
+                          </p>
+                          <div className="mt-1 h-1.5 bg-muted">
+                            <div
+                              className={cn("h-1.5", isSelectedMonth ? "bg-blue-600" : "bg-primary")}
+                              style={{ width: `${maxMonth > 0 ? (item.filed / maxMonth) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="h-8 px-2"
                       disabled={timelineSelectedMonth <= 0}
                       onClick={handleTimelinePrevious}
                     >
-                      <IconChevronLeft className="mr-1 size-4" />
-                      Previous
+                      <IconChevronLeft className="size-4" /> Previous
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="h-8 px-2"
                       disabled={timelineSelectedMonth >= historyByMonth.length - 1}
                       onClick={handleTimelineNext}
                     >
-                      Next
-                      <IconChevronRight className="ml-1 size-4" />
+                      Next <IconChevronRight className="size-4" />
                     </Button>
                   </div>
                 </div>
               </section>
 
-              <section className="flex flex-1 flex-col border border-border/60">
-                <div className="border-b border-border/60 px-4 py-3">
-                  <p className="inline-flex items-center gap-2 text-sm font-medium"><IconTimeline className="size-4" /> Employee Leave History</p>
+              <section className="flex flex-1 flex-col border border-border/60 bg-background">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium">
+                    <IconTimeline className="size-4" /> Employee Leave History
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Page {historyPageData.page} of {historyPageData.totalPages} - {historyPageData.totalItems} records
+                  </p>
                 </div>
-                <div className="flex-1 space-y-2 overflow-y-auto p-4">
+                <div className="flex-1 space-y-3 p-4">
                   {selectedHistoryRows.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-muted-foreground">No leave history for current filters.</p>
+                    <p className="py-8 text-center text-sm text-muted-foreground">No leave history for the current filters.</p>
                   ) : (
-                    <div className="border border-border/60">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/40">
-                            <tr>
-                              <th className="px-3 py-2 text-left">Request #</th>
-                              <th className="px-3 py-2 text-left">Leave Type</th>
-                              <th className="px-3 py-2 text-left">Start Date</th>
-                              <th className="px-3 py-2 text-left">End Date</th>
-                              <th className="px-3 py-2 text-left">Days</th>
-                              <th className="px-3 py-2 text-left">Filed Date</th>
-                              <th className="px-3 py-2 text-left">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedHistoryDisplayRows.map((row) => (
-                              <tr key={row.id} className="border-t border-border/50">
-                                <td className="px-3 py-2 font-medium text-foreground">{row.requestNumber}</td>
-                                <td className="px-3 py-2">{row.leaveTypeName}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{row.startDateLabel}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{row.endDateLabel}</td>
-                                <td className="px-3 py-2">{days.format(row.numberOfDays)}</td>
-                                <td className="px-3 py-2 text-muted-foreground">{row.filedDateLabel}</td>
-                                <td className="px-3 py-2">
-                                  <Badge variant="outline" className={leaveHistoryStatusBadgeClass(row.statusCode)}>
-                                    {toStatusLabel(row.statusCode)}
-                                  </Badge>
-                                </td>
+                    <>
+                      <div className="hidden border border-border/60 md:block">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="bg-muted/30">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Request #</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Leave Type</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Start Date</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">End Date</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Days</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Filed Date</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-border/60 px-3 py-2">
-                        <p className="text-xs text-muted-foreground">
-                          Page {historyPageData.page} of {historyPageData.totalPages} • {historyPageData.totalItems} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!historyPageData.hasPrevPage}
-                            onClick={() =>
-                              setHistoryPageState({
-                                key: historyQueryKey,
-                                page: Math.max(1, historyPageData.page - 1),
-                              })
-                            }
-                          >
-                            Prev
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!historyPageData.hasNextPage}
-                            onClick={() =>
-                              setHistoryPageState({
-                                key: historyQueryKey,
-                                page: Math.min(historyPageData.totalPages, historyPageData.page + 1),
-                              })
-                            }
-                          >
-                            Next
-                          </Button>
+                            </thead>
+                            <tbody>
+                              {selectedHistoryDisplayRows.map((row, index) => (
+                                <tr
+                                  key={row.id}
+                                  className={
+                                    index % 2 === 0
+                                      ? "border-t border-border/50 bg-background"
+                                      : "border-t border-border/50 bg-muted/10"
+                                  }
+                                >
+                                  <td className="px-3 py-2 text-sm font-medium text-foreground">{row.requestNumber}</td>
+                                  <td className="px-3 py-2 text-sm text-foreground">{row.leaveTypeName}</td>
+                                  <td className="px-3 py-2 text-sm text-muted-foreground">{row.startDateLabel}</td>
+                                  <td className="px-3 py-2 text-sm text-muted-foreground">{row.endDateLabel}</td>
+                                  <td className="px-3 py-2 text-sm text-foreground">{days.format(row.numberOfDays)}</td>
+                                  <td className="px-3 py-2 text-sm text-muted-foreground">{row.filedDateLabel}</td>
+                                  <td className="px-3 py-2">
+                                    <Badge variant="outline" className={cn("h-6 px-2 text-[10px]", leaveHistoryStatusBadgeClass(row.statusCode))}>
+                                      {toStatusLabel(row.statusCode)}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
-                    </div>
+
+                      <div className="space-y-2 md:hidden">
+                        {selectedHistoryDisplayRows.map((row) => (
+                          <article key={row.id} className="border border-border/60 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                                <p className="text-sm text-muted-foreground">{row.leaveTypeName}</p>
+                              </div>
+                              <Badge variant="outline" className={cn("h-6 px-2 text-[10px]", leaveHistoryStatusBadgeClass(row.statusCode))}>
+                                {toStatusLabel(row.statusCode)}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <p className="text-muted-foreground">Start</p>
+                                <p className="text-foreground">{row.startDateLabel}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">End</p>
+                                <p className="text-foreground">{row.endDateLabel}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Days</p>
+                                <p className="text-foreground">{days.format(row.numberOfDays)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Filed</p>
+                                <p className="text-foreground">{row.filedDateLabel}</p>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </>
                   )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      Page {historyPageData.page} of {historyPageData.totalPages} - {historyPageData.totalItems} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2"
+                        disabled={!historyPageData.hasPrevPage}
+                        onClick={() =>
+                          setHistoryPageState({
+                            key: historyQueryKey,
+                            page: Math.max(1, historyPageData.page - 1),
+                          })
+                        }
+                      >
+                        Prev
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2"
+                        disabled={!historyPageData.hasNextPage}
+                        onClick={() =>
+                          setHistoryPageState({
+                            key: historyQueryKey,
+                            page: Math.min(historyPageData.totalPages, historyPageData.page + 1),
+                          })
+                        }
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </section>
-
             </>
           )}
         </motion.section>
@@ -552,9 +680,11 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
 
 function StatCard({ title, value, icon: Icon }: { title: string; value: string; icon: typeof IconChartBar }) {
   return (
-    <div className="border border-border/60 p-3">
-        <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground"><Icon className="size-3.5" /> {title}</p>
-        <p className="text-xl font-semibold text-foreground">{value}</p>
+    <div className="border border-border/60 bg-background px-3 py-2">
+      <p className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+        <Icon className="size-3.5" /> {title}
+      </p>
+      <p className="text-xl font-semibold text-foreground">{value}</p>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   IconArrowLeft,
+  IconBuilding,
   IconCheck,
   IconFileText,
   IconLoader2,
@@ -143,14 +144,20 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
 
   return (
     <div className="w-full min-h-screen bg-background animate-in fade-in duration-500">
-      <div className="px-6 py-6 border-b border-border/60 flex flex-col md:flex-row md:items-end justify-between gap-4 bg-muted/20">
+      <div className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-6 py-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Human Resources</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Human Resources</p>
           <div className="flex items-center gap-4">
-            <h1 className="inline-flex items-center gap-2 text-2xl text-foreground"><IconScan className="size-6" /> Biometric Import</h1>
-            <div className="px-2 py-0.5 rounded-md border border-primary/20 bg-primary/5 text-primary text-xs">
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <IconScan className="size-6 text-primary" /> Biometric Import
+            </h1>
+            <Badge variant="outline" className="h-6 px-2 text-[11px]">
+              <IconBuilding className="mr-1 size-3.5" />
               {companyName}
-            </div>
+            </Badge>
           </div>
         </div>
 
@@ -161,6 +168,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
             </Button>
           </Link>
         </div>
+      </div>
       </div>
 
       <div className="p-6">
@@ -186,7 +194,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                     <>
                       <IconUpload className="h-16 w-16 text-muted-foreground/20 mb-6" />
                       <div className="text-center space-y-2 mb-10">
-                        <h3 className="text-lg text-foreground/80">
+                        <h3 className="text-base font-medium text-foreground/80">
                           Upload Attendance File
                         </h3>
                         <p className="text-sm text-muted-foreground max-w-[320px]">
@@ -204,7 +212,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                           <IconFileText className="h-8 w-8" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate text-foreground">{selectedFile.name}</p>
+                          <p className="text-sm font-medium truncate text-foreground">{selectedFile.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {(selectedFile.size / 1024).toFixed(2)} KB - text file
                           </p>
@@ -241,7 +249,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                 {selectedFile ? (
                   <div className="lg:col-span-7 space-y-4 animate-in slide-in-from-right-4 duration-500">
                     <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                      <h3 className="text-xs text-muted-foreground/80 flex items-center gap-2">
+                      <h3 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
                         <IconFileText className="h-3 w-3" /> File Preview
                       </h3>
                       <Badge variant="outline" className="text-[11px] border-border/60">
@@ -275,7 +283,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                 </div>
 
                 <div className="text-center space-y-4 z-10">
-                  <h3 className="text-2xl text-foreground">
+                  <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                     Processing Import
                   </h3>
                   <div className="h-40 w-[400px] bg-background/80 border border-border/60 p-4 text-[11px] text-muted-foreground overflow-hidden rounded-md">
@@ -295,14 +303,14 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
               <div className="space-y-10">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-primary/20 divide-y md:divide-y-0 md:divide-x divide-border/60">
                   <div className="p-8 bg-emerald-500/[0.03]">
-                    <p className="text-xs text-muted-foreground">Import Status</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Import Status</p>
                     <div className="flex items-center gap-2 mt-2">
                       <IconCheck className="h-5 w-5 text-primary" />
                       <span className="text-xl text-foreground">Complete</span>
                     </div>
                   </div>
                   <div className="p-8 bg-muted/5">
-                    <p className="text-xs text-muted-foreground">DTR Records Updated</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">DTR Records Updated</p>
                     <p className="text-3xl mt-1 tabular-nums">{syncResult?.processedCount}</p>
                   </div>
                 </div>
@@ -328,7 +336,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
           </div>
 
           <div className="p-6 bg-muted/30 border-t border-border/60 space-y-2">
-            <p className="text-xs text-primary">Data Integrity Notice</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-primary">Data Integrity Notice</p>
             <p className="text-sm text-muted-foreground italic">
               Imported attendance records will update existing Daily Time Records (DTR) for matched employees. Ensure
               the import file covers the complete attendance period.

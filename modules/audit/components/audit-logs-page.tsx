@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, useTransition, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconChevronLeft,
@@ -33,6 +33,13 @@ type AuditLogsPageProps = {
 
 type ActionFilter = AuditLogsViewModel["actionFilter"]
 type RangeFilter = AuditLogsViewModel["rangeFilter"]
+type RouteUpdates = {
+  q?: string
+  action?: ActionFilter
+  range?: RangeFilter
+  table?: string | null
+  page?: number
+}
 
 const AUDIT_GRID_COLUMNS =
   "grid-cols-[minmax(190px,_1.35fr)_minmax(170px,_1fr)_minmax(180px,_1.1fr)_110px_minmax(280px,_2.1fr)]"
@@ -78,6 +85,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [isRoutePending, startRouteTransition] = useTransition()
 
   const [searchInput, setSearchInput] = useState(data.query)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
@@ -117,13 +125,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
     [data.summary]
   )
 
-  const updateRoute = (updates: {
-    q?: string
-    action?: ActionFilter
-    range?: RangeFilter
-    table?: string | null
-    page?: number
-  }) => {
+  const buildNextUrl = useCallback((updates: RouteUpdates) => {
     const params = new URLSearchParams(searchParams.toString())
 
     if (typeof updates.q !== "undefined") {
@@ -152,9 +154,34 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
       else params.delete("page")
     }
 
-    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname
-    router.push(nextUrl)
-  }
+    return params.toString() ? `${pathname}?${params.toString()}` : pathname
+  }, [pathname, searchParams])
+
+  const updateRoute = useCallback((updates: RouteUpdates, options?: { replace?: boolean }) => {
+    const nextUrl = buildNextUrl(updates)
+    startRouteTransition(() => {
+      if (options?.replace) {
+        router.replace(nextUrl, { scroll: false })
+        return
+      }
+      router.push(nextUrl, { scroll: false })
+    })
+  }, [buildNextUrl, router])
+
+  useEffect(() => {
+    if (data.pagination.hasPrevPage) {
+      router.prefetch(buildNextUrl({ page: data.pagination.page - 1 }))
+    }
+    if (data.pagination.hasNextPage) {
+      router.prefetch(buildNextUrl({ page: data.pagination.page + 1 }))
+    }
+  }, [
+    buildNextUrl,
+    data.pagination.hasNextPage,
+    data.pagination.hasPrevPage,
+    data.pagination.page,
+    router,
+  ])
 
   const applySearch = () => {
     updateRoute({
@@ -175,47 +202,39 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
   }
 
   return (
-    <div className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <div className="flex flex-col justify-between gap-6 border-b border-border/60 px-8 pb-8 pt-8 md:flex-row md:items-end">
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">System Settings</p>
-          <div className="flex items-center gap-4">
-            <h1 className="inline-flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
-              <IconHistory className="h-7 w-7" />
-              Audit Logs
-            </h1>
-            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">
-              {data.companyName}
+    <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System Settings</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconHistory className="size-6 text-primary" />
+                Audit Logs
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                {data.companyName}
+              </Badge>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                {data.pagination.totalItems.toLocaleString("en-PH")} Records
+              </Badge>
             </div>
-            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">
-              {data.pagination.totalItems.toLocaleString("en-PH")} Records
-            </div>
+            <p className="text-sm text-muted-foreground">Review the full system audit trail with filterable event history.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border border-border/60 bg-background/90 p-2">
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={resetFilters}>
+              Reset Filters
+            </Button>
           </div>
         </div>
+      </header>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" className="border-border/60 hover:bg-muted/50" onClick={resetFilters}>
-            Reset Filters
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 border-b border-border/60 bg-muted/10 px-8 py-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => (
-          <div key={item.id} className="rounded-lg border border-border/60 bg-background p-3">
-            <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">
-              <item.icon className="h-4 w-4" />
-            </div>
-            <p className="text-xs text-muted-foreground">{item.label}</p>
-            <p className="text-lg font-semibold text-foreground">{item.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex min-h-[calc(100vh-260px)] flex-col lg:flex-row">
-        <aside className="w-full shrink-0 space-y-8 border-r border-border/60 bg-background/50 p-6 backdrop-blur-sm lg:w-72">
-          <div className="space-y-3">
-            <h3 className="text-xs font-medium text-muted-foreground">Search Logs</h3>
+      <section className="grid gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="space-y-4 border border-border/60 bg-background p-4">
+          <div className="space-y-2">
+            <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Search Logs</h3>
             <div className="group relative">
               <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
               <Input
@@ -225,17 +244,17 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") applySearch()
                 }}
-                className="border-border/60 bg-muted/20 pl-9"
+                className="pl-9"
               />
             </div>
-            <Button type="button" variant="outline" className="w-full border-border/60" onClick={applySearch}>
+            <Button type="button" variant="outline" className="h-8 w-full px-2" onClick={applySearch}>
               Apply Search
             </Button>
           </div>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <IconRefresh className="h-3 w-3" />
+          <div className="space-y-2">
+            <h3 className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <IconRefresh className="h-3.5 w-3.5" />
               Action Type
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -243,6 +262,8 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                 <Button
                   key={item.value}
                   type="button"
+                  size="sm"
+                  className="h-8 px-2"
                   variant={data.actionFilter === item.value ? "default" : "outline"}
                   onClick={() => updateRoute({ action: item.value, page: 1 })}
                 >
@@ -252,9 +273,9 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <IconClockHour4 className="h-3 w-3" />
+          <div className="space-y-2">
+            <h3 className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <IconClockHour4 className="h-3.5 w-3.5" />
               Time Range
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -262,6 +283,8 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                 <Button
                   key={item.value}
                   type="button"
+                  size="sm"
+                  className="h-8 px-2"
                   variant={data.rangeFilter === item.value ? "default" : "outline"}
                   onClick={() => updateRoute({ range: item.value, page: 1 })}
                 >
@@ -271,17 +294,17 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <IconDatabase className="h-3 w-3" />
+          <div className="space-y-2">
+            <h3 className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <IconDatabase className="h-3.5 w-3.5" />
               Data Table
             </h3>
-            <div className="max-h-64 space-y-1 overflow-auto rounded-md border border-border/60 bg-muted/20 p-2">
+            <div className="max-h-64 space-y-1 overflow-auto border border-border/60 bg-muted/20 p-2">
               <button
                 type="button"
                 onClick={() => updateRoute({ table: null, page: 1 })}
                 className={cn(
-                  "w-full rounded-md border px-2.5 py-2 text-left text-sm font-medium leading-5 transition-colors",
+                  "w-full border px-2.5 py-2 text-left text-sm transition-colors",
                   !data.tableFilter
                     ? "border-primary/40 bg-primary/10 text-primary"
                     : "border-transparent text-foreground/90 hover:bg-muted"
@@ -295,7 +318,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                   type="button"
                   onClick={() => updateRoute({ table: tableName, page: 1 })}
                   className={cn(
-                    "w-full rounded-md border px-2.5 py-2 text-left text-sm font-medium leading-5 transition-colors",
+                    "w-full border px-2.5 py-2 text-left text-sm transition-colors",
                     data.tableFilter === tableName
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-transparent text-foreground/90 hover:bg-muted"
@@ -311,11 +334,23 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
           </div>
         </aside>
 
-        <main className="flex flex-1 flex-col bg-background p-0">
+        <section className="border border-border/60 bg-background">
+          <div className="grid gap-2 border-b border-border/60 px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map((item) => (
+              <div key={item.id} className="border border-border/60 bg-background px-3 py-2">
+                <div className="inline-flex h-6 w-6 items-center justify-center border border-border/60 bg-muted text-foreground">
+                  <item.icon className="h-3.5 w-3.5" />
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">{item.label}</p>
+                <p className="text-base font-semibold text-foreground">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/10">
             <div
               className={cn(
-                "grid h-10 items-center gap-5 px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground",
+                "grid h-10 items-center gap-5 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground",
                 AUDIT_GRID_COLUMNS
               )}
             >
@@ -327,10 +362,10 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
             </div>
           </div>
 
-          <div className="flex-1 divide-y divide-border/60 bg-background">
+          <div className="divide-y divide-border/60 bg-background">
             {data.rows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-4 py-32 text-center">
-                <div className="rounded-md border border-border/60 bg-muted/20 p-4">
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+                <div className="border border-border/60 bg-muted/20 p-4">
                   <IconSearch className="h-8 w-8 text-muted-foreground/70" />
                 </div>
                 <div className="space-y-1">
@@ -345,7 +380,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                   type="button"
                   onClick={() => setSelectedRowId(row.id)}
                   className={cn(
-                    "group grid w-full items-center gap-5 px-8 py-4 text-left transition-colors hover:bg-muted/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                    "group grid w-full items-center gap-5 px-4 py-3 text-left transition-colors hover:bg-muted/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                     AUDIT_GRID_COLUMNS
                   )}
                 >
@@ -387,7 +422,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
           </div>
 
           {data.pagination.totalItems > 0 ? (
-            <div className="sticky bottom-0 flex h-12 items-center justify-between border-t border-border/60 bg-background px-8">
+            <div className="flex h-12 items-center justify-between border-t border-border/60 bg-background px-4">
               <div className="text-xs text-muted-foreground">
                 Page {data.pagination.page} of {data.pagination.totalPages} • {data.pagination.totalItems.toLocaleString("en-PH")} Logs
               </div>
@@ -395,9 +430,9 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!data.pagination.hasPrevPage}
-                  onClick={() => updateRoute({ page: data.pagination.page - 1 })}
-                  className="border-border/60 hover:bg-muted/50 disabled:opacity-30"
+                  className="h-8 px-2"
+                  disabled={!data.pagination.hasPrevPage || isRoutePending}
+                  onClick={() => updateRoute({ page: data.pagination.page - 1 }, { replace: true })}
                 >
                   <IconChevronLeft className="h-3.5 w-3.5" />
                   Prev
@@ -405,9 +440,9 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!data.pagination.hasNextPage}
-                  onClick={() => updateRoute({ page: data.pagination.page + 1 })}
-                  className="border-border/60 hover:bg-muted/50 disabled:opacity-30"
+                  className="h-8 px-2"
+                  disabled={!data.pagination.hasNextPage || isRoutePending}
+                  onClick={() => updateRoute({ page: data.pagination.page + 1 }, { replace: true })}
                 >
                   Next
                   <IconChevronRight className="h-3.5 w-3.5" />
@@ -415,8 +450,8 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
               </div>
             </div>
           ) : null}
-        </main>
-      </div>
+        </section>
+      </section>
 
       <Dialog open={Boolean(selectedRow)} onOpenChange={(open) => (!open ? setSelectedRowId(null) : undefined)}>
         <DialogContent className="sm:max-w-3xl">
@@ -458,7 +493,7 @@ export function AuditLogsPage({ data }: AuditLogsPageProps) {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   )
 }
 

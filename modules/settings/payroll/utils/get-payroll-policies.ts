@@ -114,32 +114,36 @@ const generateDefaultRows = (year: number): PayrollPoliciesInput["periodRows"] =
 
 export async function getPayrollPoliciesViewModel(companyId: string, selectedYear?: number): Promise<PayrollPoliciesViewModel> {
   const context = await getActiveCompanyContext({ companyId })
+  const currentPhYear = getPhYear(new Date())
 
   const pattern = await db.payPeriodPattern.findFirst({
     where: { companyId: context.companyId },
     orderBy: [{ isActive: "desc" }, { effectiveFrom: "desc" }, { createdAt: "desc" }],
   })
 
-  const resolvedYear =
-    selectedYear ??
-    (pattern?.effectiveFrom ? getPhYear(pattern.effectiveFrom) : getPhYear(new Date()))
+  const yearsSummary = pattern
+    ? await db.payPeriod.groupBy({
+        by: ["year"],
+        where: { patternId: pattern.id },
+        orderBy: { year: "asc" },
+      })
+    : []
 
-  const [existingRows, yearsSummary] = pattern
-    ? await Promise.all([
-        db.payPeriod.findMany({
-          where: {
+  const availableYearsFromRows = yearsSummary.map((item) => item.year)
+  const latestExistingYear = availableYearsFromRows.at(-1)
+  const fallbackYear = latestExistingYear ?? currentPhYear
+  const resolvedYear =
+    typeof selectedYear === "number" && Number.isInteger(selectedYear) ? selectedYear : fallbackYear
+
+  const existingRows = pattern
+    ? await db.payPeriod.findMany({
+        where: {
           patternId: pattern.id,
           year: resolvedYear,
-          },
-          orderBy: [{ periodNumber: "asc" }],
-        }),
-        db.payPeriod.groupBy({
-          by: ["year"],
-          where: { patternId: pattern.id },
-          orderBy: { year: "asc" },
-        }),
-      ])
-    : [[], []]
+        },
+        orderBy: [{ periodNumber: "asc" }],
+      })
+    : []
 
   const generatedRows = generateDefaultRows(resolvedYear)
 
@@ -167,7 +171,7 @@ export async function getPayrollPoliciesViewModel(companyId: string, selectedYea
     companyName: context.companyName,
     companyCode: context.companyCode,
     companyRole: context.companyRole,
-    availableYears: Array.from(new Set([resolvedYear, ...yearsSummary.map((item) => item.year)])).sort(
+    availableYears: Array.from(new Set([resolvedYear, ...availableYearsFromRows])).sort(
       (a, b) => a - b
     ),
     form: {

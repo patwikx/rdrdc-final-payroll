@@ -47,22 +47,35 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const activeCompanyId =
     session.user.selectedCompanyId ?? session.user.defaultCompanyId ?? companyOptions[0]?.companyId ?? ""
 
-  const userName =
-    session.user.name ?? (`${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || "User")
+  const [activeEmployee, currentUser] = await Promise.all([
+    db.employee.findFirst({
+      where: {
+        userId: session.user.id,
+        companyId: activeCompanyId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        photoUrl: true,
+      },
+    }),
+    db.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+      },
+    }),
+  ])
 
-  const userEmail = session.user.email ?? ""
-  const activeEmployee = await db.employee.findFirst({
-    where: {
-      userId: session.user.id,
-      companyId: activeCompanyId,
-      deletedAt: null,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      photoUrl: true,
-    },
-  })
+  const userName =
+    (`${currentUser?.firstName ?? ""} ${currentUser?.lastName ?? ""}`.trim() ||
+      session.user.name ||
+      `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() ||
+      "User")
+  const userEmail = currentUser?.email ?? session.user.email ?? ""
   const activeCompanyRole =
     companyOptions.find((company) => company.companyId === activeCompanyId)?.role ??
     companyOptions[0]?.role ??
@@ -106,6 +119,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     email: userEmail,
                     avatar: userAvatar,
                   }}
+                  accountHref={`/${activeCompanyId}/account`}
                   workspaceItems={
                     canSwitchToEmployeePortal
                       ? [

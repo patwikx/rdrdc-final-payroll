@@ -5,17 +5,13 @@ import { useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
-  IconBuilding,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
-  IconCurrencyPeso,
   IconFile,
   IconId,
-  IconPhone,
   IconPhoto,
   IconPlus,
-  IconShield,
   IconUserPlus,
   IconUpload,
   IconX,
@@ -411,36 +407,24 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
   return (
     <main className="min-h-screen w-full bg-background">
       {/* ── Header band ─────────────────────────────────────────── */}
-      <div className="relative overflow-hidden border-b border-border/60">
-        <div className="pointer-events-none absolute -right-24 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
-        <div className="pointer-events-none absolute left-8 top-10 h-36 w-36 rounded-full bg-primary/10 blur-2xl" />
-        <div className="relative flex flex-col justify-between gap-6 px-4 pb-6 pt-6 sm:px-6 lg:flex-row lg:items-end lg:px-8">
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">2-step employee creation with profile image and scanned documents upload.</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                <IconUserPlus className="h-7 w-7" />
-                Employee Onboarding
-              </h1>
-              <Badge variant="outline" className="h-6 px-2 text-[11px]">
-                <IconBuilding className="mr-1 size-3.5" />
-                {companyName}
-              </Badge>
-              <Badge variant={completion.stepOneComplete && completion.stepTwoComplete ? "default" : "secondary"}>
-                <IconCheck className="mr-1 size-3.5" />
-                Step {step === "stepOne" ? "1" : "2"} of 2
-              </Badge>
+      <div className="flex flex-col justify-between gap-6 border-b border-border/60 px-8 pb-8 pt-8 md:flex-row md:items-end">
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">2-step employee creation with profile image and scanned documents upload.</p>
+          <div className="flex items-center gap-4">
+            <h1 className="inline-flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground">
+              <IconUserPlus className="h-7 w-7" />
+              Employee Onboarding
+            </h1>
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">
+              {companyName}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary">
-              <IconCheck className="mr-1 size-3.5" />
-              Completion {completion.score}%
-            </Badge>
-            <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={isPending}>
-              <IconCheck className="size-4" /> {isPending ? "Creating..." : "Create Employee"}
-            </Button>
-          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary">Completion {completion.score}%</Badge>
+          <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={isPending}>
+            <IconCheck className="size-4" /> {isPending ? "Creating..." : "Create Employee"}
+          </Button>
         </div>
       </div>
 
@@ -478,31 +462,29 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
       </Dialog>
 
       {/* ── Step tabs ───────────────────────────────────────────── */}
-      <div className="px-4 pt-4 sm:px-6 lg:px-8">
-        <div className="inline-flex flex-wrap items-center gap-1 rounded-md border border-border/70 bg-muted/30 p-1">
-          <button
-            type="button"
-            onClick={() => setStep("stepOne")}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors ${
-              step === "stepOne"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <IconId className="size-3.5" /> Step 1: Identity & Contact
-          </button>
-          <button
-            type="button"
-            onClick={() => setStep("stepTwo")}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors ${
-              step === "stepTwo"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <IconBriefcase className="size-3.5" /> Step 2: Employment, Payroll & Tax
-          </button>
-        </div>
+      <div className="flex gap-0 border-b border-border/60 px-8">
+        <button
+          type="button"
+          onClick={() => setStep("stepOne")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors ${
+            step === "stepOne"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+          }`}
+        >
+          <IconId className="size-3.5" /> Step 1: Identity & Contact
+        </button>
+        <button
+          type="button"
+          onClick={() => setStep("stepTwo")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors ${
+            step === "stepTwo"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+          }`}
+        >
+          <IconBriefcase className="size-3.5" /> Step 2: Employment, Payroll & Tax
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -513,16 +495,15 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="space-y-4 px-4 py-4 sm:px-6 lg:px-8"
           >
             {/* ── Identity section ──────────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <IconId className="h-3.5 w-3.5" /> Identity
                 </h2>
               </div>
-              <div className="grid gap-4 px-5 pb-5 pt-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+              <div className="grid gap-4 px-8 pb-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
                       <div className="space-y-2">
                         <button
                           type="button"
@@ -577,13 +558,13 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             </div>
 
             {/* ── Contact section ─────────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <IconPhone className="h-3.5 w-3.5" /> Contact Information
+                  Contact Information
                 </h2>
               </div>
-              <div className="grid gap-3 px-5 pb-5 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                       <Field label="Mobile Number" required><Input value={form.contact.mobileNumber} onChange={(event) => updateSection("contact", "mobileNumber", event.target.value)} /></Field>
                       <Field label="Personal Email" required><Input type="email" value={form.contact.personalEmail} onChange={(event) => updateSection("contact", "personalEmail", event.target.value)} /></Field>
                       <Field label="Work Email"><Input type="email" value={form.contact.workEmail ?? ""} onChange={(event) => updateSection("contact", "workEmail", event.target.value || undefined)} /></Field>
@@ -599,13 +580,13 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             </div>
 
             {/* ── Documents section ──────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <IconFile className="h-3.5 w-3.5" /> Scanned Documents
                 </h2>
               </div>
-              <div className="px-5 pb-4 pt-4">
+              <div className="px-8 pb-6">
                         <button
                           type="button"
                           onClick={() => documentsInputRef.current?.click()}
@@ -627,7 +608,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                         <p className="mt-2 text-[11px] text-muted-foreground">Up to 10 files. PDF and image files are recommended.</p>
               </div>
 
-              <div className="space-y-2 px-5 pb-5">
+              <div className="space-y-2 px-8 pb-6">
                       {form.uploads.scannedDocuments.length === 0 ? (
                         <p className="rounded-md border border-dashed border-border/70 p-3 text-xs text-muted-foreground">No scanned documents attached.</p>
                       ) : (
@@ -685,16 +666,15 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="space-y-4 px-4 py-4 sm:px-6 lg:px-8"
           >
             {/* ── Employment section ──────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <IconBriefcase className="h-3.5 w-3.5" /> Employment
                 </h2>
               </div>
-              <div className="grid gap-3 px-5 pb-5 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <DateField label="Hire Date" required value={form.employment.hireDate} onChange={(value) => updateSection("employment", "hireDate", value)} />
                     <OptionSelect label="Employment Status" required value={form.employment.employmentStatusId} options={dynamicOptions.employmentStatuses} onChange={(value) => updateSection("employment", "employmentStatusId", value)} allowCreate createLabel="Add status" onCreateRequested={() => openCreateDialog("employmentStatuses")} />
                     <OptionSelect label="Employment Type" required value={form.employment.employmentTypeId} options={dynamicOptions.employmentTypes} onChange={(value) => updateSection("employment", "employmentTypeId", value)} allowCreate createLabel="Add type" onCreateRequested={() => openCreateDialog("employmentTypes")} />
@@ -711,13 +691,13 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             </div>
 
             {/* ── Payroll section ────────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <IconCurrencyPeso className="h-3.5 w-3.5" /> Payroll
+                  Payroll
                 </h2>
               </div>
-              <div className="grid gap-3 px-5 pb-5 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Monthly Rate" required><Input type="number" value={form.payroll.monthlyRate} onChange={(event) => updateSection("payroll", "monthlyRate", Number(event.target.value) || 0)} /></Field>
                     <Field label="Daily Rate"><Input type="number" value={dailyRatePreview} disabled /></Field>
                     <Field label="Hourly Rate"><Input type="number" value={hourlyRatePreview} disabled /></Field>
@@ -734,13 +714,13 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
             </div>
 
             {/* ── Tax section ────────────────────────────────── */}
-            <div className="overflow-hidden border border-border/70 bg-card">
-              <div className="border-b border-border/60 px-5 py-3">
+            <div className="border-b border-border/60">
+              <div className="px-8 py-4">
                 <h2 className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <IconShield className="h-3.5 w-3.5" /> Tax & Government IDs
+                  Tax & Government IDs
                 </h2>
               </div>
-              <div className="grid gap-3 px-5 pb-5 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 px-8 pb-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Field label="Tax Status" required>
                       <Select value={form.tax.taxStatusId} onValueChange={(value) => updateSection("tax", "taxStatusId", value as EmployeeOnboardingInput["tax"]["taxStatusId"])}>
                         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
@@ -763,7 +743,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
       </AnimatePresence>
 
       {/* ── Step navigation footer ──────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between border-t border-border/60 px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex flex-wrap items-center justify-between border-t border-border/60 px-8 py-4">
         <Button type="button" variant="outline" size="sm" className="border-border/60" disabled={step === "stepOne" || isPending} onClick={() => setStep("stepOne")}>
           <IconChevronLeft className="size-4" /> Previous
         </Button>

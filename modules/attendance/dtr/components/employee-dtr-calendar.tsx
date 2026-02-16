@@ -274,7 +274,7 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
         <div className="lg:col-span-4 space-y-2">
-          <label className="text-sm text-muted-foreground ml-1">Employee</label>
+          <label className="ml-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Employee</label>
           <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -321,12 +321,12 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
         </div>
 
         <div className="lg:col-span-4 space-y-2">
-          <label className="text-sm text-muted-foreground ml-1">Attendance Period</label>
+          <label className="ml-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Attendance Period</label>
           <div className="flex items-center justify-between h-9 bg-muted/20 border border-border/60 px-3 rounded-md">
             <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
               <IconChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm">{format(currentMonth, "MMMM yyyy")}</span>
+            <span className="text-sm font-medium">{format(currentMonth, "MMMM yyyy")}</span>
             <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
               <IconChevronRight className="h-4 w-4" />
             </Button>
@@ -357,7 +357,7 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
             <IconUser className="h-10 w-10 text-muted-foreground/20" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-lg text-foreground/70">Select Employee</h3>
+            <h3 className="text-base font-medium text-foreground/70">Select Employee</h3>
             <p className="text-sm text-muted-foreground/70 max-w-[300px]">Select an employee from the list above to view their attendance calendar.</p>
           </div>
         </div>
@@ -367,7 +367,7 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
             <div className="grid grid-cols-7 border-b border-border/60 bg-muted/10">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                 <div key={day} className="py-3 text-center border-r border-border/60 last:border-r-0">
-                  <span className="text-xs text-muted-foreground/70">{day}</span>
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">{day}</span>
                 </div>
               ))}
             </div>
@@ -410,7 +410,7 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
                     )}
                   >
                     <div className="flex items-center justify-between mb-3">
-                      <span className={cn("text-xs", isToday(day) ? "bg-primary text-primary-foreground px-1.5 py-0.5 rounded" : "text-muted-foreground")}> 
+                      <span className={cn("text-[11px] font-medium", isToday(day) ? "bg-primary text-primary-foreground px-1.5 py-0.5 rounded" : "text-muted-foreground")}>
                         {format(day, "dd")}
                       </span>
                       {dayRestDay && !log ? <IconCoffee className="h-3 w-3 text-slate-400" /> : null}
@@ -425,8 +425,8 @@ export function EmployeeDtrCalendar({ companyId, leaveOverlays }: EmployeeDtrCal
                       </Badge>
                     ) : log ? (
                       <div className="space-y-1">
-                        <div className="text-xs">{formatTimeLabel(log.actualTimeIn)}</div>
-                        <div className="text-xs">{formatTimeLabel(log.actualTimeOut)}</div>
+                        <div className="text-[11px]">{formatTimeLabel(log.actualTimeIn)}</div>
+                        <div className="text-[11px]">{formatTimeLabel(log.actualTimeOut)}</div>
                         <Badge className={`text-[10px] px-1 py-0 rounded w-full justify-center border-none ${calendarStatusClass(log.attendanceStatus)}`}>
                           {log.attendanceStatus.replace(/_/g, " ")}
                         </Badge>

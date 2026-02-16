@@ -61,19 +61,19 @@ export function UserAccessWorkspace({
   ]
 
   return (
-    <section className="border-b border-border/60">
+    <section className="overflow-hidden border border-border/70 bg-card">
       {/* ── Tab Bar ── */}
-      <div className="flex items-center justify-between border-b border-border/60 px-4 sm:px-6">
-        <div className="flex items-center gap-0">
+      <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-4 py-2 sm:px-6">
+        <div className="inline-flex items-center gap-0 rounded-md border border-border/70 bg-background p-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`relative inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors ${
+              className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
                 activeTab === tab.key
-                  ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {tab.icon}
@@ -90,7 +90,7 @@ export function UserAccessWorkspace({
           <Button
             type="button"
             size="sm"
-            className="h-7 gap-1.5 px-2.5 text-xs"
+            className="h-8 gap-1.5 px-2.5 text-xs"
             disabled={isPending}
             onClick={onCreateSystemAccount}
           >
@@ -103,9 +103,9 @@ export function UserAccessWorkspace({
       {/* ── Tab: Employee Roster ── */}
       {activeTab === "roster" ? (
         <>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto bg-background">
             <table className="w-full min-w-[1100px] text-xs">
-              <thead className="bg-muted/40">
+              <thead className="bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" /> <span>Employee</span></span></th>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconBriefcase className="size-3.5" /> <span>Department</span></span></th>
@@ -126,7 +126,7 @@ export function UserAccessWorkspace({
                   </tr>
                 ) : (
                   rows.map((row) => (
-                    <tr key={row.employeeId} className="border-t border-border/60">
+                    <tr key={row.employeeId} className="border-t border-border/60 hover:bg-muted/10">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
@@ -199,7 +199,7 @@ export function UserAccessWorkspace({
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-background px-3 py-2 text-xs text-muted-foreground">
             <p>
               Page {employeePagination.page} of {employeePagination.totalPages} • {employeePagination.totalItems} records
             </p>
@@ -234,9 +234,9 @@ export function UserAccessWorkspace({
       {/* ── Tab: System Accounts ── */}
       {activeTab === "accounts" ? (
         <>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto bg-background">
             <table className="w-full min-w-[900px] text-xs">
-              <thead className="bg-muted/40">
+              <thead className="bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" /> Account</span></th>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconMail className="size-3.5" /> Email</span></th>
@@ -256,7 +256,7 @@ export function UserAccessWorkspace({
                   </tr>
                 ) : (
                   systemUsers.map((user) => (
-                    <tr key={user.id} className="border-t border-border/60">
+                    <tr key={user.id} className="border-t border-border/60 hover:bg-muted/10">
                       <td className="px-3 py-2">
                         <div>
                           <div className="font-medium text-foreground">{user.displayName}</div>
@@ -304,7 +304,7 @@ export function UserAccessWorkspace({
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-background px-3 py-2 text-xs text-muted-foreground">
             <p>
               Page {systemUserPagination.page} of {systemUserPagination.totalPages} • {systemUserPagination.totalItems} records
             </p>
@@ -346,9 +346,9 @@ export function UserAccessWorkspace({
               </p>
             </div>
           ) : null}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto bg-background">
             <table className="w-full min-w-[800px] text-xs">
-              <thead className="bg-muted/40">
+              <thead className="bg-muted/30">
                 <tr>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" /> Employee</span></th>
                   <th className="px-3 py-2 text-left"><span className="inline-flex items-center gap-1.5"><IconBriefcase className="size-3.5" /> Department</span></th>
@@ -368,7 +368,7 @@ export function UserAccessWorkspace({
                   </tr>
                 ) : (
                   unlinkedRows.map((row) => (
-                    <tr key={row.employeeId} className="border-t border-border/60">
+                    <tr key={row.employeeId} className="border-t border-border/60 hover:bg-muted/10">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 rounded-md border border-border/60 after:rounded-md">
@@ -415,7 +415,7 @@ export function UserAccessWorkspace({
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-background px-3 py-2 text-xs text-muted-foreground">
             <p>
               Page {employeePagination.page} of {employeePagination.totalPages} • {employeePagination.totalItems} records
             </p>

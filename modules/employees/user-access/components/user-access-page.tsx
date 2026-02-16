@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState, useTransition } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBuilding,
+  IconLink,
+  IconRefresh,
+  IconSearch,
+  IconShieldCheck,
+  IconUsers,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -24,6 +29,7 @@ import type {
   SystemUserAccountRow,
   UserAccessPreviewRow,
 } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -695,23 +701,48 @@ export function UserAccessPage({
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <section className="flex flex-col gap-2 border-b border-border/60 px-4 pb-6 pt-6 sm:px-6">
-        <p className="text-xs text-muted-foreground">HR System</p>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">System User Creation and Employee Link</h1>
-        <p className="text-sm text-muted-foreground">{companyName}</p>
+      <section className="relative overflow-hidden border-b border-border/60">
+        <div className="pointer-events-none absolute -right-20 -top-16 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-8 top-8 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-col gap-2 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
+          <p className="text-xs text-muted-foreground">HR System</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <IconShieldCheck className="size-6 text-primary sm:size-7" />
+              System User Creation and Employee Link
+            </h1>
+            <Badge variant="outline" className="h-6 px-2 text-[11px]">
+              <IconBuilding className="mr-1 size-3.5" />
+              {companyName}
+            </Badge>
+            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+              <IconUsers className="mr-1 size-3.5" />
+              {employeePagination.totalItems} Employees
+            </Badge>
+            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+              <IconShieldCheck className="mr-1 size-3.5" />
+              {systemUserPagination.totalItems} System Users
+            </Badge>
+          </div>
+        </div>
       </section>
 
-      <section className="border-b border-border/60 px-4 py-3 sm:px-6">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <div className="min-w-0 md:w-[360px] md:flex-none">
+      <section className="border-b border-border/60 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+          <div className="relative min-w-0 xl:w-[360px] xl:flex-none">
+            <IconSearch className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
               value={queryInput}
               onChange={(event) => setQueryInput(event.target.value)}
               placeholder="Search employee, username, email"
+              className="h-9 pl-9"
             />
           </div>
           <Select value={linkFilterInput} onValueChange={(value) => setLinkFilterInput(value as UserAccessLinkFilter)}>
-            <SelectTrigger className="w-full md:w-[220px]"><SelectValue placeholder="Link Status" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full xl:w-[220px]">
+              <IconLink className="mr-1.5 size-4 text-muted-foreground" />
+              <SelectValue placeholder="Link Status" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All</SelectItem>
               <SelectItem value="LINKED">Linked</SelectItem>
@@ -719,7 +750,10 @@ export function UserAccessPage({
             </SelectContent>
           </Select>
           <Select value={roleFilterInput} onValueChange={(value) => setRoleFilterInput(value as UserAccessRoleFilter)}>
-            <SelectTrigger className="w-full md:w-[220px]"><SelectValue placeholder="Role" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-full xl:w-[220px]">
+              <IconShieldCheck className="mr-1.5 size-4 text-muted-foreground" />
+              <SelectValue placeholder="Role" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">All Roles</SelectItem>
               <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
@@ -728,7 +762,8 @@ export function UserAccessPage({
               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="button" variant="outline" onClick={resetFilters} disabled={isPending}>
+          <Button type="button" variant="outline" className="h-9" onClick={resetFilters} disabled={isPending}>
+            <IconRefresh className="mr-1.5 size-4" />
             Reset
           </Button>
         </div>
@@ -737,20 +772,22 @@ export function UserAccessPage({
         </p>
       </section>
 
-      <UserAccessWorkspace
-        rows={rows}
-        systemUsers={systemUsers}
-        onCreate={openCreate}
-        onLink={openLink}
-        onUnlink={submitUnlink}
-        onEdit={openEdit}
-        onCreateSystemAccount={openCreateSystemAccount}
-        isPending={isPending}
-        employeePagination={employeePagination}
-        systemUserPagination={systemUserPagination}
-        onEmployeePageChange={(nextPage) => updateRoute({ empPage: nextPage })}
-        onSystemUserPageChange={(nextPage) => updateRoute({ sysPage: nextPage })}
-      />
+      <section className="px-4 py-4 sm:px-6 lg:px-8">
+        <UserAccessWorkspace
+          rows={rows}
+          systemUsers={systemUsers}
+          onCreate={openCreate}
+          onLink={openLink}
+          onUnlink={submitUnlink}
+          onEdit={openEdit}
+          onCreateSystemAccount={openCreateSystemAccount}
+          isPending={isPending}
+          employeePagination={employeePagination}
+          systemUserPagination={systemUserPagination}
+          onEmployeePageChange={(nextPage) => updateRoute({ empPage: nextPage })}
+          onSystemUserPageChange={(nextPage) => updateRoute({ sysPage: nextPage })}
+        />
+      </section>
 
       <Dialog open={dialogState.type === "CREATE"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
         <DialogContent>

@@ -29,6 +29,7 @@ import {
   IconSelector,
   IconUser,
 } from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { useTransition } from "react"
 
@@ -43,6 +44,7 @@ export function NavUser({
   user,
   inSidebar = true,
   workspaceItems = [],
+  accountHref,
 }: {
   user: {
     name: string
@@ -51,8 +53,10 @@ export function NavUser({
   }
   inSidebar?: boolean
   workspaceItems?: WorkspaceMenuItem[]
+  accountHref?: string
 }) {
   useSidebar()
+  const router = useRouter()
   const [isLoggingOut, startLogoutTransition] = useTransition()
 
   const handleLogout = () => {
@@ -103,10 +107,16 @@ export function NavUser({
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
-        <DropdownMenuItem>
-          <IconRosetteDiscountCheck />
-          Account
-        </DropdownMenuItem>
+        {accountHref ? (
+          <DropdownMenuItem
+            onSelect={() => {
+              router.push(accountHref)
+            }}
+          >
+            <IconRosetteDiscountCheck />
+            Account
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem>
           <IconBell />
           Notifications

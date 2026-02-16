@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
+  IconCheck,
   IconAlertTriangle,
   IconBuilding,
   IconChevronDown,
@@ -19,6 +20,7 @@ import {
   IconShield,
   IconTrash,
   IconUsers,
+  IconX,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -35,7 +37,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
@@ -190,322 +194,383 @@ export function EmployeeMasterlistPage({
   }
 
   return (
-    <div className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <div className="flex flex-col justify-between gap-6 border-b border-border/60 px-8 pb-8 pt-8 md:flex-row md:items-end">
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Human Resources</p>
-          <div className="flex items-center gap-4">
-            <h1 className="inline-flex items-center gap-2 text-3xl font-semibold tracking-tight text-foreground"><IconUsers className="h-7 w-7" /> Employee Directory</h1>
-            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">{companyName}</div>
-            <div className="rounded-md border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary">{totalCount} Visible</div>
-          </div>
-        </div>
+    <div className="min-h-screen w-full bg-background">
+      <div className="relative overflow-hidden border-b border-border/60">
+        <div className="pointer-events-none absolute -right-24 -top-20 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-8 h-40 w-40 rounded-full bg-primary/10 blur-2xl" />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            className="border-border/60 hover:bg-muted/50"
-            onClick={() => toast.info("Export action will be wired in a follow-up pass.")}
-          >
-            <IconFileExport className="h-3.5 w-3.5" /> Export
-          </Button>
-          <Button
-            variant="outline"
-            className="border-border/60 hover:bg-muted/50"
-            onClick={() => toast.info("Advanced search UI mirrors reference; API wiring can be added next.")}
-          >
-            <IconFilter className="h-3.5 w-3.5" /> Advanced Search
-          </Button>
-          <Button
-            variant="outline"
-            className="border-border/60 hover:bg-muted/50"
-            onClick={() => toast.info("Bulk email action is not yet wired for this module path.")}
-          >
-            <IconMail className="h-3.5 w-3.5" /> Email Filtered
-          </Button>
-          <Link href={`/${companyId}/employees/onboarding`}>
-            <Button className="px-6">
-              <IconPlus className="h-3.5 w-3.5" /> New Employee
-            </Button>
-          </Link>
-        </div>
-      </div>
+        <section className="relative w-full px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Human Resources</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                  <IconUsers className="size-6 text-primary sm:size-7" />
+                  Employee Directory
+                </h1>
+                <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                  <IconBuilding className="mr-1 size-3.5" />
+                  {companyName}
+                </Badge>
+                <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                  <IconUsers className="mr-1 size-3.5" />
+                  {totalCount} Visible
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Browse, filter, and manage employee records across the company.</p>
+            </div>
 
-      <div className="flex min-h-[calc(100vh-180px)] flex-col lg:flex-row">
-        <aside className="w-full shrink-0 space-y-8 border-r border-border/60 bg-background/50 p-6 backdrop-blur-sm lg:w-72">
-          <div className="space-y-3">
-            <h3 className="text-xs font-medium text-muted-foreground">Find Employee</h3>
-            <div className="group relative">
-              <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-              <Input
-                placeholder="Search by name or ID"
-                value={searchTerm}
-                onChange={(event) => {
-                  setSearchTerm(event.target.value)
-                  setCurrentPage(1)
-                }}
-                className="border-border/60 bg-muted/20 pl-9"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 border-border/70"
+                onClick={() => toast.info("Export action will be wired in a follow-up pass.")}
+              >
+                <IconFileExport className="mr-1.5 size-3.5" />
+                Export
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 border-border/70"
+                onClick={() => toast.info("Advanced search UI mirrors reference; API wiring can be added next.")}
+              >
+                <IconFilter className="mr-1.5 size-3.5" />
+                Advanced Search
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 border-border/70"
+                onClick={() => toast.info("Bulk email action is not yet wired for this module path.")}
+              >
+                <IconMail className="mr-1.5 size-3.5" />
+                Email Filtered
+              </Button>
+              <Button asChild size="sm" className="h-8">
+                <Link href={`/${companyId}/employees/onboarding`}>
+                  <IconPlus className="mr-1.5 size-3.5" />
+                  New Employee
+                </Link>
+              </Button>
             </div>
           </div>
+        </section>
+      </div>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <IconBuilding className="h-3 w-3" /> Departments
-            </h3>
-            <div className="ml-1.5 flex flex-col gap-px border-l border-border/60 pl-3">
-              <button
-                type="button"
+      <section className="grid w-full gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
+        <aside className="space-y-4">
+          <Card className="border-border/70 py-0">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm">Find Employee</CardTitle>
+              <CardDescription className="text-xs">Search by employee id, name, email, or department.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 pb-4">
+              <div className="relative">
+                <IconSearch className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or ID"
+                  value={searchTerm}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="h-9 border-border/70 pl-9"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <VisibilityButton value="active" activeValue={showFilter} onSelect={setShowFilter} label="Active" />
+                <VisibilityButton value="all" activeValue={showFilter} onSelect={setShowFilter} label="All" />
+                <VisibilityButton value="inactive" activeValue={showFilter} onSelect={setShowFilter} label="Inactive" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 py-0">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="inline-flex items-center gap-2 text-sm">
+                <IconBuilding className="size-4 text-primary" />
+                Departments
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 pb-4">
+              <FilterListButton
+                label="All Departments"
+                active={!activeDept}
                 onClick={() => {
                   setActiveDept(null)
                   setCurrentPage(1)
                 }}
-                className={cn(
-                  "py-1.5 text-left text-xs transition-all hover:text-primary",
-                  !activeDept ? "-ml-[14px] border-l-2 border-primary pl-2 text-primary" : "text-muted-foreground"
-                )}
-              >
-                All Departments
-              </button>
-              {departments.map((department) => (
-                <button
-                  key={department}
-                  type="button"
-                  onClick={() => {
-                    setActiveDept(department)
-                    setCurrentPage(1)
-                  }}
-                  className={cn(
-                    "truncate py-1.5 text-left text-xs transition-all hover:text-primary",
-                    activeDept === department ? "-ml-[14px] border-l-2 border-primary pl-2 text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  {department}
-                </button>
-              ))}
-            </div>
-          </div>
+              />
+              <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                {departments.map((department) => (
+                  <FilterListButton
+                    key={department}
+                    label={department}
+                    active={activeDept === department}
+                    onClick={() => {
+                      setActiveDept(department)
+                      setCurrentPage(1)
+                    }}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <IconMapPin className="h-3 w-3" /> Locations
-            </h3>
-            <div className="ml-1.5 flex flex-col gap-px border-l border-border/60 pl-3">
-              <button
-                type="button"
+          <Card className="border-border/70 py-0">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="inline-flex items-center gap-2 text-sm">
+                <IconMapPin className="size-4 text-primary" />
+                Locations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 pb-4">
+              <FilterListButton
+                label="All Locations"
+                active={!activeBranch}
                 onClick={() => {
                   setActiveBranch(null)
                   setCurrentPage(1)
                 }}
-                className={cn(
-                  "py-1.5 text-left text-xs transition-all hover:text-primary",
-                  !activeBranch ? "-ml-[14px] border-l-2 border-primary pl-2 text-primary" : "text-muted-foreground"
-                )}
-              >
-                All Locations
-              </button>
-              {branches.map((branch) => (
-                <button
-                  key={branch}
-                  type="button"
-                  onClick={() => {
-                    setActiveBranch(branch)
-                    setCurrentPage(1)
-                  }}
-                  className={cn(
-                    "truncate py-1.5 text-left text-xs transition-all hover:text-primary",
-                    activeBranch === branch ? "-ml-[14px] border-l-2 border-primary pl-2 text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  {branch}
-                </button>
-              ))}
-            </div>
-          </div>
+              />
+              <div className="max-h-36 space-y-1 overflow-y-auto pr-1">
+                {branches.map((branch) => (
+                  <FilterListButton
+                    key={branch}
+                    label={branch}
+                    active={activeBranch === branch}
+                    onClick={() => {
+                      setActiveBranch(branch)
+                      setCurrentPage(1)
+                    }}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <IconShield className="h-3 w-3" /> Status
-            </h3>
-            <div className="flex flex-wrap gap-2">
+          <Card className="border-border/70 py-0">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="inline-flex items-center gap-2 text-sm">
+                <IconShield className="size-4 text-primary" />
+                Employment Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-1.5 pb-4">
               <Button
                 type="button"
+                size="sm"
                 variant={!activeStatus ? "default" : "outline"}
                 onClick={() => {
                   setActiveStatus(null)
                   setCurrentPage(1)
                 }}
+                className="h-7"
               >
-                ALL
+                All
               </Button>
               {statuses.map((status) => (
                 <Button
                   key={status}
                   type="button"
+                  size="sm"
                   variant={activeStatus === status ? "default" : "outline"}
                   onClick={() => {
                     setActiveStatus(status)
                     setCurrentPage(1)
                   }}
+                  className="h-7"
                 >
                   {status}
                 </Button>
               ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-xs font-medium text-muted-foreground">Visibility</h3>
-            <div className="flex flex-wrap gap-2">
-              <VisibilityButton value="active" activeValue={showFilter} onSelect={setShowFilter} label="Active Only" />
-              <VisibilityButton value="all" activeValue={showFilter} onSelect={setShowFilter} label="Include Inactive" />
-              <VisibilityButton value="inactive" activeValue={showFilter} onSelect={setShowFilter} label="Inactive Only" />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </aside>
 
-        <main className="flex flex-1 flex-col bg-background p-0">
-          <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/10">
-            <div className={cn("grid h-10 items-center gap-5 px-8 text-xs font-medium uppercase tracking-wide text-muted-foreground", MASTERLIST_GRID_COLUMNS)}>
-              <SortHeader label="Employee Name" active={sortColumn === "name"} direction={sortDirection} onClick={() => toggleSort("name")} className="" />
-              <div>Position</div>
-              <SortHeader label="Department" active={sortColumn === "department"} direction={sortDirection} onClick={() => toggleSort("department")} className="" />
-              <SortHeader label="Status" active={sortColumn === "status"} direction={sortDirection} onClick={() => toggleSort("status")} className="" />
-              <div className="text-right">Actions</div>
-            </div>
-          </div>
-
-          <div className="flex-1 divide-y divide-border/60 bg-background">
-            {paginatedEmployees.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-4 py-32 text-center">
-                <div className="rounded-md border border-border/60 bg-muted/20 p-4">
-                  <IconSearch className="h-8 w-8 text-muted-foreground/70" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">No records found</p>
-                  <p className="text-sm text-muted-foreground">Try adjusting your search or filter criteria.</p>
-                </div>
+        <Card className="border-border/70 py-0">
+          <CardHeader className="border-b border-border/60 pb-2.5 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <CardTitle className="text-sm">Employee Masterlist</CardTitle>
+                <CardDescription className="text-xs">
+                  Page {safeCurrentPage} of {totalPages} • {totalCount} matching records
+                </CardDescription>
               </div>
-            ) : (
-              paginatedEmployees.map((employee) => (
-                <div key={employee.id} className={cn("group grid items-center gap-5 px-8 py-4 transition-colors hover:bg-muted/5", MASTERLIST_GRID_COLUMNS)}>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9 shrink-0 border border-border/60">
-                      <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="object-cover" />
-                      <AvatarFallback className="bg-primary/5 text-[13px] font-semibold text-primary">
-                        {employee.firstName[0]}
-                        {employee.lastName[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
-                        {employee.lastName}, {employee.firstName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">{employee.employeeNumber}</p>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                {showFilter === "active" ? "Active only" : showFilter === "inactive" ? "Inactive only" : "All statuses"}
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/20">
+              <div className={cn("grid h-10 items-center gap-5 px-6 text-xs font-medium uppercase tracking-wide text-muted-foreground", MASTERLIST_GRID_COLUMNS)}>
+                <SortHeader
+                  label="Employee Name"
+                  active={sortColumn === "name"}
+                  direction={sortDirection}
+                  onClick={() => toggleSort("name")}
+                  className=""
+                />
+                <div>Position</div>
+                <SortHeader
+                  label="Department"
+                  active={sortColumn === "department"}
+                  direction={sortDirection}
+                  onClick={() => toggleSort("department")}
+                  className=""
+                />
+                <SortHeader
+                  label="Status"
+                  active={sortColumn === "status"}
+                  direction={sortDirection}
+                  onClick={() => toggleSort("status")}
+                  className=""
+                />
+                <div className="text-right">Actions</div>
+              </div>
+            </div>
+
+            <div className="flex-1 divide-y divide-border/60 bg-background">
+              {paginatedEmployees.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-4 py-28 text-center">
+                  <div className="rounded-md border border-border/60 bg-muted/20 p-4">
+                    <IconSearch className="size-8 text-muted-foreground/70" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">No records found</p>
+                    <p className="text-sm text-muted-foreground">Try adjusting your search or filter criteria.</p>
+                  </div>
+                </div>
+              ) : (
+                paginatedEmployees.map((employee) => (
+                  <div key={employee.id} className={cn("group grid items-center gap-5 px-6 py-3.5 transition-colors hover:bg-muted/10", MASTERLIST_GRID_COLUMNS)}>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9 shrink-0 border border-border/60">
+                        <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="object-cover" />
+                        <AvatarFallback className="bg-primary/5 text-[13px] font-semibold text-primary">
+                          {employee.firstName[0]}
+                          {employee.lastName[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+                          {employee.lastName}, {employee.firstName}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{employee.employeeNumber}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <p className="truncate text-sm font-medium text-foreground/80">{employee.position}</p>
-                    <p className="truncate text-xs text-muted-foreground">{employee.branch}</p>
-                  </div>
+                    <div>
+                      <p className="truncate text-sm text-foreground/90">{employee.position}</p>
+                      <p className="truncate text-xs text-muted-foreground">{employee.branch}</p>
+                    </div>
 
-                  <div>
-                    <p className="truncate text-xs text-muted-foreground">{employee.department}</p>
-                  </div>
+                    <div>
+                      <p className="truncate text-xs text-muted-foreground">{employee.department}</p>
+                    </div>
 
-                  <div>
-                    <Badge variant={employee.isActive ? "default" : "secondary"}>
-                      {employee.isActive ? employee.employmentStatus : "INACTIVE"}
-                    </Badge>
-                  </div>
+                    <div>
+                      <Badge variant={employee.isActive ? "default" : "secondary"}>
+                        {employee.isActive ? <IconCheck className="mr-1 size-3.5" /> : <IconX className="mr-1 size-3.5" />}
+                        {employee.isActive ? employee.employmentStatus : "INACTIVE"}
+                      </Badge>
+                    </div>
 
-                  <div className="flex justify-end">
-                    <div className="flex items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button asChild variant="outline" size="sm" className="gap-1 border-border/60">
-                            <Link
-                              href={{
-                                pathname: `/${companyId}/employees/${employee.id}`,
-                                query: { page: String(safeCurrentPage) },
-                              }}
-                            >
-                              <IconEye className="h-3.5 w-3.5" />
-                              View Profile
-                            </Link>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" sideOffset={6}>
-                          View Profile
-                        </TooltipContent>
-                      </Tooltip>
-                      {canDeleteEmployees ? (
+                    <div className="flex justify-end">
+                      <div className="flex items-center gap-2">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              onClick={() =>
-                                setDeleteTarget({
-                                  id: employee.id,
-                                  employeeNumber: employee.employeeNumber,
-                                  fullName: employee.fullName,
-                                  isActive: employee.isActive,
-                                })
-                              }
-                              aria-label={`Delete ${employee.fullName}`}
-                            >
-                              <IconTrash className="h-3.5 w-3.5" />
+                            <Button asChild variant="outline" size="sm" className="h-7 gap-1 border-border/70">
+                              <Link
+                                href={{
+                                  pathname: `/${companyId}/employees/${employee.id}`,
+                                  query: { page: String(safeCurrentPage) },
+                                }}
+                              >
+                                <IconEye className="size-3.5" />
+                                View Profile
+                              </Link>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={6}>
-                            Delete Employee
+                            View Profile
                           </TooltipContent>
                         </Tooltip>
-                      ) : null}
+                        {canDeleteEmployees ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() =>
+                                  setDeleteTarget({
+                                    id: employee.id,
+                                    employeeNumber: employee.employeeNumber,
+                                    fullName: employee.fullName,
+                                    isActive: employee.isActive,
+                                  })
+                                }
+                                aria-label={`Delete ${employee.fullName}`}
+                              >
+                                <IconTrash className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
+                              Delete Employee
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {totalCount > 0 ? (
-            <div className="sticky bottom-0 flex h-12 items-center justify-between border-t border-border/60 bg-background px-8">
-              <div className="text-xs text-muted-foreground">
-                Page {safeCurrentPage} of {totalPages} • {totalCount} Employees
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={safeCurrentPage === 1}
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                  className="border-border/60 hover:bg-muted/50 disabled:opacity-30"
-                >
-                  Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={safeCurrentPage >= totalPages}
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                  className="border-border/60 hover:bg-muted/50 disabled:opacity-30"
-                >
-                  Next
-                </Button>
-              </div>
+                ))
+              )}
             </div>
-          ) : null}
-        </main>
-      </div>
+
+            {totalCount > 0 ? (
+              <>
+                <Separator />
+                <div className="flex h-11 items-center justify-between px-6">
+                  <div className="text-xs text-muted-foreground">
+                    Page {safeCurrentPage} of {totalPages} • {totalCount} Employees
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 border-border/70"
+                      disabled={safeCurrentPage === 1}
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 border-border/70"
+                      disabled={safeCurrentPage >= totalPages}
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      </section>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => (!open ? setDeleteTarget(null) : null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="inline-flex items-center gap-2">
-              <IconAlertTriangle className="h-4 w-4 text-destructive" />
+              <IconAlertTriangle className="size-4 text-destructive" />
               Delete Employee Record
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -548,7 +613,7 @@ function SortHeader({
   return (
     <button onClick={onClick} className={cn(className, "flex items-center gap-2 text-left transition-colors hover:text-primary")}>
       <span>{label}</span>
-      {active ? direction === "asc" ? <IconChevronUp className="h-3 w-3" /> : <IconChevronDown className="h-3 w-3" /> : <IconChevronsUp className="h-3 w-3 opacity-60" />}
+      {active ? direction === "asc" ? <IconChevronUp className="size-3" /> : <IconChevronDown className="size-3" /> : <IconChevronsUp className="size-3 opacity-60" />}
     </button>
   )
 }
@@ -567,11 +632,38 @@ function VisibilityButton({
   return (
     <Button
       type="button"
+      size="sm"
+      className="h-7"
       variant={activeValue === value ? "default" : "outline"}
       onClick={() => onSelect(value)}
     >
       {label}
     </Button>
+  )
+}
+
+function FilterListButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full truncate border px-2.5 py-1.5 text-left text-xs transition-colors",
+        active
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+      )}
+    >
+      {label}
+    </button>
   )
 }
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useOptimistic, useState, useTransition, type Re
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconAlertCircle,
+  IconBuilding,
   IconCalendarEvent,
   IconCheck,
   IconChevronLeft,
@@ -273,17 +274,31 @@ export function ApprovalQueuePage({
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <section className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"><IconShieldCheck className="size-5" /> {companyName} Leave & Overtime Approval Queue</h1>
-        <p className="text-sm text-muted-foreground">
-          HR final validation queue. All items shown here are already supervisor-approved.
-        </p>
+      <section className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Human Resources</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <IconShieldCheck className="size-6 text-primary" /> Approval Queue
+            </h1>
+            <Badge variant="outline" className="h-6 px-2 text-[11px]">
+              <IconBuilding className="mr-1 size-3.5" />
+              {companyName}
+            </Badge>
+            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+              {queueState.summary.total} Pending
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">HR final validation queue. All items shown here are already supervisor-approved.</p>
+        </div>
       </section>
 
-      <div className="space-y-4 py-6">
+      <div className="space-y-4 px-4 py-4 sm:px-6">
 
-      <section className="overflow-hidden border border-border/60">
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4 sm:divide-x sm:divide-border/60">
+      <section className="overflow-hidden border border-border/60 bg-background">
+        <div className="grid grid-cols-2 gap-px bg-border/60 xl:grid-cols-4">
           <MetricTile label="Total Pending HR" value={String(queueState.summary.total)} icon={<IconListDetails className="size-4" />} />
           <MetricTile label="Leave Requests" value={String(queueState.summary.leave)} icon={<IconCalendarEvent className="size-4" />} />
           <MetricTile label="Overtime Requests" value={String(queueState.summary.overtime)} icon={<IconClockHour4 className="size-4" />} />
@@ -291,9 +306,9 @@ export function ApprovalQueuePage({
         </div>
       </section>
 
-      <section className="border-y border-border/60 px-4 py-3 sm:px-6">
+      <section className="border border-border/60 bg-background px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full sm:w-80">
+          <div className="relative w-[320px] max-w-full">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={queryInput}
@@ -304,11 +319,12 @@ export function ApprovalQueuePage({
                 })
               }
               placeholder="Search employee or request"
-              className="pl-8"
+              className="h-8 pl-8"
             />
           </div>
           <Button
             type="button"
+            size="sm"
             variant={filters.kind === "ALL" ? "default" : "outline"}
             onClick={() =>
               updateRoute({
@@ -316,12 +332,14 @@ export function ApprovalQueuePage({
                 page: 1,
               })
             }
+            className="h-8 gap-1.5 text-xs font-medium"
           >
             <IconListDetails className="size-3.5" />
             All
           </Button>
           <Button
             type="button"
+            size="sm"
             variant={filters.kind === "LEAVE" ? "default" : "outline"}
             onClick={() =>
               updateRoute({
@@ -329,12 +347,14 @@ export function ApprovalQueuePage({
                 page: 1,
               })
             }
+            className="h-8 gap-1.5 text-xs font-medium"
           >
             <IconCalendarEvent className="size-3.5" />
             Leave
           </Button>
           <Button
             type="button"
+            size="sm"
             variant={filters.kind === "OVERTIME" ? "default" : "outline"}
             onClick={() =>
               updateRoute({
@@ -342,6 +362,7 @@ export function ApprovalQueuePage({
                 page: 1,
               })
             }
+            className="h-8 gap-1.5 text-xs font-medium"
           >
             <IconClockHour4 className="size-3.5" />
             Overtime
@@ -350,30 +371,30 @@ export function ApprovalQueuePage({
       </section>
 
       {queueState.summary.total === 0 ? (
-        <section className="border-y border-border/60 bg-background px-4 py-10 text-center sm:px-6">
+        <section className="border border-border/60 bg-background px-4 py-10 text-center">
           <h2 className="text-base text-foreground">No requests pending for HR final validation.</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             New leave and overtime requests will appear here after supervisor approval.
           </p>
         </section>
       ) : (
-        <section className="overflow-hidden border-y border-border/60 bg-background">
+        <section className="overflow-hidden border border-border/60 bg-background">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-xs">
-              <thead className="bg-muted/30">
+            <table className="w-full min-w-[980px]">
+              <thead className="bg-muted/20">
                 <tr>
-                  <th className="px-3 py-2 text-left">Request</th>
-                  <th className="px-3 py-2 text-left">Employee</th>
-                  <th className="px-3 py-2 text-left">Requested Date/Time</th>
-                  <th className="px-3 py-2 text-left">Requested Duration</th>
-                  <th className="px-3 py-2 text-left">Supervisor</th>
-                  <th className="px-3 py-2 text-left">Priority</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Employee</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requested Date/Time</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requested Duration</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Supervisor</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Priority</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {queueState.items.length === 0 ? (
-                  <tr className="border-t border-border/50 bg-background">
+                  <tr className="border-t border-border/50">
                     <td className="px-3 py-8 text-center text-sm text-muted-foreground" colSpan={7}>
                       No requests found for the current filters.
                     </td>
@@ -384,28 +405,28 @@ export function ApprovalQueuePage({
                       key={item.id}
                       className={
                         index % 2 === 0
-                          ? "border-t border-border/50 bg-background"
-                          : "border-t border-border/50 bg-muted/10"
+                          ? "border-t border-border/50 bg-background hover:bg-muted/20"
+                          : "border-t border-border/50 bg-muted/10 hover:bg-muted/20"
                       }
                     >
                       <td className="px-3 py-2">
-                        <div>{item.requestNumber}</div>
-                        <div className="text-[11px] text-muted-foreground">{requestTypeLabel(item.kind)}</div>
+                        <div className="text-sm font-medium text-foreground">{item.requestNumber}</div>
+                        <div className="text-xs text-muted-foreground">{requestTypeLabel(item.kind)}</div>
                       </td>
                       <td className="px-3 py-2">
-                        <div>{item.employeeName}</div>
-                        <div className="text-[11px] text-muted-foreground">{item.department}</div>
+                        <div className="text-sm text-foreground">{item.employeeName}</div>
+                        <div className="text-xs text-muted-foreground">{item.department}</div>
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">{item.scheduleLabel}</td>
+                      <td className="px-3 py-2 text-sm text-muted-foreground">{item.scheduleLabel}</td>
                       <td className="px-3 py-2">
-                        <div>{item.quantityLabel}</div>
+                        <div className="text-sm text-foreground">{item.quantityLabel}</div>
                         {item.kind === "OVERTIME" && item.ctoConversionPreview ? (
-                          <Badge className="mt-1 bg-primary text-primary-foreground">Converts to CTO (1:1)</Badge>
+                          <Badge className="mt-1 h-5 bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">Converts to CTO (1:1)</Badge>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">{item.supervisorName}</td>
+                      <td className="px-3 py-2 text-sm text-muted-foreground">{item.supervisorName}</td>
                       <td className="px-3 py-2">
-                        <Badge variant={priorityBadge(item.priority)}>{item.priority}</Badge>
+                        <Badge variant={priorityBadge(item.priority)} className="h-6 px-2 text-[10px] font-medium uppercase tracking-wide">{item.priority}</Badge>
                       </td>
                       <td className="px-3 py-2 text-right">
                         <DropdownMenu>
@@ -439,7 +460,7 @@ export function ApprovalQueuePage({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
             <p className="text-xs text-muted-foreground">
-              Page {queueState.pagination.page} of {queueState.pagination.totalPages} • {queueState.pagination.totalItems} records
+              Page {queueState.pagination.page} of {queueState.pagination.totalPages} - {queueState.pagination.totalItems} records
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -587,12 +608,12 @@ function DetailRow({ label, value, multiline = false }: { label: string; value: 
 
 function MetricTile({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
-    <div className="border-b border-border/60 p-3 sm:border-b-0">
-      <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-muted text-foreground">{icon}</div>
-      <div>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-semibold text-foreground">{value}</p>
+    <div className="grid grid-cols-2 items-center bg-background px-3 py-2.5">
+      <div className="min-w-0">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground">{icon}</span>
+        <p className="mt-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       </div>
+      <p className="text-right text-lg font-semibold tracking-tight text-foreground">{value}</p>
     </div>
   )
 }

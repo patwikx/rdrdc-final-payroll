@@ -678,14 +678,25 @@ export function PayrollStatutoryPageClient({
   return (
     <>
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
-              <IconFileAnalytics className="size-5" />
-              Payroll Reports
-            </h1>
-            <p className="text-xs text-muted-foreground">{companyName} • {resolvedReport.label} • {resolvedReport.frequency}</p>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 print:hidden sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Payroll Operations</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconFileAnalytics className="size-6 text-primary" />
+                Payroll Reports
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                <IconBuilding className="mr-1 size-3.5" />
+                {companyName}
+              </Badge>
+              <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                {resolvedReport.label}
+              </Badge>
+            </div>
             <p className="text-xs text-muted-foreground">
               Scope: {resolvedReport.key === "dole13th" || resolvedReport.key === "bir-alphalist"
                 ? `Calendar Year ${resolvedReportYear}`
@@ -699,34 +710,34 @@ export function PayrollStatutoryPageClient({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button asChild type="button" variant="outline">
+            <Button asChild type="button" variant="outline" className="h-8 text-xs font-medium">
               <Link href={`/${companyId}/payroll/runs`}>
-                <IconArrowLeft className="mr-1.5 h-4 w-4" /> Back to Payroll Runs
+                <IconArrowLeft className="mr-1.5 h-3.5 w-3.5" /> Back to Payroll Runs
               </Link>
             </Button>
             {resolvedReport.key === "payroll-register" ? (
               <>
-                <Button asChild className="bg-blue-600 text-white hover:bg-blue-700" disabled={!selectedRegisterRun}>
+                <Button asChild className="h-8 bg-blue-600 text-xs font-medium text-white hover:bg-blue-700" disabled={!selectedRegisterRun}>
                   <Link href={selectedRegisterRun ? `/${companyId}/payroll/runs/${selectedRegisterRun.runId}/report` : "#"}>
-                    <IconFileText className="size-4" />
+                    <IconFileText className="size-3.5" />
                     Open Report
                   </Link>
                 </Button>
-                <Button asChild className="bg-green-600 text-white hover:bg-green-700" disabled={!selectedRegisterRun}>
+                <Button asChild className="h-8 bg-green-600 text-xs font-medium text-white hover:bg-green-700" disabled={!selectedRegisterRun}>
                   <Link href={selectedRegisterRun ? `/${companyId}/payroll/runs/${selectedRegisterRun.runId}/report/export` : "#"}>
-                    <IconFileText className="size-4" />
+                    <IconFileText className="size-3.5" />
                     Export CSV
                   </Link>
                 </Button>
               </>
             ) : (
               <>
-                <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="bg-green-600 text-white hover:bg-green-700">
-                  <IconFileText className="size-4" />
+                <Button onClick={() => exportCsvTemplate(resolvedReport.key)} className="h-8 bg-green-600 text-xs font-medium text-white hover:bg-green-700">
+                  <IconFileText className="size-3.5" />
                   Export CSV
                 </Button>
-                <Button onClick={() => window.print()} className="bg-blue-600 text-white hover:bg-blue-700">
-                  <IconPrinter className="size-4" />
+                <Button onClick={() => window.print()} className="h-8 bg-blue-600 text-xs font-medium text-white hover:bg-blue-700">
+                  <IconPrinter className="size-3.5" />
                   Print Report
                 </Button>
               </>
@@ -735,12 +746,12 @@ export function PayrollStatutoryPageClient({
         </div>
       </header>
 
-      <section className="grid border-y border-border/60 lg:grid-cols-[320px_1fr] print:block">
-        <aside className="space-y-3 border-r border-border/60 p-4 print:hidden sm:p-6">
+      <section className="mx-4 mb-4 grid overflow-hidden border border-border/60 lg:mx-6 lg:grid-cols-[320px_1fr] print:mx-0 print:mb-0 print:block print:border-0">
+        <aside className="space-y-3 border-b border-border/60 bg-background/60 p-4 print:hidden lg:border-b-0 lg:border-r sm:p-6">
           <div className="space-y-2">
-            <h2 className="inline-flex items-center gap-2 text-base font-medium">
+            <h2 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-foreground">
             <IconReceiptTax className="size-4 text-primary" />
-            Payroll Report Workspace
+            Report Workspace
             </h2>
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -748,11 +759,11 @@ export function PayrollStatutoryPageClient({
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
                 placeholder="Search report"
-                className="pl-8"
+                className="h-9 pl-8"
               />
             </div>
             <Select value={resolvedMonthKey} onValueChange={setSelectedMonthKey}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-9 w-full">
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
@@ -763,7 +774,7 @@ export function PayrollStatutoryPageClient({
                 ))}
               </SelectContent>
             </Select>
-            <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+            <div className="flex items-center justify-between border border-border/60 px-3 py-2">
               <div>
                 <p className="text-xs font-medium">Show Trial Runs</p>
                 <p className="text-[11px] text-muted-foreground">Latest trial run per pay period</p>
@@ -772,7 +783,7 @@ export function PayrollStatutoryPageClient({
             </div>
           </div>
 
-          <ScrollArea className="h-[620px] pr-1">
+          <ScrollArea className="h-[460px] pr-1 lg:h-[calc(100vh-400px)]">
             <div className="space-y-2">
               {filteredOptions.map((report) => {
                 const ReportIcon = reportIconByKey[report.key]
@@ -782,10 +793,10 @@ export function PayrollStatutoryPageClient({
                     type="button"
                     onClick={() => setActiveReport(report.key)}
                     className={cn(
-                      "w-full border px-3 py-2 text-left text-xs",
+                      "w-full border-l-2 border-r border-y px-3 py-2 text-left text-xs transition-colors",
                     resolvedReport.key === report.key
-                      ? "border-primary bg-primary/10 text-foreground"
-                      : "border-border/60 bg-background hover:bg-muted/40"
+                      ? "border-l-primary border-y-primary/40 border-r-primary/40 bg-primary/10 text-foreground"
+                      : "border-l-transparent border-y-border/60 border-r-border/60 bg-background hover:bg-muted/40"
                   )}
                 >
                   <p className="inline-flex items-center gap-1.5 font-medium">
@@ -801,9 +812,9 @@ export function PayrollStatutoryPageClient({
         </aside>
 
           <section className="space-y-3 p-4 print:border-0 print:p-0 sm:p-6">
-            <div className="flex items-center justify-between gap-2 print:hidden">
+            <div className="border border-border/60 bg-background px-3 py-2.5 print:hidden">
               <div>
-                <p className="text-sm font-semibold">{resolvedReport.label}</p>
+                <p className="text-sm font-semibold tracking-tight text-foreground">{resolvedReport.label}</p>
                 <p className="text-xs text-muted-foreground">{resolvedReport.frequency}</p>
                 <p className="text-xs text-muted-foreground">
                   Source: {showTrialRuns ? "Trial runs (latest per pay period)" : "Regular runs"}
@@ -898,11 +909,11 @@ export function PayrollStatutoryPageClient({
                     <table className="w-full text-xs">
                       <thead className="bg-muted/50">
                         <tr>
-                          <th className="px-3 py-2 text-left">Employee</th>
-                          <th className="px-3 py-2 text-left">Year</th>
-                          <th className="px-3 py-2 text-left">Annual Tax Due</th>
-                          <th className="px-3 py-2 text-left">Delta</th>
-                          <th className="px-3 py-2 text-left">Action</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Employee</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Year</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Annual Tax Due</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Delta</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1007,11 +1018,11 @@ export function PayrollStatutoryPageClient({
                     <table className="w-full text-xs">
                       <thead className="bg-muted/50">
                         <tr>
-                          <th className="px-3 py-2 text-left">Run #</th>
-                          <th className="px-3 py-2 text-left">Type</th>
-                          <th className="px-3 py-2 text-left">Period</th>
-                          <th className="px-3 py-2 text-left">Created</th>
-                          <th className="px-3 py-2 text-left">Action</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Run #</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Type</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Period</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Created</th>
+                          <th className="px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1091,9 +1102,9 @@ export function PayrollStatutoryPageClient({
 
 function TraceItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium">{value}</p>
+    <div className="border border-border/60 bg-background px-2.5 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground">{value}</p>
     </div>
   )
 }

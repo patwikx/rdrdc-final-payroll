@@ -70,6 +70,7 @@ type SidebarCompany = {
   companyId: string
   companyCode: string
   companyName: string
+  logoUrl?: string | null
   role: string
 }
 
@@ -159,6 +160,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
         id: company.companyId,
         name: company.companyName,
         code: company.companyCode,
+        logoUrl: company.logoUrl ?? null,
         plan: company.role,
       })),
     [companies]
@@ -182,25 +184,31 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
   const currentCompanyPath = normalizeCompanyPath(pathname)
 
   // ── Nav items ─────────────────────────────────────────────────────────
-  const navItems = getSidebarModulesForRole(activeCompany?.role).map((module) => ({
-    id: module.id,
-    title: module.label,
-    icon: moduleIconMap[module.icon],
-    url:
-      module.items[0] !== undefined
-        ? toCompanyScopedPath(activeCompany.companyId, module.items[0].path)
-        : toCompanyScopedPath(activeCompany.companyId, "/dashboard"),
-    isActive: module.matchPrefixes.some((prefix) =>
-      matchesPath(currentCompanyPath, prefix)
-    ),
-    items: module.items.map((sub) => ({
-      id: sub.id,
-      title: sub.label,
-      url: toCompanyScopedPath(activeCompany.companyId, sub.path),
-      isActive: matchesPath(currentCompanyPath, sub.path),
-      icon: subItemIconMap[sub.id],
-    })),
-  }))
+  const navItems = getSidebarModulesForRole(activeCompany?.role).map((module) => {
+    const activeSubPath = module.items
+      .filter((sub) => matchesPath(currentCompanyPath, sub.path))
+      .sort((a, b) => b.path.length - a.path.length)[0]?.path ?? null
+
+    return {
+      id: module.id,
+      title: module.label,
+      icon: moduleIconMap[module.icon],
+      url:
+        module.items[0] !== undefined
+          ? toCompanyScopedPath(activeCompany.companyId, module.items[0].path)
+          : toCompanyScopedPath(activeCompany.companyId, "/dashboard"),
+      isActive: module.matchPrefixes.some((prefix) =>
+        matchesPath(currentCompanyPath, prefix)
+      ),
+      items: module.items.map((sub) => ({
+        id: sub.id,
+        title: sub.label,
+        url: toCompanyScopedPath(activeCompany.companyId, sub.path),
+        isActive: sub.path === activeSubPath,
+        icon: subItemIconMap[sub.id],
+      })),
+    }
+  })
 
   // ── Accordion state (single-open) ─────────────────────────────────────
   const activeSection = useMemo(

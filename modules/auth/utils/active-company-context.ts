@@ -16,6 +16,7 @@ export type UserCompanyOption = {
   companyId: string
   companyCode: string
   companyName: string
+  logoUrl: string | null
   role: string
   isDefault: boolean
 }
@@ -177,6 +178,7 @@ export async function getUserCompanyOptions(userId: string): Promise<UserCompany
           id: true,
           code: true,
           name: true,
+          logoUrl: true,
         },
       },
     },
@@ -190,6 +192,7 @@ export async function getUserCompanyOptions(userId: string): Promise<UserCompany
     companyId: access.companyId,
     companyCode: access.company.code,
     companyName: access.company.name,
+    logoUrl: access.company.logoUrl ?? null,
     role: access.role,
     isDefault: access.isDefault,
   }))

@@ -6,11 +6,13 @@ import { eachDayOfInterval, format, subDays } from "date-fns"
 import { usePathname, useRouter } from "next/navigation"
 import {
   IconAlertCircle,
+  IconBuilding,
   IconCalendarEvent,
   IconCheckupList,
   IconClock,
   IconDownload,
   IconSearch,
+  IconUserScan,
   IconUserCheck,
   IconUserX,
   IconUsers,
@@ -42,6 +44,7 @@ import { formatWallClockLabel } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type DtrClientPageProps = {
   companyId: string
+  companyName: string
   logs: DtrLogItem[]
   stats: {
     totalEmployees: number
@@ -131,7 +134,7 @@ const sanitizeRequestDetails = (value: string): string => {
   return cleaned || "-"
 }
 
-export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOverlays, payPeriodOptions, filters }: DtrClientPageProps) {
+export function DtrClientPage({ companyId, companyName, logs, stats, workbenchData, leaveOverlays, payPeriodOptions, filters }: DtrClientPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [isRangeRefreshPending, startRangeRefreshTransition] = useTransition()
@@ -458,20 +461,32 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
         </DialogContent>
       </Dialog>
 
-      <div className="px-6 py-6 border-b border-border/60 flex flex-col md:flex-row md:items-end justify-between gap-4 bg-muted/20">
+      <div className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-6 py-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Human Resources</p>
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl text-foreground">Attendance Logs</h1>
-            <div className="px-2 py-0.5 rounded-md border border-primary/20 bg-primary/5 text-primary text-xs">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Human Resources</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <IconUserScan className="size-6 text-primary" />
+              Attendance Logs
+            </h1>
+            <Badge variant="outline" className="h-6 px-2 text-[11px]">
+              <IconBuilding className="mr-1 size-3.5" />
+              {companyName}
+            </Badge>
+            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+              <IconUsers className="mr-1 size-3.5" />
               {combinedLogs.length} Records
-            </div>
+            </Badge>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Select value={filters.payPeriodId ?? CUSTOM_PAY_PERIOD_VALUE} onValueChange={handlePayPeriodChange}>
             <SelectTrigger className="h-9 w-[320px]">
+              <IconCalendarEvent className="mr-1.5 h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="Current pay period" />
             </SelectTrigger>
             <SelectContent>
@@ -488,6 +503,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
           </Button>
         </div>
       </div>
+      </div>
 
       <div className="w-full">
         <div className="px-6 border-b border-border/60 bg-background/50">
@@ -496,25 +512,31 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
               <Button
                 type="button"
                 size="sm"
+                className="h-8 gap-1.5 text-xs font-medium"
                 variant={currentTab === "directory" ? "default" : "ghost"}
                 onClick={() => setTab("directory")}
               >
+                <IconUsers className="mr-1 h-3.5 w-3.5" />
                 Directory View
               </Button>
               <Button
                 type="button"
                 size="sm"
+                className="h-8 gap-1.5 text-xs font-medium"
                 variant={currentTab === "calendar" ? "default" : "ghost"}
                 onClick={() => setTab("calendar")}
               >
+                <IconCalendarEvent className="mr-1 h-3.5 w-3.5" />
                 Individual Calendar
               </Button>
               <Button
                 type="button"
                 size="sm"
+                className="h-8 gap-1.5 text-xs font-medium"
                 variant={currentTab === "workbench" ? "default" : "ghost"}
                 onClick={() => setTab("workbench")}
               >
+                <IconCheckupList className="mr-1 h-3.5 w-3.5" />
                 Workbench
                 {workbenchData.items.length > 0 ? <Badge className="ml-1 h-4 px-1 rounded-full bg-amber-500 text-[10px] text-white">{workbenchData.items.length}</Badge> : null}
               </Button>
@@ -549,7 +571,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
               <Separator className="bg-border/60" />
 
               <div className="space-y-1">
-                <h3 className="text-sm text-muted-foreground">Search</h3>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</h3>
                 <div className="relative group">
                   <IconSearch className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -567,7 +589,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
               <Separator className="bg-border/60" />
 
               <div className="space-y-2">
-                <h3 className="text-sm text-muted-foreground">Snapshot</h3>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Snapshot</h3>
                 <div className="grid grid-cols-1 gap-px bg-border/60 border border-border/60">
                   <div className="px-3 py-2.5 bg-background border-l-2 border-primary">
                     <p className="text-xs text-muted-foreground flex items-center gap-2"><IconUsers className="h-3 w-3" /> Total</p>
@@ -587,7 +609,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
             <main className="flex-1 p-0 bg-background flex flex-col">
               <div className="border-b border-border/60 bg-muted/10 sticky top-0 z-10">
-                <div className="grid grid-cols-16 px-8 h-10 items-center text-xs text-muted-foreground">
+                <div className="grid grid-cols-16 px-8 h-10 items-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="col-span-4">Employee</div>
                   <div className="col-span-2">Date</div>
                   <div className="col-span-2 text-center">In</div>
@@ -622,7 +644,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                           </AvatarFallback>
                         </Avatar>
                         <div className="space-y-0.5 truncate">
-                          <p className="text-sm leading-none truncate">{log.employee.lastName}, {log.employee.firstName}</p>
+                          <p className="text-sm font-medium leading-none truncate">{log.employee.lastName}, {log.employee.firstName}</p>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-foreground/70">{log.employee.employeeNumber}</span>
                             <Badge className={cn("px-1.5 py-0 text-[11px] border rounded", getStatusColor(log.attendanceStatus))}>{log.attendanceStatus}</Badge>
@@ -692,7 +714,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
           <div className={cn("flex flex-col lg:flex-row min-h-[calc(100vh-230px)]", currentTab === "workbench" ? "flex" : "hidden")}>
             <aside className="w-full lg:w-72 border-r border-border/60 p-4 space-y-4 shrink-0 bg-background/30">
               <div className="space-y-2">
-                <h3 className="text-sm text-muted-foreground">Search</h3>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</h3>
                 <div className="relative">
                   <IconSearch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -710,7 +732,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
               <Separator className="bg-border/60" />
 
               <div className="space-y-4">
-                <h3 className="text-sm text-muted-foreground">Queue Analysis</h3>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Queue Analysis</h3>
                 <div className="grid grid-cols-1 gap-3">
                   <div className="p-4 bg-muted/20 border-l-2 border-primary cursor-pointer" onClick={() => {
                     setWbFilter("ALL")
@@ -739,7 +761,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
 
             <main className="flex-1 p-0 bg-background flex flex-col">
               <div className="border-b border-border/60 bg-muted/10 sticky top-0 z-10">
-                <div className="grid grid-cols-12 px-8 h-10 items-center text-xs text-muted-foreground">
+                <div className="grid grid-cols-12 px-8 h-10 items-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <div className="col-span-4">Employee</div>
                   <div className="col-span-2">Date</div>
                   <div className="col-span-2">Type</div>
@@ -779,7 +801,7 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                           {item.type === "ABSENCE" ? <IconX className="h-4 w-4" /> : null}
                         </div>
                         <div className="space-y-0.5 truncate">
-                          <p className="text-sm leading-none truncate">{item.employeeName}</p>
+                          <p className="text-sm font-medium leading-none truncate">{item.employeeName}</p>
                           <p className="text-xs text-foreground/70">{item.employeeNumber}</p>
                         </div>
                       </div>
@@ -802,16 +824,13 @@ export function DtrClientPage({ companyId, logs, stats, workbenchData, leaveOver
                         {isAwaitingSupervisor ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                className={cn(
-                                  "h-7",
-                                  "border-border text-muted-foreground bg-muted/30 hover:bg-muted/30"
-                                )}
-                                variant="outline"
-                                disabled={isOverridePending}
-                                onClick={() => openOverrideApprovalDialog(item)}
-                              >
+                            <Button
+                              size="sm"
+                              className="h-7"
+                              variant="destructive"
+                              disabled={isOverridePending}
+                              onClick={() => openOverrideApprovalDialog(item)}
+                            >
                                 Override
                               </Button>
                             </TooltipTrigger>

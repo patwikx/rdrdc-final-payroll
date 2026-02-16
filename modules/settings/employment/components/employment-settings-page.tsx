@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
+  IconBuilding,
   IconChartBar,
   IconChevronLeft,
   IconChevronRight,
@@ -187,8 +188,6 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const roleLabel = useMemo(() => data.companyRole.split("_").join(" "), [data.companyRole])
-
   const [positionDialogOpen, setPositionDialogOpen] = useState(false)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [typeDialogOpen, setTypeDialogOpen] = useState(false)
@@ -355,21 +354,28 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-lg font-semibold text-foreground">
-              <IconBriefcase className="size-5" />
-              {data.companyName} Employment Setup
-            </h1>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System Settings</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconBriefcase className="size-6 text-primary" />
+                Employment Setup
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                <IconBuilding className="mr-1 size-3.5" />
+                {data.companyName}
+              </Badge>
+            </div>
             <p className="text-sm text-muted-foreground">
               Manage company positions and shared employment classifications used across employee records.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">{data.companyCode}</Badge>
-            <Badge variant="outline">Role: {roleLabel}</Badge>
-            <Button type="button" variant="ghost" onClick={resetForms} disabled={isPending}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={resetForms} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset Forms
             </Button>
@@ -377,7 +383,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
         </div>
       </header>
 
-      <div className="grid gap-3 px-4 py-6 sm:px-6 lg:grid-cols-2">
+      <section className="grid gap-3 px-4 py-4 sm:px-6 lg:grid-cols-2">
         <EntityTableCard
           className="lg:col-span-2"
           title="Positions"
@@ -594,7 +600,7 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
             />
           }
         />
-      </div>
+      </section>
     </main>
   )
 }
@@ -626,27 +632,27 @@ function EntityTableCard({
   const pagedRows = rows.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE)
 
   return (
-    <section className={cn("border border-border/60 bg-background", className)}>
+    <section className={cn("overflow-hidden border border-border/60 bg-background", className)}>
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/60 px-4 py-3">
         <div>
-          <p className="inline-flex items-center gap-1.5 text-base font-medium text-foreground">
+          <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
             {icon}
             <span>{title}</span>
           </p>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {controls}
           {dialog}
         </div>
       </div>
-      <div className="p-4">
-        <div className="overflow-x-auto border border-border/60">
+      <div>
+        <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-muted/50">
+            <thead className="bg-muted/30">
               <tr>
                 {headers.map((header) => (
-                  <th key={header} className="px-3 py-2 text-left font-medium text-muted-foreground">
+                  <th key={header} className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {header}
                   </th>
                 ))}
@@ -660,15 +666,22 @@ function EntityTableCard({
                   </td>
                 </tr>
               ) : (
-                pagedRows.map((row) => (
-                  <tr key={row.id} className="border-t border-border/50">
+                pagedRows.map((row, rowIndex) => (
+                  <tr
+                    key={row.id}
+                    className={
+                      rowIndex % 2 === 0
+                        ? "border-t border-border/50 bg-background"
+                        : "border-t border-border/50 bg-muted/10"
+                    }
+                  >
                     {row.values.map((value, valueIndex) => (
-                      <td key={valueIndex} className="px-3 py-2 text-foreground">
+                      <td key={valueIndex} className="px-3 py-2 text-sm text-foreground">
                         {value}
                       </td>
                     ))}
                     <td className="px-3 py-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => onEdit(row.id)}>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={() => onEdit(row.id)}>
                         <IconEdit className="size-3.5" />
                         Edit
                       </Button>
@@ -680,7 +693,7 @@ function EntityTableCard({
           </table>
         </div>
         {rows.length > 0 ? (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
             <p className="text-xs text-muted-foreground">
               Page {safePage} of {totalPages} • {rows.length} records
             </p>
@@ -957,7 +970,7 @@ function EmploymentClassDialog({
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">
+      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
         {label}
         {required ? <Required /> : null}
       </Label>

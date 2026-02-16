@@ -4,10 +4,12 @@ import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
+  IconBuilding,
   IconChecklist,
   IconChevronLeft,
   IconChevronRight,
   IconGitPullRequest,
+  IconInfoCircle,
   IconPlus,
   IconSitemap,
   IconTrash,
@@ -31,6 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Table,
   TableBody,
@@ -62,6 +65,7 @@ const REQUIRED_STEP_OPTIONS = [1, 2, 3, 4] as const
 const FLOW_TABLE_PAGE_SIZE = 10
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
+const fieldLabelClass = "text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
 
 const getDefaultStepName = (stepNumber: number): string => `Step ${stepNumber}`
 
@@ -108,6 +112,22 @@ const createFlowFormFromRow = (
     stepNames,
     stepApproverUserIds: normalizeStepApproverSlots(stepApproverUserIds),
   }
+}
+
+const getFlowStepSummaries = (flow: MaterialRequestApprovalSettingsViewModel["flows"][number]) => {
+  return Array.from({ length: flow.requiredSteps }).map((_, stepIndex) => {
+    const stepNumber = stepIndex + 1
+    const approverNames = flow.steps
+      .filter((step) => step.stepNumber === stepNumber)
+      .map((step) => step.approverName)
+    const stepName =
+      flow.steps.find((step) => step.stepNumber === stepNumber)?.stepName?.trim() || getDefaultStepName(stepNumber)
+
+    return {
+      stepName,
+      approverNames,
+    }
+  })
 }
 
 export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApprovalSettingsPageProps) {
@@ -300,19 +320,29 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <header className="border-b border-border/60 px-4 py-6 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground">
-              <IconGitPullRequest className="size-5" />
-              {data.companyName} Material Request Approvals
-            </h1>
+      <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System Settings</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <IconGitPullRequest className="size-6 text-primary" />
+                Material Request Approvals
+              </h1>
+              <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                <IconBuilding className="mr-1 size-3.5" />
+                {data.companyName}
+              </Badge>
+            </div>
             <p className="text-sm text-muted-foreground">
-              Configure per-department sequential approval steps (1 to 4). This settings page is admin-side and outside Employee Portal.
+              Configure per-department sequential approval steps (1-4) and assignees for material request routing.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button asChild type="button" variant="ghost">
+          <div className="flex flex-wrap items-center gap-2 border border-border/60 bg-background/90 p-2">
+            <Badge variant="outline">{data.flows.length} Department Flows</Badge>
+            <Button asChild type="button" variant="ghost" size="sm" className="h-8 px-2">
               <Link href={`/${data.companyId}/settings/organization`}>
                 <IconSitemap className="size-4" />
                 Organization Setup
@@ -320,7 +350,8 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
             </Button>
             <Button
               type="button"
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              size="sm"
+              className="h-8 bg-primary px-2 text-primary-foreground hover:bg-primary/90"
               onClick={openNewFlowForm}
             >
               <IconPlus className="size-4" />
@@ -330,52 +361,52 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
         </div>
       </header>
 
-      <section className="grid border-y border-border/60 xl:grid-cols-[minmax(0,1fr)_460px]">
-        <section className="xl:border-r xl:border-border/60">
-          <div className="border-b border-border/60 px-4 py-3 sm:px-6">
-            <h2 className="inline-flex items-center gap-2 text-xs font-semibold text-foreground">
+      <section className="grid gap-4 px-4 py-4 sm:px-6 xl:grid-cols-[minmax(0,1fr)_460px]">
+        <section className="border border-border/60">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="inline-flex items-center gap-2 text-base font-medium text-foreground">
               <IconChecklist className="size-4" />
               Department Approval Flow List
             </h2>
-            <p className="text-xs text-muted-foreground">Click a department row to edit its flow.</p>
+            <p className="text-sm text-muted-foreground">Click a department row to edit its flow.</p>
           </div>
 
-          <div className="px-4 py-3 sm:px-6">
-            <div className="overflow-hidden border border-border/60 bg-background">
+          <div className="px-4 py-3">
+            <div className="border border-border/60 bg-background">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/20">
                     <TableHead>Department</TableHead>
-                    <TableHead>Required Steps</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Approvers</TableHead>
+                    <TableHead>Stages</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.flows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="h-40 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={3} className="h-40 text-center text-sm text-muted-foreground">
                         No department approval flow configured yet.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    pagedFlows.map((flow) => (
-                      <TableRow
-                        key={flow.id}
-                        className={cn(
-                          "cursor-pointer",
-                          selectedDepartmentId === flow.departmentId && "bg-primary/10"
-                        )}
-                        onClick={() => assignFormFromDepartment(flow.departmentId)}
-                      >
+                    pagedFlows.map((flow) => {
+                      const isSelected = selectedDepartmentId === flow.departmentId
+                      const stepSummaries = getFlowStepSummaries(flow)
+
+                      return (
+                        <TableRow
+                          key={flow.id}
+                          className={cn(
+                            "cursor-pointer",
+                            isSelected && "bg-muted/30 shadow-[inset_2px_0_0_theme(colors.primary)]"
+                          )}
+                          onClick={() => assignFormFromDepartment(flow.departmentId)}
+                        >
                         <TableCell>
-                          <p className="text-sm font-medium text-foreground">{flow.departmentName}</p>
-                          <p className="text-xs text-muted-foreground">{flow.departmentCode}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="rounded-full">
-                            {flow.requiredSteps}
-                          </Badge>
+                            <p className="text-sm font-medium text-foreground">
+                              {flow.departmentName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">{flow.departmentCode}</p>
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -386,28 +417,22 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <p className="text-xs text-muted-foreground">
-                            {Array.from({ length: flow.requiredSteps })
-                              .map((_, stepIndex) => {
-                                const stepNumber = stepIndex + 1
-                                const names = flow.steps
-                                  .filter((step) => step.stepNumber === stepNumber)
-                                  .map((step) => step.approverName)
-                                const stepName =
-                                  flow.steps.find((step) => step.stepNumber === stepNumber)?.stepName?.trim() ||
-                                  getDefaultStepName(stepNumber)
-
-                                if (names.length === 0) {
-                                  return `${stepName}: -`
-                                }
-
-                                return `${stepName}: ${names.join(", ")}`
-                              })
-                              .join(" | ")}
-                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                              {stepSummaries.map((summary, summaryIndex) => (
+                                <Badge
+                                  key={`${summaryIndex}-${summary.stepName}`}
+                                  variant="outline"
+                                  className="text-[10px] font-normal"
+                                  title={`${summary.stepName}: ${summary.approverNames.join(", ") || "-"}`}
+                                >
+                                  S{summaryIndex + 1}: {summary.approverNames.length}
+                                </Badge>
+                              ))}
+                          </div>
                         </TableCell>
-                      </TableRow>
-                    ))
+                        </TableRow>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -446,18 +471,61 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
           </div>
         </section>
 
-        <section className="px-4 py-4 sm:px-6">
+        <section className="border border-border/60 px-4 py-4 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
           <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Flow Editor</h3>
-              <p className="text-xs text-muted-foreground">
-                Approvers can be from other subsidiaries as long as they have active access to {data.companyName} and are marked as request approvers.
-              </p>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-base font-medium text-foreground">Flow Editor</h3>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-muted-foreground hover:text-foreground" aria-label="Flow editor guidance">
+                        <IconInfoCircle className="size-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed">
+                      Approvers can be from other subsidiaries as long as they have active access to {data.companyName} and are marked as request approvers.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedFlow ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button type="button" variant="destructive" size="sm" className="h-8 px-2" disabled={isPending}>
+                          <IconTrash className="size-4" />
+                          Delete Flow
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Department Flow</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will remove the material-request approval flow for {selectedFlow.departmentName}.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={handleDelete}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : null}
+                  <Button type="button" size="sm" className="h-8 px-2" onClick={handleSave} disabled={isPending}>
+                    {isPending ? "Saving..." : selectedFlow ? "Update Flow" : "Save Flow"}
+                  </Button>
+                </div>
+              </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label className="text-xs text-foreground">
+                <Label className={fieldLabelClass}>
                   Department<Required />
                 </Label>
                 <Select
@@ -485,7 +553,7 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs text-foreground">
+                <Label className={fieldLabelClass}>
                   Required Steps<Required />
                 </Label>
                 <Select
@@ -514,24 +582,40 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2 rounded-md border border-border/60 bg-background/50 p-3">
-              <Switch
-                checked={form.isActive}
-                onCheckedChange={(checked) => setForm((previous) => ({ ...previous, isActive: checked }))}
-              />
-              <div>
-                <p className="text-xs font-medium text-foreground">Flow Active</p>
-                <p className="text-xs text-muted-foreground">Inactive flows cannot be used for request submission.</p>
+              <div className="space-y-2">
+                <Label className={fieldLabelClass}>Flow Active</Label>
+                <div className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3">
+                  <span className="text-xs text-muted-foreground">Active</span>
+                  <Switch
+                    checked={form.isActive}
+                    onCheckedChange={(checked) => setForm((previous) => ({ ...previous, isActive: checked }))}
+                  />
+                </div>
               </div>
             </div>
 
             <div className="space-y-3">
-              <p className="text-xs font-semibold text-foreground">Step Approvers</p>
               {Array.from({ length: form.requiredSteps }).map((_, stepIndex) => (
-                <div key={stepIndex} className="space-y-2 rounded-md border border-border/60 bg-background/50 p-3">
-                  <Label className="text-xs text-foreground">
+                <div key={stepIndex} className="space-y-2 border border-border/60 bg-background/50 p-3">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                    <p className="text-sm font-medium text-foreground">Stage {stepIndex + 1}</p>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">
+                        {form.stepApproverUserIds[stepIndex].filter((value) => value.trim().length > 0).length} Assignee(s)
+                      </Badge>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={() => addStepApproverSlot(stepIndex)}
+                      >
+                        <IconPlus className="size-3.5" />
+                        Add Approver
+                      </Button>
+                    </div>
+                  </div>
+                  <Label className={fieldLabelClass}>
                     Stage Name<Required />
                   </Label>
                   <Input
@@ -550,7 +634,7 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                     placeholder={getDefaultStepName(stepIndex + 1)}
                     maxLength={60}
                   />
-                  <Label className="text-xs text-foreground">
+                  <Label className={fieldLabelClass}>
                     {form.stepNames[stepIndex].trim() || getDefaultStepName(stepIndex + 1)} Assignee(s)<Required />
                   </Label>
                   <div className="space-y-2">
@@ -596,7 +680,9 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                           </div>
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="destructive"
+                            size="sm"
+                            className="px-3"
                             onClick={() => removeStepApproverSlot(stepIndex, approverIndex)}
                             disabled={form.stepApproverUserIds[stepIndex].length === 1}
                           >
@@ -606,59 +692,14 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
                       )
                     })}
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => addStepApproverSlot(stepIndex)}
-                  >
-                    <IconPlus className="size-3.5" />
-                    Add Approver
-                  </Button>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+            <div className="border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
               {selectedFlow
                 ? `Editing existing flow for ${selectedFlow.departmentName}.`
                 : `Creating a new flow for ${selectedDepartmentName}.`}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
-              {selectedFlow ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="destructive" disabled={isPending}>
-                      <IconTrash className="size-4" />
-                      Delete Flow
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete Department Flow</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This will remove the material-request approval flow for {selectedFlow.departmentName}.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={handleDelete}
-                      >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              ) : (
-                <span className="text-xs text-muted-foreground">Select a saved flow to enable delete.</span>
-              )}
-
-              <Button type="button" onClick={handleSave} disabled={isPending}>
-                {isPending ? "Saving..." : selectedFlow ? "Update Flow" : "Save Flow"}
-              </Button>
             </div>
           </div>
         </section>

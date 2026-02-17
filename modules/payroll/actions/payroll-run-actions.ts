@@ -32,10 +32,12 @@ import { isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
 import {
   getDateRange,
   getDayName,
-  getInclusiveDayCount,
   toDateKey,
-  toUtcDateOnly,
 } from "@/modules/payroll/actions/utils/payroll-date-utils"
+import {
+  computeThirteenthMonthPay,
+  parseThirteenthMonthFormula,
+} from "@/modules/payroll/utils/thirteenth-month-policy"
 
 type ActionResult = { ok: true; message: string; runId?: string } | { ok: false; error: string }
 
@@ -933,8 +935,19 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const isThirteenthMonthRun = runConfig.baseRunType === "THIRTEENTH_MONTH"
   const isMidYearBonusRun = runConfig.baseRunType === "MID_YEAR_BONUS"
   const isBonusOnlyRun = isThirteenthMonthRun || isMidYearBonusRun
-  const yearStartDate = new Date(Date.UTC(run.payPeriod.year, 0, 1))
-  const yearEndDate = new Date(Date.UTC(run.payPeriod.year, 11, 31))
+  const thirteenthCoverageStartDate = new Date(Date.UTC(run.payPeriod.year - 1, 11, 1))
+  const thirteenthCoverageEndDate = new Date(Date.UTC(run.payPeriod.year, 10, 30))
+  const regularPayslipYtdPeriodWhere: Prisma.PayPeriodWhereInput = isThirteenthMonthRun
+    ? {
+        cutoffEndDate: {
+          gte: thirteenthCoverageStartDate,
+          lte: thirteenthCoverageEndDate,
+        },
+      }
+    : {
+        year: run.payPeriod.year,
+        cutoffEndDate: { lte: run.payPeriod.cutoffEndDate },
+      }
   const employeeWhere: Prisma.EmployeeWhereInput = {
     companyId: run.companyId,
     deletedAt: null,
@@ -942,7 +955,8 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     payPeriodPatternId: run.payPeriod.patternId,
     ...(isThirteenthMonthRun
       ? {
-          OR: [{ isActive: true }, { separationDate: { gte: yearStartDate, lte: yearEndDate } }],
+          hireDate: { lte: thirteenthCoverageEndDate },
+          OR: [{ isActive: true }, { separationDate: { gte: thirteenthCoverageStartDate } }],
         }
       : { isActive: true }),
   }
@@ -953,6 +967,11 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   const employees = await db.employee.findMany({
     where: employeeWhere,
     include: {
+      department: {
+        select: {
+          name: true,
+        },
+      },
       salary: {
         select: {
           baseSalary: true,
@@ -1016,7 +1035,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     PayrollRunStatus.PAID,
   ]
 
-  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipBasicYtd, paidBonusBenefitsYtd, paidPreTaxRecurringYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig, nonApprovedDtrCount] = await Promise.all([
+  const [holidays, dtrRows, approvedLeaves, approvedOvertimeRequests, overtimeRates, attendanceRules, sssTables, philHealthTable, pagIbigTables, taxTables, ytdContributions, paidPayslipTotals, regularPayslipContractualBasicYtd, regularPayslipGrossYtd, paidBonusBenefitsYtd, paidPreTaxRecurringYtd, dueLoanAmortizations, priorRunAdjustments, nightDiffConfig, nonApprovedDtrCount] = await Promise.all([
     db.holiday.findMany({
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
@@ -1121,6 +1140,35 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       },
       _sum: { grossPay: true, netPay: true, withholdingTax: true },
     }),
+    db.payslip.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        payrollRun: {
+          companyId: run.companyId,
+          runTypeCode: "REGULAR",
+          isTrialRun: false,
+          statusCode: { in: regularRunStatusesFor13th },
+          payPeriod: regularPayslipYtdPeriodWhere,
+        },
+      },
+      select: {
+        employeeId: true,
+        baseSalary: true,
+        payrollRun: {
+          select: {
+            payPeriod: {
+              select: {
+                pattern: {
+                  select: {
+                    periodsPerYear: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
     db.payslip.groupBy({
       by: ["employeeId"],
       where: {
@@ -1130,13 +1178,10 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           runTypeCode: "REGULAR",
           isTrialRun: false,
           statusCode: { in: regularRunStatusesFor13th },
-          payPeriod: {
-            year: run.payPeriod.year,
-            cutoffEndDate: { lte: run.payPeriod.cutoffEndDate },
-          },
+          payPeriod: regularPayslipYtdPeriodWhere,
         },
       },
-      _sum: { basicPay: true },
+      _sum: { grossPay: true },
     }),
     db.payslip.groupBy({
       by: ["employeeId"],
@@ -1293,8 +1338,16 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     paidPayslipTotals.map((row) => [row.employeeId, { grossPay: toNumber(row._sum.grossPay), netPay: toNumber(row._sum.netPay), withholdingTax: toNumber(row._sum.withholdingTax) }])
   )
 
-  const regularBasicYtdByEmployee = new Map(
-    regularPayslipBasicYtd.map((row) => [row.employeeId, toNumber(row._sum.basicPay)])
+  const regularBasicYtdByEmployee = regularPayslipContractualBasicYtd.reduce((map, row) => {
+    const periodsPerYear = Math.max(row.payrollRun.payPeriod.pattern.periodsPerYear, 1)
+    const periodBaseSalary = (toNumber(row.baseSalary) * 12) / periodsPerYear
+    const currentTotal = map.get(row.employeeId) ?? 0
+    map.set(row.employeeId, roundCurrency(currentTotal + periodBaseSalary))
+    return map
+  }, new Map<string, number>())
+
+  const regularGrossYtdByEmployee = new Map(
+    regularPayslipGrossYtd.map((row) => [row.employeeId, toNumber(row._sum.grossPay)])
   )
 
   const paidBonusBenefitsYtdByEmployee = new Map(
@@ -1338,9 +1391,13 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
   })()
 
   const secondHalfPeriod = isSecondHalfPeriod(run)
+  const payrollPolicyConfig = (run.payPeriod.pattern as unknown as {
+    statutoryDeductionSchedule?: Prisma.JsonValue | null
+  }).statutoryDeductionSchedule
   const statutorySchedule = parseStatutoryDeductionSchedule(
-    (run.payPeriod.pattern as unknown as { statutoryDeductionSchedule?: Prisma.JsonValue | null }).statutoryDeductionSchedule
+    payrollPolicyConfig
   )
+  const thirteenthMonthFormulaPolicy = parseThirteenthMonthFormula(payrollPolicyConfig)
   const taxTableType = run.payPeriod.pattern.payFrequencyCode === PayFrequencyType.SEMI_MONTHLY ? TaxTableType.SEMI_MONTHLY : TaxTableType.MONTHLY
   const taxRowsForType = taxTables.filter((row) => row.taxTableTypeCode === taxTableType)
   const latestTaxEffectiveFrom = taxRowsForType[0]?.effectiveFrom ?? null
@@ -1400,24 +1457,84 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         const existing = earningTypeByCode.get(code)
         if (existing) return existing
 
-        const created = await tx.earningType.create({
-          data: { companyId: run.companyId, code, name, isTaxable: true, isIncludedInGross: true },
+        const existingCompanyScoped = await tx.earningType.findFirst({
+          where: { companyId: run.companyId, code },
           select: { id: true },
         })
-        earningTypeByCode.set(code, created.id)
-        return created.id
+        if (existingCompanyScoped) {
+          earningTypeByCode.set(code, existingCompanyScoped.id)
+          return existingCompanyScoped.id
+        }
+
+        const existingGlobal = await tx.earningType.findFirst({
+          where: { companyId: null, code },
+          select: { id: true },
+        })
+        if (existingGlobal) {
+          earningTypeByCode.set(code, existingGlobal.id)
+          return existingGlobal.id
+        }
+
+        try {
+          const created = await tx.earningType.create({
+            data: { companyId: run.companyId, code, name, isTaxable: true, isIncludedInGross: true },
+            select: { id: true },
+          })
+          earningTypeByCode.set(code, created.id)
+          return created.id
+        } catch {
+          const createdByConcurrentRequest = await tx.earningType.findFirst({
+            where: { companyId: run.companyId, code },
+            select: { id: true },
+          })
+          if (createdByConcurrentRequest) {
+            earningTypeByCode.set(code, createdByConcurrentRequest.id)
+            return createdByConcurrentRequest.id
+          }
+          throw new Error(`Unable to resolve earning type for code: ${code}`)
+        }
       }
 
       const getOrCreateDeductionTypeId = async (code: string, name: string): Promise<string> => {
         const existing = deductionTypeByCode.get(code)
         if (existing) return existing
 
-        const created = await tx.deductionType.create({
-          data: { companyId: run.companyId, code, name, isMandatory: true, isPreTax: code !== "WTAX" },
+        const existingCompanyScoped = await tx.deductionType.findFirst({
+          where: { companyId: run.companyId, code },
           select: { id: true },
         })
-        deductionTypeByCode.set(code, created.id)
-        return created.id
+        if (existingCompanyScoped) {
+          deductionTypeByCode.set(code, existingCompanyScoped.id)
+          return existingCompanyScoped.id
+        }
+
+        const existingGlobal = await tx.deductionType.findFirst({
+          where: { companyId: null, code },
+          select: { id: true },
+        })
+        if (existingGlobal) {
+          deductionTypeByCode.set(code, existingGlobal.id)
+          return existingGlobal.id
+        }
+
+        try {
+          const created = await tx.deductionType.create({
+            data: { companyId: run.companyId, code, name, isMandatory: true, isPreTax: code !== "WTAX" },
+            select: { id: true },
+          })
+          deductionTypeByCode.set(code, created.id)
+          return created.id
+        } catch {
+          const createdByConcurrentRequest = await tx.deductionType.findFirst({
+            where: { companyId: run.companyId, code },
+            select: { id: true },
+          })
+          if (createdByConcurrentRequest) {
+            deductionTypeByCode.set(code, createdByConcurrentRequest.id)
+            return createdByConcurrentRequest.id
+          }
+          throw new Error(`Unable to resolve deduction type for code: ${code}`)
+        }
       }
 
       let processedEmployeeCount = 0
@@ -1456,6 +1573,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         earnings: {
           basicPay: number
           ytdRegularBasicFor13th?: number
+          ytdGrossEarningsFor13th?: number
           overtimePay: number
           nightDiffPay: number
           holidayPay: number
@@ -1574,14 +1692,13 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
         )
 
         const ytdRegularBasic = regularBasicYtdByEmployee.get(employee.id) ?? 0
-        const employeeHireDate = toUtcDateOnly(employee.hireDate)
-        const employeeSeparationDate = employee.separationDate ? toUtcDateOnly(employee.separationDate) : null
-        const coverageStart = employeeHireDate > yearStartDate ? employeeHireDate : yearStartDate
-        const runCoverageEnd = toUtcDateOnly(run.payPeriod.cutoffEndDate)
-        const coverageEnd = employeeSeparationDate && employeeSeparationDate < runCoverageEnd ? employeeSeparationDate : runCoverageEnd
-        const fallback13thProrated = roundCurrency(baseSalary * (getInclusiveDayCount(coverageStart, coverageEnd) / 365))
-
-        const thirteenthMonthPay = roundCurrency(ytdRegularBasic > 0 ? ytdRegularBasic / 12 : fallback13thProrated)
+        const ytdGrossEarningsFor13th = regularGrossYtdByEmployee.get(employee.id) ?? 0
+        const thirteenthMonthComputation = computeThirteenthMonthPay({
+          formula: thirteenthMonthFormulaPolicy,
+          ytdRegularBasic,
+          ytdGrossEarnings: ytdGrossEarningsFor13th,
+        })
+        const thirteenthMonthPay = thirteenthMonthComputation.amount
 
         const midYearBonusPay = roundCurrency(baseSalary / 2)
         const basicPay = isThirteenthMonthRun ? thirteenthMonthPay : isMidYearBonusRun ? midYearBonusPay : regularBasicPay
@@ -1976,6 +2093,8 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
             payslipNumber: `PSL-${run.runNumber.replace(/^RUN-/, "")}-${employee.id.slice(0, 6).toUpperCase()}`,
             payrollRunId: run.id,
             employeeId: employee.id,
+            departmentSnapshotId: employee.departmentId ?? null,
+            departmentSnapshotName: employee.department?.name ?? null,
             baseSalary: toDecimalText(roundCurrency(baseSalary)),
             dailyRate: roundQuantity(dailyRate).toFixed(4),
             hourlyRate: roundQuantity(hourlyRate).toFixed(4),
@@ -2185,7 +2304,12 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
           },
           earnings: {
             basicPay,
-            ...(isThirteenthMonthRun ? { ytdRegularBasicFor13th: ytdRegularBasic } : {}),
+            ...(isThirteenthMonthRun
+              ? {
+                  ytdRegularBasicFor13th: ytdRegularBasic,
+                  ytdGrossEarningsFor13th,
+                }
+              : {}),
             overtimePay,
             nightDiffPay,
             holidayPay,
@@ -2255,7 +2379,12 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
               leaveFallbackOnUnmatchedOnLeave: "UNPAID",
               runTypeCode: run.runTypeCode,
               isTrialRun: runConfig.isTrialRun,
-              thirteenthMonthFormula: isThirteenthMonthRun ? "(ytdRegularBasicOrProratedFallback) / 12" : undefined,
+              thirteenthMonthFormulaPolicy: isThirteenthMonthRun ? thirteenthMonthFormulaPolicy : undefined,
+              thirteenthMonthFormula: isThirteenthMonthRun
+                ? thirteenthMonthFormulaPolicy === "GROSS_EARNED_TO_DATE"
+                  ? "(ytdGrossPayslipEarningsEarnedToDate) / 12"
+                  : "(ytdRegularBasic) / 12"
+                : undefined,
               midYearBonusFormula: isMidYearBonusRun ? "baseSalary / 2" : undefined,
             },
             processedEmployeeCount,

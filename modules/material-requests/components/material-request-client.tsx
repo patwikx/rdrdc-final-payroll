@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   IconArrowNarrowRight,
   IconCircleMinus,
@@ -33,6 +34,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 import {
   cancelMaterialRequestAction,
@@ -74,6 +76,7 @@ export function MaterialRequestClient({
   const [logSearch, setLogSearch] = useState("")
   const [logStatus, setLogStatus] = useState("ALL")
   const itemsPerPage = Number(pageSize)
+  const debouncedLogSearch = useDebouncedValue(logSearch, 180)
 
   const summary = useMemo(() => {
     return requests.reduce(
@@ -100,7 +103,7 @@ export function MaterialRequestClient({
   }, [requests])
 
   const filteredRequests = useMemo(() => {
-    const query = logSearch.trim().toLowerCase()
+    const query = debouncedLogSearch.trim().toLowerCase()
 
     return requests.filter((request) => {
       if (logStatus !== "ALL" && request.status !== logStatus) {
@@ -126,7 +129,7 @@ export function MaterialRequestClient({
 
       return haystack.includes(query)
     })
-  }, [logSearch, logStatus, requests])
+  }, [debouncedLogSearch, logStatus, requests])
 
   const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -312,7 +315,7 @@ export function MaterialRequestClient({
               ) : null}
 
               {filteredRequests.length > 0 ? (
-                <div className="space-y-2 p-3 md:hidden">
+                <div className="space-y-2 p-3 lg:hidden">
                   {paginatedRows.map((request) => {
                     const isExpanded = expandedRequestId === request.id
                     const hasApprovalHistory = request.approvalSteps.some(
@@ -331,8 +334,12 @@ export function MaterialRequestClient({
                       : `/${companyId}/employee-portal/material-requests/${request.id}`
 
                     return (
-                      <div
+                      <motion.div
                         key={request.id}
+                        layout
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
                         className={cn(
                           "rounded-xl border border-border/60 bg-background transition-colors",
                           isExpanded && "border-primary/40 bg-primary/10"
@@ -405,7 +412,11 @@ export function MaterialRequestClient({
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel className="rounded-lg">Not yet</AlertDialogCancel>
-                                    <AlertDialogAction className="rounded-lg" onClick={() => submitRequest(request.id)}>
+                                    <AlertDialogAction
+                                      className="rounded-lg"
+                                      onClick={() => submitRequest(request.id)}
+                                      disabled={isPending}
+                                    >
                                       Submit
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
@@ -433,6 +444,7 @@ export function MaterialRequestClient({
                                     <AlertDialogAction
                                       className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                       onClick={() => cancelRequest(request.id)}
+                                      disabled={isPending}
                                     >
                                       Cancel Request
                                     </AlertDialogAction>
@@ -451,47 +463,57 @@ export function MaterialRequestClient({
                           </div>
                         ) : null}
 
-                        {isExpanded ? (
-                          <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Department</p>
-                                <p className="text-foreground">{request.departmentName}</p>
+                        <AnimatePresence initial={false}>
+                          {isExpanded ? (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Department</p>
+                                    <p className="text-foreground">{request.departmentName}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Current Step</p>
+                                    <p className="text-foreground">{request.currentStep ? `${request.currentStep} / ${request.requiredSteps}` : "-"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Store Use</p>
+                                    <p className="text-foreground">{request.isStoreUse ? "Yes" : "No"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Submitted At</p>
+                                    <p className="text-foreground">{request.submittedAtLabel ?? "-"}</p>
+                                  </div>
+                                </div>
+                                {request.purpose ? (
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Purpose</p>
+                                    <p className="text-foreground">{request.purpose}</p>
+                                  </div>
+                                ) : null}
+                                {request.remarks ? (
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Remarks</p>
+                                    <p className="text-foreground">{request.remarks}</p>
+                                  </div>
+                                ) : null}
                               </div>
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Current Step</p>
-                                <p className="text-foreground">{request.currentStep ? `${request.currentStep} / ${request.requiredSteps}` : "-"}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Store Use</p>
-                                <p className="text-foreground">{request.isStoreUse ? "Yes" : "No"}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Submitted At</p>
-                                <p className="text-foreground">{request.submittedAtLabel ?? "-"}</p>
-                              </div>
-                            </div>
-                            {request.purpose ? (
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Purpose</p>
-                                <p className="text-foreground">{request.purpose}</p>
-                              </div>
-                            ) : null}
-                            {request.remarks ? (
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Remarks</p>
-                                <p className="text-foreground">{request.remarks}</p>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </motion.div>
                     )
                   })}
                 </div>
               ) : null}
 
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Type</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared</p>
@@ -504,7 +526,7 @@ export function MaterialRequestClient({
 
               {filteredRequests.length > 0 ? (
                 <>
-                  <div className="hidden md:block">
+                  <div className="hidden lg:block">
                     {paginatedRows.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       const hasApprovalHistory = request.approvalSteps.some(
@@ -523,8 +545,12 @@ export function MaterialRequestClient({
                         : `/${companyId}/employee-portal/material-requests/${request.id}`
 
                       return (
-                        <div
+                        <motion.div
                           key={request.id}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
                           className={cn(
                             "group border-b border-border/60 last:border-b-0 transition-colors",
                             isExpanded && "bg-primary/10"
@@ -586,7 +612,11 @@ export function MaterialRequestClient({
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                         <AlertDialogCancel className="rounded-lg">Not yet</AlertDialogCancel>
-                                        <AlertDialogAction className="rounded-lg" onClick={() => submitRequest(request.id)}>
+                                        <AlertDialogAction
+                                          className="rounded-lg"
+                                          onClick={() => submitRequest(request.id)}
+                                          disabled={isPending}
+                                        >
                                           Submit
                                         </AlertDialogAction>
                                       </AlertDialogFooter>
@@ -620,6 +650,7 @@ export function MaterialRequestClient({
                                         <AlertDialogAction
                                           className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                           onClick={() => cancelRequest(request.id)}
+                                          disabled={isPending}
                                         >
                                           Cancel Request
                                         </AlertDialogAction>
@@ -731,7 +762,7 @@ export function MaterialRequestClient({
                               ) : null}
                             </div>
                           ) : null}
-                        </div>
+                        </motion.div>
                       )
                     })}
                   </div>

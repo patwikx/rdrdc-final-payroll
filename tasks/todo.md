@@ -1,8 +1,13 @@
 # Project To-Do
 
-Last updated: 2026-02-14 (extended)
+Last updated: 2026-02-17 (extended)
 
 ## Completed
+
+- [x] Applied employee-portal responsive + interaction polish pass across self-service and material-request pages.
+  - Shifted dense request tables to desktop (`lg+`) and preserved card-first layouts for tablet/mobile widths.
+  - Added smoother list/expand motion transitions and improved tap responsiveness in high-traffic request screens.
+  - Hardened search/filter interactions with debounced input handling and pending-state action guards.
 
 - [x] Implemented Material Requests module end-to-end (employee portal + settings workspace).
   - Added active routes:
@@ -448,6 +453,22 @@ Last updated: 2026-02-14 (extended)
   - Request CRUD flow (create/edit/view/cancel/submit) with validation + loading/error states.
   - Approval flow supports department-configured sequential steps (1-step, 2-step, 3-step, or 4-step).
   - Audit logging + path revalidation on all mutating actions.
+- [ ] Prepare Android production release pipeline.
+  - Generate and secure release keystore for `com.plmiranda.employeeportal`.
+  - Configure signed release build (`.aab`) and verify Play Store upload readiness.
+  - Add release build/install/publish runbook for CLI-only Linux workflow.
+- [ ] Improve employee-portal responsiveness across tablets and larger mobile devices.
+  - Audit layouts at common breakpoints (small tablet, iPad portrait/landscape, large tablets).
+  - Fix component spacing, typography scaling, and container widths to prevent cramped/overflowed UI.
+  - Ensure key employee-portal pages are fully usable without horizontal viewport breakage.
+- [ ] Rework table-heavy employee-portal screens for touch-friendly responsive behavior.
+  - Prevent column/text overlap on constrained widths (responsive column priorities, wrapping, and row expansion patterns).
+  - Add safe horizontal-scroll patterns only where unavoidable, with readable sticky headers/first columns where needed.
+  - Align dense table actions/filters for tablet touch targets and thumb-friendly interaction.
+- [ ] Improve mobile interaction quality and perceived performance in employee-portal flows.
+  - Reduce tap-to-response latency in high-frequency actions (filters, row actions, dialogs, form submits).
+  - Add clearer loading/disabled/optimistic states for touch interactions.
+  - Profile and remove avoidable re-renders/heavy client work in table and dashboard screens.
 - [ ] Implement legacy migration/export path for Material Requests.
   - Add legacy endpoint: `legacy-leave-system/app/api/migration/material-requests/route.ts`.
   - Export header/items + approver/status/timestamps needed for deterministic mapping.

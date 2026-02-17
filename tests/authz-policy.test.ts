@@ -19,3 +19,11 @@ test("attendance module access does not grant attendance-sensitive access", () =
   assert.equal(hasModuleAccess("EMPLOYEE", "attendance"), true)
   assert.equal(hasAttendanceSensitiveAccess("EMPLOYEE"), false)
 })
+
+test("reports access is distinct from payroll module access", () => {
+  assert.equal(hasModuleAccess("HR_ADMIN", "reports"), true)
+  assert.equal(hasModuleAccess("HR_ADMIN", "payroll"), false)
+  assert.equal(hasModuleAccess("PAYROLL_ADMIN", "reports"), true)
+  assert.equal(hasModuleAccess("APPROVER", "reports"), false)
+  assert.equal(hasModuleAccess("EMPLOYEE", "reports"), false)
+})

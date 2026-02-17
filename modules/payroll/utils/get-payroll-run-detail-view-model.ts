@@ -6,6 +6,8 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   return Number(value.toString())
 }
 
+const roundCurrency = (value: number): number => Math.round(value * 100) / 100
+
 const toDateTimeLabel = (value: Date | null): string => {
   if (!value) return "-"
   return new Intl.DateTimeFormat("en-PH", {
@@ -161,29 +163,44 @@ export async function getPayrollRunDetailViewModel(companyId: string, runId: str
         completedAt: toDateTimeLabel(step.completedAt),
         notes: step.notes ?? "",
       })),
-      payslips: run.payslips.map((payslip) => ({
-        id: payslip.id,
-        employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
-        employeeNumber: payslip.employee.employeeNumber,
-        grossPay: toNumber(payslip.grossPay),
-        totalDeductions: toNumber(payslip.totalDeductions),
-        netPay: toNumber(payslip.netPay),
-        status: toNumber(payslip.netPay) <= 0 || toNumber(payslip.grossPay) <= 0 ? "CHECK" : "READY",
-        earnings: payslip.earnings
-          .filter((entry) => toNumber(entry.amount) > 0)
-          .map((entry) => ({
-            id: entry.id,
-            name: entry.description ?? entry.earningType.name,
-            amount: toNumber(entry.amount),
-          })),
-        deductionDetails: payslip.deductions
+      payslips: run.payslips.map((payslip) => {
+        const deductionDetails = payslip.deductions
           .filter((entry) => toNumber(entry.amount) > 0)
           .map((entry) => ({
             id: entry.id,
             name: entry.description ?? entry.deductionType.name,
             amount: toNumber(entry.amount),
-          })),
-      })),
+          }))
+
+        const hasExplicitAbsenceDeduction = deductionDetails.some((entry) => /ABSENT|ABSENCE/i.test(entry.name))
+        const absentDeductionAmount = roundCurrency(toNumber(payslip.daysAbsent) * toNumber(payslip.dailyRate))
+
+        if (!hasExplicitAbsenceDeduction && absentDeductionAmount > 0) {
+          deductionDetails.unshift({
+            id: `derived-absence-${payslip.id}`,
+            name: "Absent Deduction",
+            amount: absentDeductionAmount,
+          })
+        }
+
+        return {
+          id: payslip.id,
+          employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
+          employeeNumber: payslip.employee.employeeNumber,
+          grossPay: toNumber(payslip.grossPay),
+          totalDeductions: toNumber(payslip.totalDeductions),
+          netPay: toNumber(payslip.netPay),
+          status: toNumber(payslip.netPay) <= 0 || toNumber(payslip.grossPay) <= 0 ? "CHECK" : "READY",
+          earnings: payslip.earnings
+            .filter((entry) => toNumber(entry.amount) > 0)
+            .map((entry) => ({
+              id: entry.id,
+              name: entry.description ?? entry.earningType.name,
+              amount: toNumber(entry.amount),
+            })),
+          deductionDetails,
+        }
+      }),
     },
   }
 }

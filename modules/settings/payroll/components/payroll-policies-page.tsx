@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Textarea } from "@/components/ui/textarea"
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
+import { THIRTEENTH_MONTH_FORMULA_OPTIONS } from "@/modules/payroll/utils/thirteenth-month-policy"
 import { archivePayrollYearAction } from "@/modules/settings/payroll/actions/archive-payroll-year-action"
 import { savePayrollPeriodRowsAction } from "@/modules/settings/payroll/actions/save-payroll-period-rows-action"
 import { updatePayrollPoliciesAction } from "@/modules/settings/payroll/actions/update-payroll-policies-action"
@@ -52,6 +53,11 @@ const statutoryTimingLabel: Record<(typeof STATUTORY_DEDUCTION_TIMING_OPTIONS)[n
   SECOND_HALF: "Second Half",
   EVERY_PERIOD: "Every Period",
   DISABLED: "Disabled",
+}
+
+const thirteenthMonthFormulaLabel: Record<(typeof THIRTEENTH_MONTH_FORMULA_OPTIONS)[number], string> = {
+  BASIC_YTD_OR_PRORATED: "Default (Basic YTD / 12)",
+  GROSS_EARNED_TO_DATE: "TWC Special (Gross earned-to-date / 12)",
 }
 
 const formatDisplayDate = (value: string): string => {
@@ -463,6 +469,29 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
                 </div>
               </div>
             </div>
+
+            <Field label="13th Month Formula" required>
+              <Select
+                value={form.thirteenthMonthFormula}
+                onValueChange={(value) =>
+                  updateField(
+                    "thirteenthMonthFormula",
+                    value as PayrollPoliciesInput["thirteenthMonthFormula"]
+                  )
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {THIRTEENTH_MONTH_FORMULA_OPTIONS.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {thirteenthMonthFormulaLabel[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
             <Field label="Payment Day Offset" required>
               <Input type="number" value={form.paymentDayOffset} onChange={(event) => updateField("paymentDayOffset", Number(event.target.value))} />

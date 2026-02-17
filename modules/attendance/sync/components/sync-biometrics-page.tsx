@@ -17,6 +17,7 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { syncBiometricsAction } from "@/modules/attendance/sync/actions/sync-biometrics-action"
@@ -29,6 +30,8 @@ type SyncBiometricsPageProps = {
 const PREVIEW_MAX_LINES = 100
 const PREVIEW_BYTE_LIMIT = 64 * 1024
 const PROCESS_LOG_MAX_ITEMS = 12
+const PROGRESS_TICK_INTERVAL_MS = 160
+const PROGRESS_CEILING = 96
 const PROCESS_LOG_STEPS = [
   "PARSING TIME ENTRIES...",
   "MATCHING EMPLOYEE RECORDS...",
@@ -36,16 +39,19 @@ const PROCESS_LOG_STEPS = [
   "UPDATING DTR RECORDS...",
   "FINALIZING SYNC...",
 ]
+const WAITING_LOG = "WAITING FOR SERVER RESPONSE..."
 
 export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const processLogTickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const progressTickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [loading, setLoading] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ processedCount: number } | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [processLogs, setProcessLogs] = useState<string[]>([])
+  const [syncProgress, setSyncProgress] = useState(0)
 
   const stopProcessLogTicker = () => {
     if (processLogTickerRef.current) {
@@ -54,11 +60,46 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
     }
   }
 
+  const stopProgressTicker = () => {
+    if (progressTickerRef.current) {
+      clearInterval(progressTickerRef.current)
+      progressTickerRef.current = null
+    }
+  }
+
+  const startProgressTicker = () => {
+    stopProgressTicker()
+    progressTickerRef.current = setInterval(() => {
+      setSyncProgress((previous) => {
+        if (previous >= PROGRESS_CEILING) {
+          return previous
+        }
+        const increment = 0.4 + Math.random() * 1.1
+        return Math.min(PROGRESS_CEILING, previous + increment)
+      })
+    }, PROGRESS_TICK_INTERVAL_MS)
+  }
+
   const startProcessLogTicker = () => {
     stopProcessLogTicker()
     let stepIndex = 0
     processLogTickerRef.current = setInterval(() => {
-      const nextStep = PROCESS_LOG_STEPS[stepIndex % PROCESS_LOG_STEPS.length]
+      if (stepIndex >= PROCESS_LOG_STEPS.length) {
+        stopProcessLogTicker()
+        setProcessLogs((previous) => {
+          if (previous.includes(WAITING_LOG)) {
+            return previous
+          }
+          const nextLogs = [...previous, WAITING_LOG]
+          if (nextLogs.length <= PROCESS_LOG_MAX_ITEMS) {
+            return nextLogs
+          }
+          return nextLogs.slice(-PROCESS_LOG_MAX_ITEMS)
+        })
+        return
+      }
+
+      const nextStep = PROCESS_LOG_STEPS[stepIndex]
       stepIndex += 1
       setProcessLogs((previous) => {
         const nextLogs = [...previous, nextStep]
@@ -73,6 +114,7 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
   useEffect(() => {
     return () => {
       stopProcessLogTicker()
+      stopProgressTicker()
     }
   }, [])
 
@@ -107,25 +149,40 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
       setLoading(true)
       setIsProcessing(true)
       setProcessLogs(["INITIALIZING IMPORT...", "READING ATTENDANCE FILE..."])
+      setSyncProgress(6)
       startProcessLogTicker()
+      startProgressTicker()
 
       const fullContent = await selectedFile.text()
+      setSyncProgress((previous) => Math.max(previous, 18))
 
       const response = await syncBiometricsAction({ companyId, fileContent: fullContent })
 
       if (response.ok) {
+        setProcessLogs((previous) => [...previous, "SYNC COMPLETED."])
+        stopProcessLogTicker()
+        stopProgressTicker()
+        setSyncProgress(100)
+        await new Promise((resolve) => setTimeout(resolve, 220))
         setSyncResult({ processedCount: response.data.recordsProcessed })
         setIsProcessing(false)
         toast.success(`Synchronized ${response.data.recordsProcessed} attendance records`)
       } else {
+        stopProcessLogTicker()
+        stopProgressTicker()
+        setSyncProgress(0)
         setIsProcessing(false)
         toast.error(response.error || "Failed to sync biometrics")
       }
     } catch {
+      stopProcessLogTicker()
+      stopProgressTicker()
+      setSyncProgress(0)
       setIsProcessing(false)
       toast.error("A system error occurred during synchronization")
     } finally {
       stopProcessLogTicker()
+      stopProgressTicker()
       setLoading(false)
     }
   }
@@ -136,7 +193,9 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
     setSyncResult(null)
     setIsProcessing(false)
     setProcessLogs([])
+    setSyncProgress(0)
     stopProcessLogTicker()
+    stopProgressTicker()
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -291,7 +350,19 @@ export function SyncBiometricsPage({ companyName, companyId }: SyncBiometricsPag
                   <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                     Processing Import
                   </h3>
-                  <div className="h-40 w-[400px] bg-background/80 border border-border/60 p-4 text-[11px] text-muted-foreground overflow-hidden rounded-md">
+                  <div className="w-full max-w-[560px] space-y-3 px-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        <span>Streaming Progress</span>
+                        <span className="tabular-nums text-foreground/80">{Math.round(syncProgress)}%</span>
+                      </div>
+                      <Progress value={syncProgress} className="h-2 rounded-none bg-primary/15" />
+                    </div>
+                    <p className="text-xs text-muted-foreground text-left">
+                      Live sync progress will continue until all attendance records are imported.
+                    </p>
+                  </div>
+                  <div className="h-40 w-full max-w-[560px] bg-background/80 border border-border/60 p-4 text-[11px] text-muted-foreground overflow-hidden rounded-md">
                     <div className="space-y-1">
                       {processLogs.map((log, index) => (
                         <div key={`${log}-${String(index)}`} className="flex gap-2 animate-in slide-in-from-left-2 duration-300">

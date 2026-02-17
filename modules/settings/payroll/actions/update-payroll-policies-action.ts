@@ -28,6 +28,10 @@ const parsePhDate = (value: string): Date => {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
 }
 
+const toStoredPolicyConfig = (payload: PayrollPoliciesInput): Record<string, string> => ({
+  ...payload.statutoryDeductionSchedule,
+  thirteenthMonthFormula: payload.thirteenthMonthFormula,
+})
 
 export async function updatePayrollPoliciesAction(
   input: PayrollPoliciesInput
@@ -66,7 +70,7 @@ export async function updatePayrollPoliciesAction(
           description: toNullable(payload.description),
           payFrequencyCode: payload.payFrequencyCode,
           periodsPerYear: payload.periodsPerYear,
-          statutoryDeductionSchedule: payload.statutoryDeductionSchedule,
+          statutoryDeductionSchedule: toStoredPolicyConfig(payload),
           paymentDayOffset: payload.paymentDayOffset,
           effectiveFrom: parsePhDate(payload.effectiveFrom),
           effectiveTo: payload.effectiveTo ? parsePhDate(payload.effectiveTo) : null,
@@ -79,7 +83,7 @@ export async function updatePayrollPoliciesAction(
           description: toNullable(payload.description),
           payFrequencyCode: payload.payFrequencyCode,
           periodsPerYear: payload.periodsPerYear,
-          statutoryDeductionSchedule: payload.statutoryDeductionSchedule,
+          statutoryDeductionSchedule: toStoredPolicyConfig(payload),
           paymentDayOffset: payload.paymentDayOffset,
           effectiveFrom: parsePhDate(payload.effectiveFrom),
           effectiveTo: payload.effectiveTo ? parsePhDate(payload.effectiveTo) : null,
@@ -137,6 +141,7 @@ export async function updatePayrollPoliciesAction(
             { fieldName: "name", newValue: payload.name },
             { fieldName: "payFrequencyCode", newValue: payload.payFrequencyCode },
             { fieldName: "statutoryDeductionSchedule", newValue: payload.statutoryDeductionSchedule },
+            { fieldName: "thirteenthMonthFormula", newValue: payload.thirteenthMonthFormula },
             { fieldName: "isActive", newValue: payload.isActive },
             { fieldName: "periodRows.count", newValue: payload.periodRows.length },
           ],

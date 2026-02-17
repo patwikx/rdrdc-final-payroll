@@ -9,7 +9,7 @@ type SidebarSubItem = {
 export type SidebarModule = {
   id: string
   label: string
-  icon: "employees" | "timekeeping" | "payroll" | "leaveOvertime" | "settings"
+  icon: "employees" | "timekeeping" | "payroll" | "reports" | "leaveOvertime" | "settings"
   matchPrefixes: readonly string[]
   roles: readonly CompanyRole[]
   items: readonly SidebarSubItem[]
@@ -60,7 +60,54 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "payroll-runs", label: "Payroll Runs", path: "/payroll/runs" },
       { id: "payroll-recurring-deductions", label: "Recurring Deductions", path: "/payroll/recurring-deductions" },
       { id: "payslips", label: "Payslips History", path: "/payroll/payslips" },
-      { id: "statutory-reports", label: "Payroll Reports", path: "/payroll/statutory" },
+    ],
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    icon: "reports",
+    matchPrefixes: ["/reports"],
+    roles: ["COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN"],
+    items: [
+      { id: "reports-payroll", label: "Payroll Reports", path: "/reports/payroll" },
+      {
+        id: "reports-contact-emergency-directory",
+        label: "Contact & Emergency Directory",
+        path: "/reports/hr/contact-emergency-directory",
+      },
+      {
+        id: "reports-employment-milestones",
+        label: "Employment Milestones",
+        path: "/reports/hr/employment-milestones",
+      },
+      {
+        id: "reports-movement-change-log",
+        label: "Movement & Change Log",
+        path: "/reports/hr/movement-change-log",
+      },
+      {
+        id: "reports-training-certification-compliance",
+        label: "Training & Certification Compliance",
+        path: "/reports/hr/training-certification-compliance",
+      },
+      {
+        id: "reports-government-id-compliance",
+        label: "Government ID Compliance",
+        path: "/reports/hr/government-id-compliance",
+      },
+      {
+        id: "reports-separation-attrition-detail",
+        label: "Separation & Attrition Detail",
+        path: "/reports/hr/separation-attrition-detail",
+      },
+      {
+        id: "reports-certificate-of-employment",
+        label: "Certificate of Employment",
+        path: "/reports/payroll/certificate-of-employment",
+      },
+      { id: "reports-demographics", label: "Demographics", path: "/reports/payroll/demographics" },
+      { id: "reports-salary-history", label: "Salary History", path: "/reports/payroll/salary-history" },
+      { id: "reports-late-overtime", label: "Late & Overtime Totals", path: "/reports/payroll/late-overtime" },
     ],
   },
   {

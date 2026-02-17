@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
-import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react"
+import Image, { type ImageLoaderProps } from "next/image"
+import { useMemo, useRef, useState, useTransition } from "react"
+import type { ComponentType, Dispatch, ReactNode, RefObject, SetStateAction } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -44,6 +45,7 @@ import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
+import { createEmployeeSignatureUploadUrlAction } from "@/modules/employees/profile/actions/create-employee-signature-upload-url-action"
 import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
 import { EmployeeMedicalTab } from "@/modules/employees/profile/components/employee-medical-tab"
@@ -142,7 +144,9 @@ type EmployeeProfileDraft = {
   isSubstitutedFiling: boolean
   isOvertimeEligible: boolean
   isNightDiffEligible: boolean
+  isAuthorizedSignatory: boolean
   isWfhEligible: boolean
+  signatureUrl: string
 }
 
 type EmployeeLifecycleDraft = {
@@ -242,6 +246,27 @@ const dynamicSelectTargets: Record<DynamicOptionKey, DynamicCreateTarget> = {
 
 const getTodayPhDateInput = (): string => {
   return toPhDateInputValue(new Date())
+}
+
+const passthroughImageLoader = ({ src }: ImageLoaderProps) => src
+
+const resolveEmployeeSignaturePreviewUrl = (
+  signatureUrl: string,
+  companyId: string,
+  employeeId: string
+): string | null => {
+  const trimmed = signatureUrl.trim()
+  if (!trimmed) return null
+
+  if (trimmed.startsWith("private/")) {
+    const url = new URL("/api/employee-signature", "http://localhost")
+    url.searchParams.set("companyId", companyId)
+    url.searchParams.set("employeeId", employeeId)
+    url.searchParams.set("key", trimmed)
+    return `${url.pathname}${url.search}`
+  }
+
+  return trimmed
 }
 
 const buildInitialLifecycleDraft = (actionType: EmployeeLifecycleActionType): EmployeeLifecycleDraft => {
@@ -347,6 +372,7 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const [isSaving, startSaving] = useTransition()
   const [isLifecyclePending, startLifecycleTransition] = useTransition()
   const [isCreatingOption, startCreateOption] = useTransition()
+  const [isSignatureUploading, setIsSignatureUploading] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>("overview")
   const [isEditing, setIsEditing] = useState(false)
   const [lifecycleActionType, setLifecycleActionType] = useState<EmployeeLifecycleActionType | null>(null)
@@ -371,6 +397,7 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const [lifecycleDraft, setLifecycleDraft] = useState<EmployeeLifecycleDraft>(
     buildInitialLifecycleDraft("DEACTIVATE")
   )
+  const signatureInputRef = useRef<HTMLInputElement | null>(null)
 
   const onCancelEdit = () => {
     setDraft(initialDraft)
@@ -437,6 +464,52 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
       setCreateName("")
       toast.success(`${createTarget.label} added.`)
     })
+  }
+
+  const handleSignatureFileUpload = async (file: File | undefined) => {
+    if (!file) return
+    if (!isEditing) {
+      toast.error("Enable edit mode before uploading a signature.")
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Signature image must be 2 MB or below.")
+      return
+    }
+
+    setIsSignatureUploading(true)
+    try {
+      const upload = await createEmployeeSignatureUploadUrlAction({
+        companyId: data.companyId,
+        employeeId: employee.id,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+      })
+
+      if (!upload.ok) {
+        toast.error(upload.error)
+        return
+      }
+
+      const response = await fetch(upload.uploadUrl, {
+        method: "PUT",
+        headers: upload.requiredHeaders,
+        body: file,
+      })
+
+      if (!response.ok) {
+        toast.error("Failed to upload signature image.")
+        return
+      }
+
+      setDraft((prev) => ({ ...prev, signatureUrl: upload.objectKey }))
+      toast.success("Signature image uploaded.")
+    } catch {
+      toast.error("Failed to upload signature image.")
+    } finally {
+      setIsSignatureUploading(false)
+    }
   }
 
   const onSaveEdit = () => {
@@ -578,9 +651,11 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
         pagIbigNumber: draft.pagIbigNumber,
         umidNumber: draft.umidNumber,
         wfhSchedule: draft.wfhSchedule,
+        signatureUrl: draft.signatureUrl,
         isSubstitutedFiling: draft.isSubstitutedFiling,
         isOvertimeEligible: draft.isOvertimeEligible,
         isNightDiffEligible: draft.isNightDiffEligible,
+        isAuthorizedSignatory: draft.isAuthorizedSignatory,
         isWfhEligible: draft.isWfhEligible,
       })
 
@@ -742,7 +817,19 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
               onCreateRequested={openCreateDialog}
             />
           ) : null}
-          {activeTab === "payroll" ? <PayrollTab employee={employee} options={profileOptions} isEditing={isEditing} draft={draft} setDraft={setDraft} /> : null}
+          {activeTab === "payroll" ? (
+            <PayrollTab
+              companyId={data.companyId}
+              employee={employee}
+              options={profileOptions}
+              isEditing={isEditing}
+              isSignatureUploading={isSignatureUploading}
+              draft={draft}
+              setDraft={setDraft}
+              signatureInputRef={signatureInputRef}
+              onSignatureFileSelected={handleSignatureFileUpload}
+            />
+          ) : null}
           {activeTab === "medical" ? <EmployeeMedicalTab companyId={data.companyId} employee={employee} /> : null}
           {activeTab === "qualifications" ? <EmployeeQualificationsTab companyId={data.companyId} employee={employee} options={profileOptions} /> : null}
           {activeTab === "history" ? <EmployeeHistoryTab companyId={data.companyId} employee={employee} options={profileOptions} /> : null}
@@ -1224,22 +1311,32 @@ function EmploymentTab({
 }
 
 function PayrollTab({
+  companyId,
   employee,
   options,
   isEditing,
+  isSignatureUploading,
   draft,
   setDraft,
+  signatureInputRef,
+  onSignatureFileSelected,
 }: {
+  companyId: string
   employee: EmployeeProfileViewModel["employee"]
   options: EmployeeProfileViewModel["options"]
   isEditing: boolean
+  isSignatureUploading: boolean
   draft: EmployeeProfileDraft
   setDraft: Dispatch<SetStateAction<EmployeeProfileDraft>>
+  signatureInputRef: RefObject<HTMLInputElement | null>
+  onSignatureFileSelected: (file: File | undefined) => Promise<void>
 }) {
   const rateTypeValue = isEditing && draft.monthlyRate.trim().length > 0 ? "Monthly" : employee.salaryRateType
   const dailyRateValue = isEditing ? formatRateDisplay(draft.dailyRate) : employee.dailyRate
   const hourlyRateValue = isEditing ? formatRateDisplay(draft.hourlyRate) : employee.hourlyRate
   const hoursPerDayValue = isEditing ? draft.workHours || "-" : employee.workHours
+  const signatureSource = isEditing ? draft.signatureUrl : (employee.signatureUrl ?? "")
+  const signaturePreviewUrl = resolveEmployeeSignaturePreviewUrl(signatureSource, companyId, employee.id)
 
   return (
     <div className="space-y-8">
@@ -1299,9 +1396,70 @@ function PayrollTab({
       <FieldGrid className="md:grid-cols-4">
         <ToggleField label="Overtime Eligible" value={isEditing ? draft.isOvertimeEligible : employee.overtimeEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isOvertimeEligible: checked }))} />
         <ToggleField label="Night Differential Eligible" value={isEditing ? draft.isNightDiffEligible : employee.nightDiffEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isNightDiffEligible: checked }))} />
+        <ToggleField label="Authorized Signatory" value={isEditing ? draft.isAuthorizedSignatory : employee.authorizedSignatory === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isAuthorizedSignatory: checked }))} />
         <ToggleField label="WFH Eligible" value={isEditing ? draft.isWfhEligible : employee.wfhEligible === "Yes"} editable={isEditing} onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, isWfhEligible: checked }))} />
         <Field label="WFH Schedule" value={employee.wfhSchedule} editable={isEditing} inputValue={draft.wfhSchedule} onInputChange={(value) => setDraft((prev) => ({ ...prev, wfhSchedule: value }))} />
       </FieldGrid>
+
+      <SectionHeader title="Authorized Signature" number="04" icon={IconFileText} />
+      <div className="border border-border/60 p-4">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">E-signature File</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Upload PNG, JPG, or WEBP up to 2MB. This signature is used in Certificate of Employment print output.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-start gap-4">
+          <div className="flex h-[112px] w-[280px] items-center justify-center border border-dashed border-border/70 bg-muted/20">
+            {signaturePreviewUrl ? (
+              <Image
+                loader={passthroughImageLoader}
+                unoptimized
+                src={signaturePreviewUrl}
+                alt={`${employee.fullName} signature`}
+                width={260}
+                height={96}
+                className="max-h-[96px] w-auto object-contain"
+              />
+            ) : (
+              <p className="px-3 text-center text-xs text-muted-foreground">No signature uploaded.</p>
+            )}
+          </div>
+
+          {isEditing ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => signatureInputRef.current?.click()}
+                disabled={isSignatureUploading}
+              >
+                {isSignatureUploading ? "Uploading..." : "Upload Signature"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setDraft((prev) => ({ ...prev, signatureUrl: "" }))}
+                disabled={isSignatureUploading || draft.signatureUrl.trim().length === 0}
+              >
+                Remove Signature
+              </Button>
+              <Input
+                ref={signatureInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0]
+                  await onSignatureFileSelected(file)
+                  if (signatureInputRef.current) {
+                    signatureInputRef.current.value = ""
+                  }
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1698,9 +1856,11 @@ function buildInitialDraft(employee: EmployeeProfileViewModel["employee"]): Empl
     pagIbigNumber: employee.pagIbigNumber === "-" ? "" : employee.pagIbigNumber,
     umidNumber: employee.umidNumber === "-" ? "" : employee.umidNumber,
     wfhSchedule: employee.wfhSchedule === "-" ? "" : employee.wfhSchedule,
+    signatureUrl: employee.signatureUrl ?? "",
     isSubstitutedFiling: employee.substitutedFiling === "Yes",
     isOvertimeEligible: employee.overtimeEligible === "Yes",
     isNightDiffEligible: employee.nightDiffEligible === "Yes",
+    isAuthorizedSignatory: employee.authorizedSignatory === "Yes",
     isWfhEligible: employee.wfhEligible === "Yes",
   }
 }

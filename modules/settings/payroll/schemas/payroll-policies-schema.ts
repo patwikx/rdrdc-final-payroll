@@ -1,5 +1,9 @@
 import { z } from "zod"
 
+import {
+  THIRTEENTH_MONTH_FORMULA_OPTIONS,
+} from "@/modules/payroll/utils/thirteenth-month-policy"
+
 const trimToUndefined = (value: unknown): unknown => {
   if (typeof value !== "string") {
     return value
@@ -50,6 +54,7 @@ export const payrollPoliciesInputSchema = z.object({
   payFrequencyCode: z.enum(PAY_FREQUENCY_OPTIONS),
   periodsPerYear: z.coerce.number().int().min(1).max(366),
   statutoryDeductionSchedule: statutoryDeductionScheduleSchema,
+  thirteenthMonthFormula: z.enum(THIRTEENTH_MONTH_FORMULA_OPTIONS),
   periodYear: z.coerce.number().int().min(2000).max(2100),
   paymentDayOffset: z.coerce.number().int().min(0).max(31),
   effectiveFrom: z.string().date(),

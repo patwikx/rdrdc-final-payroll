@@ -68,10 +68,12 @@ export const updateEmployeeProfileInputSchema = z.object({
   previousEmployerIncome: z.number().min(0).optional(),
   previousEmployerTaxWithheld: z.number().min(0).optional(),
   wfhSchedule: z.string().trim().max(200).optional(),
+  signatureUrl: z.string().trim().max(500).optional(),
 
   isSubstitutedFiling: z.boolean(),
   isOvertimeEligible: z.boolean(),
   isNightDiffEligible: z.boolean(),
+  isAuthorizedSignatory: z.boolean(),
   isWfhEligible: z.boolean(),
 })
 

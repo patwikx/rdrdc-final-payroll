@@ -15,6 +15,7 @@ import {
   IconLayoutDashboard,
   IconList,
   IconReceipt2,
+  IconReceiptTax,
   IconScale,
   IconSettings,
   IconShieldCheck,
@@ -86,6 +87,7 @@ const moduleIconMap: Record<string, ReactNode> = {
   employees: <IconUsers className="size-4" />,
   timekeeping: <IconCalendarTime className="size-4" />,
   payroll: <IconCreditCardPay className="size-4" />,
+  reports: <IconScale className="size-4" />,
   leaveOvertime: <IconChartBar className="size-4" />,
   settings: <IconSettings className="size-4" />,
 }
@@ -107,6 +109,19 @@ const subItemIconMap: Record<string, ReactNode> = {
   "payroll-recurring-deductions": <IconCreditCardPay className="size-3.5" />,
   payslips: <IconFileText className="size-3.5" />,
   "statutory-reports": <IconScale className="size-3.5" />,
+  // Reports
+  "reports-payroll": <IconScale className="size-3.5" />,
+  "reports-certificate-of-employment": <IconFileText className="size-3.5" />,
+  "reports-demographics": <IconUsersGroup className="size-3.5" />,
+  "reports-salary-history": <IconFileText className="size-3.5" />,
+  "reports-monthly-bir-wtax": <IconReceiptTax className="size-3.5" />,
+  "reports-late-overtime": <IconClock className="size-3.5" />,
+  "reports-contact-emergency-directory": <IconUsers className="size-3.5" />,
+  "reports-employment-milestones": <IconCalendarTime className="size-3.5" />,
+  "reports-movement-change-log": <IconSwitchHorizontal className="size-3.5" />,
+  "reports-training-certification-compliance": <IconChecklist className="size-3.5" />,
+  "reports-government-id-compliance": <IconReceiptTax className="size-3.5" />,
+  "reports-separation-attrition-detail": <IconChartBar className="size-3.5" />,
   // Leave & Overtime
   "approval-queue": <IconUserCheck className="size-3.5" />,
   "leave-balances": <IconChartBar className="size-3.5" />,
@@ -206,7 +221,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
         title: sub.label,
         url: toCompanyScopedPath(activeCompany.companyId, sub.path),
         isActive: sub.path === activeSubPath,
-        icon: subItemIconMap[sub.id],
+        icon: subItemIconMap[sub.id] ?? <IconFileText className="size-3.5" />,
       })),
     }
   })

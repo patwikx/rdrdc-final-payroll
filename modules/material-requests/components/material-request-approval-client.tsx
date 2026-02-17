@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 import {
   approveMaterialRequestStepAction,
@@ -103,10 +104,11 @@ export function MaterialRequestApprovalClient({
   const ITEMS_PER_PAGE = 10
   const historyItemsPerPage = Number(historyPageSize)
   const DECISION_ITEMS_PAGE_SIZE = 12
+  const debouncedQueueSearch = useDebouncedValue(queueSearch, 180)
 
   const selectedRequest = useMemo(() => rows.find((row) => row.id === selectedRequestId) ?? null, [rows, selectedRequestId])
   const filteredQueueRows = useMemo(() => {
-    const query = queueSearch.trim().toLowerCase()
+    const query = debouncedQueueSearch.trim().toLowerCase()
     if (!query) {
       return rows
     }
@@ -126,7 +128,7 @@ export function MaterialRequestApprovalClient({
 
       return haystack.includes(query)
     })
-  }, [queueSearch, rows])
+  }, [debouncedQueueSearch, rows])
 
   const queueStats = useMemo(() => {
     return rows.reduce(
@@ -393,7 +395,7 @@ export function MaterialRequestApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden border border-border/60 bg-card">
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
@@ -412,9 +414,16 @@ export function MaterialRequestApprovalClient({
 
                 return (
                   <>
-                    <div className="space-y-2 p-3 md:hidden">
+                    <div className="space-y-2 p-3 lg:hidden">
                       {paginatedRows.map((row) => (
-                        <div key={`queue-mobile-${row.id}`} className="rounded-xl border border-border/60 bg-background p-3">
+                        <motion.div
+                          key={`queue-mobile-${row.id}`}
+                          layout
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                          className="rounded-xl border border-border/60 bg-background p-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-[11px] text-muted-foreground">Request #</p>
@@ -469,13 +478,20 @@ export function MaterialRequestApprovalClient({
                               Approve
                             </Button>
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
 
-                    <div className="hidden md:block">
+                    <div className="hidden lg:block">
                       {paginatedRows.map((row) => (
-                        <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20 md:grid">
+                        <motion.div
+                          key={row.id}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                          className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20 lg:grid"
+                        >
                           <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
                           <div className="col-span-2">
                             <p className="text-xs text-foreground">{row.requesterName}</p>
@@ -513,7 +529,7 @@ export function MaterialRequestApprovalClient({
                               Approve
                             </Button>
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
 
@@ -657,7 +673,7 @@ export function MaterialRequestApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden border border-border/60 bg-card">
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
@@ -686,7 +702,7 @@ export function MaterialRequestApprovalClient({
                         >
                           <button
                             type="button"
-                            className="w-full px-3 py-3 text-left hover:bg-muted/20 md:hidden"
+                            className="w-full px-3 py-3 text-left hover:bg-muted/20 lg:hidden"
                             onClick={() => toggleHistoryDetails(row.id)}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -718,7 +734,7 @@ export function MaterialRequestApprovalClient({
                             </div>
                           </button>
                           <div
-                            className="hidden cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20 md:grid"
+                            className="hidden cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20 lg:grid"
                             onClick={() => toggleHistoryDetails(row.id)}
                           >
                             <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
@@ -993,7 +1009,7 @@ export function MaterialRequestApprovalClient({
 
               {decisionDetail ? (
                 <div className="space-y-2">
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-2 md:hidden">
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-2 lg:hidden">
                     {decisionDetail.items.map((item) => (
                       <div key={item.id} className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs">
                         <div className="mb-1 flex items-center justify-between gap-2">
@@ -1011,7 +1027,7 @@ export function MaterialRequestApprovalClient({
                     ))}
                   </div>
 
-                  <div className="hidden overflow-hidden rounded-lg border border-border/60 md:block">
+                  <div className="hidden overflow-hidden rounded-lg border border-border/60 lg:block">
                     <div className="overflow-x-auto">
                       <div className="min-w-[720px]">
                         <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">

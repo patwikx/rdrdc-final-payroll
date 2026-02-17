@@ -53,6 +53,7 @@ export async function GET(request: Request, context: RouteContext) {
         },
         payslips: {
           select: {
+            departmentSnapshotName: true,
             employee: {
               select: {
                 employeeNumber: true,
@@ -70,7 +71,6 @@ export async function GET(request: Request, context: RouteContext) {
             philHealthEmployee: true,
             pagIbigEmployee: true,
             withholdingTax: true,
-            totalDeductions: true,
             netPay: true,
             earnings: {
               select: {
@@ -78,6 +78,7 @@ export async function GET(request: Request, context: RouteContext) {
                 amount: true,
                 earningType: {
                   select: {
+                    code: true,
                     name: true,
                   },
                 },
@@ -89,6 +90,7 @@ export async function GET(request: Request, context: RouteContext) {
                 amount: true,
                 deductionType: {
                   select: {
+                    code: true,
                     name: true,
                   },
                 },
@@ -107,7 +109,7 @@ export async function GET(request: Request, context: RouteContext) {
       rows: run.payslips.map((payslip) => ({
         employeeNumber: payslip.employee.employeeNumber,
         employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
-        departmentName: payslip.employee.department?.name ?? null,
+        departmentName: payslip.departmentSnapshotName ?? payslip.employee.department?.name ?? null,
         periodStart: run.payPeriod.cutoffStartDate,
         periodEnd: run.payPeriod.cutoffEndDate,
         basicPay: payslip.basicPay,
@@ -115,13 +117,16 @@ export async function GET(request: Request, context: RouteContext) {
         philHealth: payslip.philHealthEmployee,
         pagIbig: payslip.pagIbigEmployee,
         tax: payslip.withholdingTax,
-        totalDeductions: payslip.totalDeductions,
         netPay: payslip.netPay,
         earnings: payslip.earnings.map((line) => ({
+          code: line.earningType.code,
+          name: line.earningType.name,
           description: line.description ?? line.earningType.name,
           amount: line.amount,
         })),
         deductions: payslip.deductions.map((line) => ({
+          code: line.deductionType.code,
+          name: line.deductionType.name,
           description: line.description ?? line.deductionType.name,
           amount: line.amount,
         })),

@@ -1,0 +1,84 @@
+import { NextResponse } from "next/server"
+
+import { createAuditLog, getRequestAuditMetadata } from "@/modules/audit/utils/audit-log"
+import { ActiveCompanyContextError, getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { buildEmploymentMilestonesPrintHtml } from "@/modules/reports/hr/utils/employment-milestones-print-helpers"
+import {
+  employmentMilestoneScopeToLabel,
+  getEmploymentMilestonesViewModel,
+} from "@/modules/reports/hr/utils/get-employment-milestones-view-model"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+type RouteContext = {
+  params: Promise<{
+    companyId: string
+  }>
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  const { companyId } = await context.params
+  const auditMeta = getRequestAuditMetadata(request)
+
+  try {
+    const activeCompany = await getActiveCompanyContext({ companyId })
+    if (!hasModuleAccess(activeCompany.companyRole as CompanyRole, "reports")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const url = new URL(request.url)
+    const searchParams = url.searchParams
+
+    const viewModel = await getEmploymentMilestonesViewModel({
+      companyId: activeCompany.companyId,
+      departmentId: searchParams.get("departmentId") ?? undefined,
+      includeInactive: searchParams.get("includeInactive") ?? undefined,
+      milestoneScope: searchParams.get("milestoneScope") ?? undefined,
+    })
+
+    const departmentLabel = viewModel.filters.departmentId
+      ? (viewModel.options.departments.find((item) => item.id === viewModel.filters.departmentId)?.label ?? "Unknown")
+      : "All departments"
+
+    await createAuditLog({
+      tableName: "Employee",
+      recordId: activeCompany.companyId,
+      action: "UPDATE",
+      userId: activeCompany.userId,
+      reason: "PRINT_EMPLOYMENT_MILESTONES_REPORT",
+      ipAddress: auditMeta.ipAddress,
+      userAgent: auditMeta.userAgent,
+      changes: [
+        { fieldName: "departmentId", newValue: viewModel.filters.departmentId || "ALL" },
+        { fieldName: "includeInactive", newValue: viewModel.filters.includeInactive },
+        { fieldName: "milestoneScope", newValue: viewModel.filters.milestoneScope },
+        { fieldName: "rowCount", newValue: viewModel.rows.length },
+      ],
+    })
+
+    const html = buildEmploymentMilestonesPrintHtml({
+      companyName: viewModel.companyName,
+      generatedAtLabel: viewModel.generatedAtLabel,
+      asOfDateValue: viewModel.asOfDateValue,
+      departmentLabel,
+      includeInactive: viewModel.filters.includeInactive,
+      milestoneScopeLabel: employmentMilestoneScopeToLabel(viewModel.filters.milestoneScope),
+      rows: viewModel.rows,
+    })
+
+    return new NextResponse(html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      },
+    })
+  } catch (error) {
+    if (error instanceof ActiveCompanyContextError) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    return NextResponse.json({ error: "Unable to generate employment milestones print output." }, { status: 500 })
+  }
+}

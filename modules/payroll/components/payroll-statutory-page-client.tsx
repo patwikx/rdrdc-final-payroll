@@ -120,13 +120,21 @@ type StatutoryDoleRow = {
   thirteenthMonthPay: string
 }
 
-type ReportKey = "sss" | "philhealth" | "pagibig" | "dole13th" | "bir-alphalist" | "payroll-register"
+type ReportKey =
+  | "sss"
+  | "philhealth"
+  | "pagibig"
+  | "dole13th"
+  | "bir-alphalist"
+  | "bir-monthly-wtax"
+  | "payroll-register"
 
 const REPORT_OPTIONS: Array<{ key: ReportKey; label: string; frequency: string }> = [
   { key: "payroll-register", label: "Payroll Register", frequency: "Per Run" },
   { key: "sss", label: "SSS Monthly Remittance", frequency: "Monthly" },
   { key: "philhealth", label: "PhilHealth EPRS Remittance", frequency: "Monthly" },
   { key: "pagibig", label: "Pag-IBIG MCRF (Contributions)", frequency: "Monthly" },
+  { key: "bir-monthly-wtax", label: "BIR Monthly WTAX", frequency: "Monthly" },
   { key: "dole13th", label: "DOLE 13th Month Pay Report", frequency: "Annual" },
   { key: "bir-alphalist", label: "BIR Alphalist", frequency: "Annual" },
 ]
@@ -137,6 +145,7 @@ const reportIconByKey: Record<ReportKey, ComponentType<{ className?: string }>> 
   pagibig: IconBuilding,
   dole13th: IconCalendarEvent,
   "bir-alphalist": IconReceiptTax,
+  "bir-monthly-wtax": IconReceiptTax,
   "payroll-register": IconFileText,
 }
 
@@ -441,6 +450,45 @@ export function PayrollStatutoryPageClient({
     }))
   }, [sourceDoleRows, selectedYearPrefix])
 
+  const monthlyBirWtaxRows = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        employeeId: string
+        employeeName: string
+        tinNumber: string
+        grossCompensation: number
+        withholdingTax: number
+      }
+    >()
+
+    for (const row of scopedRows) {
+      const key = row.employeeId || row.employeeNumber || row.payslipId
+      const grossPay = parseAmount(row.grossPay)
+      const withholdingTax = parseAmount(row.withholdingTax)
+      const existing = map.get(key)
+
+      if (!existing) {
+        map.set(key, {
+          employeeId: row.employeeNumber,
+          employeeName: row.employeeName,
+          tinNumber: row.tinNumber ?? "",
+          grossCompensation: grossPay,
+          withholdingTax,
+        })
+        continue
+      }
+
+      existing.grossCompensation += grossPay
+      existing.withholdingTax += withholdingTax
+      if (!existing.tinNumber && row.tinNumber) {
+        existing.tinNumber = row.tinNumber
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+  }, [scopedRows])
+
   const exportCsvTemplate = (report: ReportKey) => {
     if (report === "philhealth") {
       const totals = philHealthRows.reduce(
@@ -662,6 +710,44 @@ export function PayrollStatutoryPageClient({
 
       downloadCsvRows("bir-annual-alphalist.csv", reportRows)
       toast.success("Generated styled BIR annual alphalist CSV.")
+      return
+    }
+
+    if (report === "bir-monthly-wtax") {
+      const monthLabel = monthYearFormatter.format(reportMonth)
+      const totals = monthlyBirWtaxRows.reduce(
+        (acc, row) => {
+          acc.grossCompensation += row.grossCompensation
+          acc.withholdingTax += row.withholdingTax
+          return acc
+        },
+        { grossCompensation: 0, withholdingTax: 0 }
+      )
+
+      const reportRows: string[][] = [
+        [companyName.toUpperCase()],
+        ["BIR MONTHLY WITHHOLDING TAX REPORT"],
+        [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
+        [],
+        ["EMPLOYEE ID", "EMPLOYEE NAME", "TIN", "GROSS PAY", "WITHHOLDING TAX"],
+        ...monthlyBirWtaxRows.map((row) => [
+          row.employeeId,
+          row.employeeName.toUpperCase(),
+          row.tinNumber,
+          numberFormatter.format(row.grossCompensation),
+          numberFormatter.format(row.withholdingTax),
+        ]),
+        [
+          "TOTAL",
+          "",
+          "",
+          numberFormatter.format(totals.grossCompensation),
+          numberFormatter.format(totals.withholdingTax),
+        ],
+      ]
+
+      downloadCsvRows("bir-monthly-wtax-report.csv", reportRows)
+      toast.success("Generated styled BIR monthly WTAX CSV.")
       return
     }
 
@@ -964,6 +1050,24 @@ export function PayrollStatutoryPageClient({
                     </table>
                   </div>
                 </div>
+              </div>
+            ) : null}
+
+            {resolvedReport.key === "bir-monthly-wtax" ? (
+              <div id="statutory-print-root">
+                <GovernmentRemittanceReports
+                  companyName={companyName}
+                  philHealthMonth={reportMonth}
+                  pagIbigMonth={reportMonth}
+                  printedAt={new Date()}
+                  printedBy={printedBy}
+                  philHealthRows={[]}
+                  pagIbigRows={[]}
+                  birMonthlyWtaxRows={monthlyBirWtaxRows}
+                  showPhilHealth={false}
+                  showPagIbig={false}
+                  showBirMonthlyWtax
+                />
               </div>
             ) : null}
 

@@ -23,6 +23,11 @@ Multi-company payroll and HR platform built with Next.js, TypeScript, Prisma, an
 
 ## Changelog
 
+- 2026-02-17:
+  - Added six HR employee-detail reports under the existing Reports module with dedicated filterable pages plus print and CSV export routes.
+  - Removed `Master Data Completeness` report route/files per updated scope.
+  - Updated reports sidebar sub-item icon mapping for all new HR report entries and added a fallback icon for unmapped items.
+  - Standardized new HR report tables to avoid viewport overflow, keep explicit table borders, and removed `Employee Scope` switch controls from report filter bars.
 - 2026-02-14 (UI Polish):
   - Standardized employee-portal request-log table UX across Material Requests, Overtime, Leave, and Payslips.
   - Added pending-request edit flows for overtime and leave (update-in-place, no duplicate submit).
@@ -708,6 +713,10 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 
 ## Recent Changes
 
+- 2026-02-17: Delivered HR employee-detail report set under `/[companyId]/reports/hr/*` with dedicated pages, filters, print outputs, and CSV exports for Contact & Emergency Directory, Employment Milestones, Movement & Change Log, Training & Certification Compliance, Government ID Compliance, and Separation & Attrition Detail.
+- 2026-02-17: Removed `Master Data Completeness` report route/files and sidebar entry after requirement change.
+- 2026-02-17: Updated app sidebar sub-item icon mapping for new HR reports and added fallback icon behavior for future unmapped report IDs.
+- 2026-02-17: Normalized newly added HR report tables to avoid viewport overflow, preserve explicit row/column borders, and removed `Employee Scope` switches from filter bars.
 - 2026-02-11: Added History-tab dialog CRUD on employee profile (`/[companyId]/employees/[employeeId]`) for salary, position, employment status, rank, and previous employment records; added typed CRUD actions/schemas with company-scoped authz/audit/revalidation and current-profile sync from latest history rows.
 - 2026-02-09: Added Employment Setup module at `/[companyId]/settings/employment` with CRUD management for positions, employment status/type/class, table search/filter controls, and server-side deactivation guardrails for active employee assignments.
 - 2026-02-09: Migrated `EmploymentStatus`, `EmploymentType`, and `EmploymentClass` to company-scoped models (`companyId`-scoped) with migration-based cloning/remapping, app query/action updates, and tenant-safety enforcement (`companyId + code` uniqueness).

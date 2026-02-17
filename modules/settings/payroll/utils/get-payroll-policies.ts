@@ -1,5 +1,9 @@
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { db } from "@/lib/db"
+import {
+  DEFAULT_THIRTEENTH_MONTH_FORMULA,
+  parseThirteenthMonthFormula,
+} from "@/modules/payroll/utils/thirteenth-month-policy"
 import type { PayrollPoliciesInput } from "@/modules/settings/payroll/schemas/payroll-policies-schema"
 
 const defaultStatutoryDeductionSchedule: PayrollPoliciesInput["statutoryDeductionSchedule"] = {
@@ -28,6 +32,11 @@ const parseStatutoryDeductionSchedule = (value: unknown): PayrollPoliciesInput["
     pagIbig: normalize(record.pagIbig, defaultStatutoryDeductionSchedule.pagIbig),
     withholdingTax: normalize(record.withholdingTax, defaultStatutoryDeductionSchedule.withholdingTax),
   }
+}
+
+const parseStoredThirteenthMonthFormula = (value: unknown): PayrollPoliciesInput["thirteenthMonthFormula"] => {
+  const parsed = parseThirteenthMonthFormula(value)
+  return parsed ?? DEFAULT_THIRTEENTH_MONTH_FORMULA
 }
 
 export type PayrollPoliciesViewModel = {
@@ -183,6 +192,9 @@ export async function getPayrollPoliciesViewModel(companyId: string, selectedYea
       payFrequencyCode: pattern?.payFrequencyCode ?? "SEMI_MONTHLY",
       periodsPerYear: pattern?.periodsPerYear ?? 24,
       statutoryDeductionSchedule: parseStatutoryDeductionSchedule(
+        (pattern as unknown as { statutoryDeductionSchedule?: unknown } | null)?.statutoryDeductionSchedule
+      ),
+      thirteenthMonthFormula: parseStoredThirteenthMonthFormula(
         (pattern as unknown as { statutoryDeductionSchedule?: unknown } | null)?.statutoryDeductionSchedule
       ),
       periodYear: resolvedYear,

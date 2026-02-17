@@ -137,6 +137,7 @@ export type EmployeeProfileViewModel = {
     maidenName: string
     nickname: string
     photoUrl: string | null
+    signatureUrl: string | null
     isActive: boolean
     tenure: string
 
@@ -213,6 +214,7 @@ export type EmployeeProfileViewModel = {
     previousEmployerTaxWithheld: string
     overtimeEligible: string
     nightDiffEligible: string
+    authorizedSignatory: string
     wfhEligible: string
     wfhSchedule: string
 
@@ -423,6 +425,7 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       maidenName: true,
       nickname: true,
       photoUrl: true,
+      signatureUrl: true,
       isActive: true,
       birthDate: true,
       birthPlace: true,
@@ -504,6 +507,7 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       previousEmployerTaxWithheld: true,
       isOvertimeEligible: true,
       isNightDiffEligible: true,
+      isAuthorizedSignatory: true,
       isWfhEligible: true,
       wfhSchedule: true,
 
@@ -697,6 +701,7 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       maidenName: employee.maidenName ?? "-",
       nickname: employee.nickname ?? "-",
       photoUrl: employee.photoUrl,
+      signatureUrl: employee.signatureUrl,
       isActive: employee.isActive,
       tenure: getTenureLabel(employee.hireDate),
 
@@ -775,6 +780,7 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       previousEmployerTaxWithheld: employee.previousEmployerTaxWithheld ? formatCurrency(Number(employee.previousEmployerTaxWithheld)) : "-",
       overtimeEligible: employee.isOvertimeEligible ? "Yes" : "No",
       nightDiffEligible: employee.isNightDiffEligible ? "Yes" : "No",
+      authorizedSignatory: employee.isAuthorizedSignatory ? "Yes" : "No",
       wfhEligible: employee.isWfhEligible ? "Yes" : "No",
       wfhSchedule: employee.wfhSchedule ?? "-",
 

@@ -1,12 +1,17 @@
 "use client"
 
-import { Fragment } from "react"
+import { Fragment, useMemo } from "react"
 import Link from "next/link"
 
 import { IconArrowLeft, IconFileDownload, IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
-import type { PayrollRegisterReportData } from "@/modules/payroll/utils/build-payroll-register-csv"
+import type {
+  PayrollRegisterDynamicColumn,
+  PayrollRegisterReportData,
+  PayrollRegisterTotals,
+  PayslipRegisterRow,
+} from "@/modules/payroll/utils/build-payroll-register-csv"
 
 type PayrollRegisterPreviewClientProps = {
   companyId: string
@@ -35,20 +40,76 @@ const toDateLabel = (value: Date): string => {
   }).format(value)
 }
 
-const legendItems = [
+const escapeHtml = (value: string): string => {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+const fixedLegendItems = [
   "BAS - Basic Salary",
   "SSS - SSS Contribution",
   "PHI - PhilHealth",
   "HDMF - Pag-IBIG",
   "TAX - Withholding Tax",
   "SSSL - SSS Loan",
-  "ALW - Allowance",
-  "OTH - Other Deductions",
   "ABS - Absent",
   "LTE - Late",
   "UT - Undertime",
+  "+ EARN TOTAL - Total Dynamic Earnings",
+  "- DED TOTAL - Total Dynamic Deductions",
   "NET - Net Pay",
 ]
+
+const getDynamicAmount = (row: PayslipRegisterRow, column: PayrollRegisterDynamicColumn): number => {
+  return row.dynamicAmountsByKey[column.key] ?? 0
+}
+
+const getDynamicTotal = (totals: PayrollRegisterTotals, column: PayrollRegisterDynamicColumn): number => {
+  return totals.dynamicAmountsByKey[column.key] ?? 0
+}
+
+const toDynamicColumnHeader = (
+  sign: "+" | "-",
+  column: PayrollRegisterDynamicColumn
+): string => `${sign} ${column.headerLabel}`
+
+const buildHeaderCells = (columns: PayrollRegisterDynamicColumn[]): string[] => {
+  const earningColumns = columns.filter((column) => column.category === "EARNING")
+  const deductionColumns = columns.filter((column) => column.category === "DEDUCTION")
+
+  return [
+    "Emp ID",
+    "Employee Name",
+    "Period Date",
+    "BAS",
+    "SSS",
+    "PHI",
+    "HDMF",
+    "TAX",
+    "SSSL",
+    "ABS",
+    "LTE",
+    "UT",
+    ...earningColumns.map((column) => toDynamicColumnHeader("+", column)),
+    "+ EARN TOTAL",
+    ...deductionColumns.map((column) => toDynamicColumnHeader("-", column)),
+    "- DED TOTAL",
+    "NET",
+  ]
+}
+
+const toLegendItems = (columns: PayrollRegisterDynamicColumn[]): string[] => {
+  const dynamic = columns.map((column) => {
+    const sign = column.category === "EARNING" ? "+" : "-"
+    return `${toDynamicColumnHeader(sign, column)} - ${column.label}`
+  })
+
+  return [...fixedLegendItems, ...dynamic]
+}
 
 export function PayrollRegisterPreviewClient({
   companyId,
@@ -60,92 +121,110 @@ export function PayrollRegisterPreviewClient({
   generatedAt,
   report,
 }: PayrollRegisterPreviewClientProps) {
+  const earningColumns = useMemo(
+    () => report.columns.filter((column) => column.category === "EARNING"),
+    [report.columns]
+  )
+  const deductionColumns = useMemo(
+    () => report.columns.filter((column) => column.category === "DEDUCTION"),
+    [report.columns]
+  )
+
+  const headerCells = useMemo(() => buildHeaderCells(report.columns), [report.columns])
+  const legendItems = useMemo(() => toLegendItems(report.columns), [report.columns])
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank")
     if (!printWindow) return
 
+    const totalColumnCount = headerCells.length
+
     const tableRows = report.departments
       .map((department) => {
-        const subtotal = department.employees.reduce(
-          (acc, row) => ({
-            basicPay: acc.basicPay + row.basicPay,
-            sss: acc.sss + row.sss,
-            philHealth: acc.philHealth + row.philHealth,
-            pagIbig: acc.pagIbig + row.pagIbig,
-            tax: acc.tax + row.tax,
-            sssLoan: acc.sssLoan + row.sssLoan,
-            allowance: acc.allowance + row.allowance,
-            otherDeductions: acc.otherDeductions + row.otherDeductions,
-            absent: acc.absent + row.absent,
-            late: acc.late + row.late,
-            undertime: acc.undertime + row.undertime,
-            netPay: acc.netPay + row.netPay,
-          }),
-          {
-            basicPay: 0,
-            sss: 0,
-            philHealth: 0,
-            pagIbig: 0,
-            tax: 0,
-            sssLoan: 0,
-            allowance: 0,
-            otherDeductions: 0,
-            absent: 0,
-            late: 0,
-            undertime: 0,
-            netPay: 0,
-          }
-        )
-
         const employeeRows = department.employees
-          .map(
-            (row) => `
+          .map((row) => {
+            const rowCells = [
+              row.employeeNumber,
+              row.employeeName,
+              `${toDateLabel(row.periodStart)}-${toDateLabel(row.periodEnd)}`,
+              toAmount(row.basicPay),
+              toAmount(row.sss),
+              toAmount(row.philHealth),
+              toAmount(row.pagIbig),
+              toAmount(row.tax),
+              toAmount(row.sssLoan),
+              toAmount(row.absent),
+              toAmount(row.late),
+              toAmount(row.undertime),
+              ...earningColumns.map((column) => toAmount(getDynamicAmount(row, column))),
+              toAmount(row.dynamicEarningsTotal),
+              ...deductionColumns.map((column) => toAmount(getDynamicAmount(row, column))),
+              toAmount(row.dynamicDeductionsTotal),
+              toAmount(row.netPay),
+            ]
+
+            return `
             <tr>
-              <td>${row.employeeNumber}</td>
-              <td class="text-left">${row.employeeName}</td>
-              <td class="text-left">${toDateLabel(row.periodStart)}-${toDateLabel(row.periodEnd)}</td>
-              <td>${toAmount(row.basicPay)}</td>
-              <td>${toAmount(row.sss)}</td>
-              <td>${toAmount(row.philHealth)}</td>
-              <td>${toAmount(row.pagIbig)}</td>
-              <td>${toAmount(row.tax)}</td>
-              <td>${toAmount(row.sssLoan)}</td>
-              <td>${toAmount(row.allowance)}</td>
-              <td>${toAmount(row.otherDeductions)}</td>
-              <td>${toAmount(row.absent)}</td>
-              <td>${toAmount(row.late)}</td>
-              <td>${toAmount(row.undertime)}</td>
-              <td>${toAmount(row.netPay)}</td>
+              <td>${escapeHtml(rowCells[0] ?? "")}</td>
+              <td class=\"text-left\">${escapeHtml(rowCells[1] ?? "")}</td>
+              <td class=\"text-left\">${escapeHtml(rowCells[2] ?? "")}</td>
+              ${rowCells
+                .slice(3)
+                .map((value) => `<td>${escapeHtml(value)}</td>`)
+                .join("")}
             </tr>`
-          )
+          })
           .join("")
 
+        const subtotal = department.subtotal
+        const subtotalCells = [
+          toAmount(subtotal.basicPay),
+          toAmount(subtotal.sss),
+          toAmount(subtotal.philHealth),
+          toAmount(subtotal.pagIbig),
+          toAmount(subtotal.tax),
+          toAmount(subtotal.sssLoan),
+          toAmount(subtotal.absent),
+          toAmount(subtotal.late),
+          toAmount(subtotal.undertime),
+          ...earningColumns.map((column) => toAmount(getDynamicTotal(subtotal, column))),
+          toAmount(subtotal.dynamicEarningsTotal),
+          ...deductionColumns.map((column) => toAmount(getDynamicTotal(subtotal, column))),
+          toAmount(subtotal.dynamicDeductionsTotal),
+          toAmount(subtotal.netPay),
+        ]
+
         return `
-          <tr class="dept"><td colspan="15" class="text-left">DEPARTMENT: ${department.name}</td></tr>
+          <tr class=\"dept\"><td colspan=\"${totalColumnCount}\" class=\"text-left\">DEPARTMENT: ${escapeHtml(department.name)}</td></tr>
           ${employeeRows}
-          <tr class="subtotal">
-            <td colspan="2" class="text-left">SUB-TOTAL: ${department.name}</td>
-            <td class="text-center">HC:${department.employees.length}</td>
-            <td>${toAmount(subtotal.basicPay)}</td>
-            <td>${toAmount(subtotal.sss)}</td>
-            <td>${toAmount(subtotal.philHealth)}</td>
-            <td>${toAmount(subtotal.pagIbig)}</td>
-            <td>${toAmount(subtotal.tax)}</td>
-            <td>${toAmount(subtotal.sssLoan)}</td>
-            <td>${toAmount(subtotal.allowance)}</td>
-            <td>${toAmount(subtotal.otherDeductions)}</td>
-            <td>${toAmount(subtotal.absent)}</td>
-            <td>${toAmount(subtotal.late)}</td>
-            <td>${toAmount(subtotal.undertime)}</td>
-            <td>${toAmount(subtotal.netPay)}</td>
+          <tr class=\"subtotal\">
+            <td colspan=\"2\" class=\"text-left\">SUB-TOTAL: ${escapeHtml(department.name)}</td>
+            <td class=\"text-center\">HC:${department.employees.length}</td>
+            ${subtotalCells.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
           </tr>
         `
       })
       .join("")
 
-    const legendHtml = legendItems
-      .map((item) => `<div>${item}</div>`)
-      .join("")
+    const grand = report.grandTotal
+    const grandCells = [
+      toAmount(grand.basicPay),
+      toAmount(grand.sss),
+      toAmount(grand.philHealth),
+      toAmount(grand.pagIbig),
+      toAmount(grand.tax),
+      toAmount(grand.sssLoan),
+      toAmount(grand.absent),
+      toAmount(grand.late),
+      toAmount(grand.undertime),
+      ...earningColumns.map((column) => toAmount(getDynamicTotal(grand, column))),
+      toAmount(grand.dynamicEarningsTotal),
+      ...deductionColumns.map((column) => toAmount(getDynamicTotal(grand, column))),
+      toAmount(grand.dynamicDeductionsTotal),
+      toAmount(grand.netPay),
+    ]
+
+    const legendHtml = legendItems.map((item) => `<div>${escapeHtml(item)}</div>`).join("")
 
     printWindow.document.write(`
       <html>
@@ -172,29 +251,15 @@ export function PayrollRegisterPreviewClient({
         </head>
         <body>
           <div class="header">
-            <h1>${companyName}</h1>
-            <p>PAYROLL REGISTER (${runTypeCode})</p>
-            <p>PAY PERIOD: ${periodLabel}</p>
-            <p>GENERATED: ${generatedAt}</p>
+            <h1>${escapeHtml(companyName)}</h1>
+            <p>PAYROLL REGISTER (${escapeHtml(runTypeCode)})</p>
+            <p>PAY PERIOD: ${escapeHtml(periodLabel)}</p>
+            <p>GENERATED: ${escapeHtml(generatedAt)}</p>
           </div>
           <table>
             <thead>
               <tr>
-                <th>Emp ID</th>
-                <th>Employee Name</th>
-                <th>Period Date</th>
-                <th>BAS</th>
-                <th>SSS</th>
-                <th>PHI</th>
-                <th>HDMF</th>
-                <th>TAX</th>
-                <th>SSSL</th>
-                <th>ALW</th>
-                <th>OTH</th>
-                <th>ABS</th>
-                <th>LTE</th>
-                <th>UT</th>
-                <th>NET</th>
+                ${headerCells.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}
               </tr>
             </thead>
             <tbody>
@@ -202,18 +267,7 @@ export function PayrollRegisterPreviewClient({
               <tr class="grand">
                 <td colspan="2" class="text-left">GRAND TOTAL</td>
                 <td class="text-center">HC:${report.headcount}</td>
-                <td>${toAmount(report.grandTotal.basicPay)}</td>
-                <td>${toAmount(report.grandTotal.sss)}</td>
-                <td>${toAmount(report.grandTotal.philHealth)}</td>
-                <td>${toAmount(report.grandTotal.pagIbig)}</td>
-                <td>${toAmount(report.grandTotal.tax)}</td>
-                <td>${toAmount(report.grandTotal.sssLoan)}</td>
-                <td>${toAmount(report.grandTotal.allowance)}</td>
-                <td>${toAmount(report.grandTotal.otherDeductions)}</td>
-                <td>${toAmount(report.grandTotal.absent)}</td>
-                <td>${toAmount(report.grandTotal.late)}</td>
-                <td>${toAmount(report.grandTotal.undertime)}</td>
-                <td>${toAmount(report.grandTotal.netPay)}</td>
+                ${grandCells.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
               </tr>
             </tbody>
           </table>
@@ -268,99 +322,87 @@ export function PayrollRegisterPreviewClient({
           <table className="w-full border-collapse text-[11px]">
             <thead className="bg-muted/40">
               <tr>
-                <th className="border border-border px-2 py-1 text-left">Emp ID</th>
-                <th className="border border-border px-2 py-1 text-left">Employee Name</th>
-                <th className="border border-border px-2 py-1 text-left">Period Date</th>
-                <th className="border border-border px-2 py-1 text-right">BAS</th>
-                <th className="border border-border px-2 py-1 text-right">SSS</th>
-                <th className="border border-border px-2 py-1 text-right">PHI</th>
-                <th className="border border-border px-2 py-1 text-right">HDMF</th>
-                <th className="border border-border px-2 py-1 text-right">TAX</th>
-                <th className="border border-border px-2 py-1 text-right">SSSL</th>
-                <th className="border border-border px-2 py-1 text-right">ALW</th>
-                <th className="border border-border px-2 py-1 text-right">OTH</th>
-                <th className="border border-border px-2 py-1 text-right">ABS</th>
-                <th className="border border-border px-2 py-1 text-right">LTE</th>
-                <th className="border border-border px-2 py-1 text-right">UT</th>
-                <th className="border border-border px-2 py-1 text-right">NET</th>
+                {headerCells.map((header) => (
+                  <th
+                    key={header}
+                    className={`border border-border px-2 py-1 ${
+                      header === "Emp ID" || header === "Employee Name" || header === "Period Date"
+                        ? "text-left"
+                        : "text-right"
+                    }`}
+                  >
+                    {header}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {report.departments.map((department) => {
-                const subtotal = department.employees.reduce(
-                  (acc, row) => ({
-                    basicPay: acc.basicPay + row.basicPay,
-                    sss: acc.sss + row.sss,
-                    philHealth: acc.philHealth + row.philHealth,
-                    pagIbig: acc.pagIbig + row.pagIbig,
-                    tax: acc.tax + row.tax,
-                    sssLoan: acc.sssLoan + row.sssLoan,
-                    allowance: acc.allowance + row.allowance,
-                    otherDeductions: acc.otherDeductions + row.otherDeductions,
-                    absent: acc.absent + row.absent,
-                    late: acc.late + row.late,
-                    undertime: acc.undertime + row.undertime,
-                    netPay: acc.netPay + row.netPay,
-                  }),
-                  {
-                    basicPay: 0,
-                    sss: 0,
-                    philHealth: 0,
-                    pagIbig: 0,
-                    tax: 0,
-                    sssLoan: 0,
-                    allowance: 0,
-                    otherDeductions: 0,
-                    absent: 0,
-                    late: 0,
-                    undertime: 0,
-                    netPay: 0,
-                  }
-                )
-
-                return (
-                  <Fragment key={department.name}>
-                    <tr key={`dept-${department.name}`} className="bg-muted/30">
-                      <td colSpan={15} className="border border-border px-2 py-1 text-left font-semibold">DEPARTMENT: {department.name}</td>
+              {report.departments.map((department) => (
+                <Fragment key={department.name}>
+                  <tr className="bg-muted/30">
+                    <td colSpan={headerCells.length} className="border border-border px-2 py-1 text-left font-semibold">
+                      DEPARTMENT: {department.name}
+                    </td>
+                  </tr>
+                  {department.employees.map((row) => (
+                    <tr key={`${department.name}-${row.employeeNumber}-${row.employeeName}`}>
+                      <td className="border border-border px-2 py-1">{row.employeeNumber}</td>
+                      <td className="border border-border px-2 py-1">{row.employeeName}</td>
+                      <td className="border border-border px-2 py-1">
+                        {toDateLabel(row.periodStart)}-{toDateLabel(row.periodEnd)}
+                      </td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.basicPay)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.sss)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.philHealth)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.pagIbig)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.tax)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.sssLoan)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.absent)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.late)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.undertime)}</td>
+                      {earningColumns.map((column) => (
+                        <td key={`${row.employeeNumber}-${column.key}`} className="border border-border px-2 py-1 text-right">
+                          {toAmount(getDynamicAmount(row, column))}
+                        </td>
+                      ))}
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.dynamicEarningsTotal)}</td>
+                      {deductionColumns.map((column) => (
+                        <td key={`${row.employeeNumber}-${column.key}`} className="border border-border px-2 py-1 text-right">
+                          {toAmount(getDynamicAmount(row, column))}
+                        </td>
+                      ))}
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.dynamicDeductionsTotal)}</td>
+                      <td className="border border-border px-2 py-1 text-right font-semibold">{toAmount(row.netPay)}</td>
                     </tr>
-                    {department.employees.map((row) => (
-                      <tr key={`${department.name}-${row.employeeNumber}`}>
-                        <td className="border border-border px-2 py-1">{row.employeeNumber}</td>
-                        <td className="border border-border px-2 py-1">{row.employeeName}</td>
-                        <td className="border border-border px-2 py-1">{row.periodStart.toLocaleDateString("en-US", { timeZone: "Asia/Manila" })}-{row.periodEnd.toLocaleDateString("en-US", { timeZone: "Asia/Manila" })}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.basicPay)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.sss)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.philHealth)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.pagIbig)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.tax)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.sssLoan)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.allowance)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.otherDeductions)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.absent)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.late)}</td>
-                        <td className="border border-border px-2 py-1 text-right">{toAmount(row.undertime)}</td>
-                        <td className="border border-border px-2 py-1 text-right font-semibold">{toAmount(row.netPay)}</td>
-                      </tr>
+                  ))}
+                  <tr className="bg-muted/40 font-semibold">
+                    <td colSpan={2} className="border border-border px-2 py-1">SUB-TOTAL: {department.name}</td>
+                    <td className="border border-border px-2 py-1 text-center">HC:{department.employees.length}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.basicPay)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.sss)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.philHealth)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.pagIbig)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.tax)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.sssLoan)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.absent)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.late)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.undertime)}</td>
+                    {earningColumns.map((column) => (
+                      <td key={`${department.name}-subtotal-${column.key}`} className="border border-border px-2 py-1 text-right">
+                        {toAmount(getDynamicTotal(department.subtotal, column))}
+                      </td>
                     ))}
-                    <tr key={`subtotal-${department.name}`} className="bg-muted/40 font-semibold">
-                      <td colSpan={2} className="border border-border px-2 py-1">SUB-TOTAL: {department.name}</td>
-                      <td className="border border-border px-2 py-1 text-center">HC:{department.employees.length}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.basicPay)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.sss)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.philHealth)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.pagIbig)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.tax)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.sssLoan)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.allowance)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.otherDeductions)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.absent)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.late)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.undertime)}</td>
-                      <td className="border border-border px-2 py-1 text-right">{toAmount(subtotal.netPay)}</td>
-                    </tr>
-                  </Fragment>
-                )
-              })}
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.dynamicEarningsTotal)}</td>
+                    {deductionColumns.map((column) => (
+                      <td key={`${department.name}-subtotal-${column.key}`} className="border border-border px-2 py-1 text-right">
+                        {toAmount(getDynamicTotal(department.subtotal, column))}
+                      </td>
+                    ))}
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.dynamicDeductionsTotal)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.netPay)}</td>
+                  </tr>
+                </Fragment>
+              ))}
 
               <tr className="bg-primary/10 font-semibold">
                 <td colSpan={2} className="border border-border px-2 py-1">GRAND TOTAL</td>
@@ -371,11 +413,21 @@ export function PayrollRegisterPreviewClient({
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.pagIbig)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.tax)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.sssLoan)}</td>
-                <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.allowance)}</td>
-                <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.otherDeductions)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.absent)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.late)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.undertime)}</td>
+                {earningColumns.map((column) => (
+                  <td key={`grand-${column.key}`} className="border border-border px-2 py-1 text-right">
+                    {toAmount(getDynamicTotal(report.grandTotal, column))}
+                  </td>
+                ))}
+                <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.dynamicEarningsTotal)}</td>
+                {deductionColumns.map((column) => (
+                  <td key={`grand-${column.key}`} className="border border-border px-2 py-1 text-right">
+                    {toAmount(getDynamicTotal(report.grandTotal, column))}
+                  </td>
+                ))}
+                <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.dynamicDeductionsTotal)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.netPay)}</td>
               </tr>
             </tbody>

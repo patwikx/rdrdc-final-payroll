@@ -57,12 +57,20 @@ export type GovernmentRemittanceReportsProps = {
     taxableCompensation: number
     withholdingTax: number
   }>
+  birMonthlyWtaxRows?: Array<{
+    employeeId: string
+    employeeName: string
+    tinNumber: string
+    grossCompensation: number
+    withholdingTax: number
+  }>
   birYear?: number
   showPhilHealth?: boolean
   showSss?: boolean
   showPagIbig?: boolean
   showDole13th?: boolean
   showBirAlphalist?: boolean
+  showBirMonthlyWtax?: boolean
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-PH", {
@@ -121,12 +129,14 @@ export function GovernmentRemittanceReports({
   pagIbigRows,
   dole13thRows = [],
   birAlphalistRows = [],
+  birMonthlyWtaxRows = [],
   birYear = getPhYear(),
   showPhilHealth = true,
   showSss = false,
   showPagIbig = true,
   showDole13th = false,
   showBirAlphalist = false,
+  showBirMonthlyWtax = false,
 }: GovernmentRemittanceReportsProps) {
   const philHealthTotals = philHealthRows.reduce(
     (acc, row) => {
@@ -180,6 +190,18 @@ export function GovernmentRemittanceReports({
       pagIbigEmployee: 0,
       grossCompensation: 0,
       taxableCompensation: 0,
+      withholdingTax: 0,
+    }
+  )
+
+  const birMonthlyTotals = birMonthlyWtaxRows.reduce(
+    (acc, row) => {
+      acc.grossCompensation += row.grossCompensation
+      acc.withholdingTax += row.withholdingTax
+      return acc
+    },
+    {
+      grossCompensation: 0,
       withholdingTax: 0,
     }
   )
@@ -388,6 +410,66 @@ export function GovernmentRemittanceReports({
                 <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare)}</td>
                 <td className={styles.rightText}>{formatMoney(sssTotals.employerShare)}</td>
                 <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare + sssTotals.employerShare)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className={styles.printFooter}>
+          <span>
+            Print Date : {printDateFormatter.format(printedAt)} | Print Time : {printTimeFormatter.format(printedAt)}
+          </span>
+          <span>
+            {pageLabel} | User : {printedBy}
+          </span>
+        </div>
+      </section>
+      ) : null}
+
+      {showBirMonthlyWtax ? (
+      <section className={styles.reportPage} aria-label="BIR Monthly Withholding Tax Report">
+        <div className={styles.reportStartSeparator} />
+
+        <header className={styles.headerCenter}>
+          <h1>{companyName.toUpperCase()}</h1>
+          <h2>BIR MONTHLY WITHHOLDING TAX REPORT</h2>
+          <p>FOR THE MONTH OF {monthYearFormatter.format(philHealthMonth).toUpperCase()}</p>
+        </header>
+
+        <div className={styles.tableWrap}>
+          <table className={styles.reportTable}>
+            <colgroup>
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "35%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "17%" }} />
+            </colgroup>
+            <thead className={styles.capsHeader}>
+              <tr>
+                <th>EMPLOYEE ID</th>
+                <th>EMPLOYEE NAME</th>
+                <th>TIN</th>
+                <th className={styles.rightText}>GROSS PAY</th>
+                <th className={styles.rightText}>WITHHOLDING TAX</th>
+              </tr>
+            </thead>
+            <tbody>
+              {birMonthlyWtaxRows.map((row) => (
+                <tr key={`${row.employeeId}-${row.tinNumber}`}>
+                  <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.tinNumber.toUpperCase()}</td>
+                  <td className={styles.rightText}>{formatMoney(row.grossCompensation)}</td>
+                  <td className={styles.rightText}>{formatMoney(row.withholdingTax)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className={styles.totalsRow}>
+                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td className={styles.rightText}>{formatMoney(birMonthlyTotals.grossCompensation)}</td>
+                <td className={styles.rightText}>{formatMoney(birMonthlyTotals.withholdingTax)}</td>
               </tr>
             </tfoot>
           </table>

@@ -278,8 +278,10 @@ export async function updateEmployeeProfileAction(
           isSubstitutedFiling: payload.isSubstitutedFiling,
           isOvertimeEligible: payload.isOvertimeEligible,
           isNightDiffEligible: payload.isNightDiffEligible,
+          isAuthorizedSignatory: payload.isAuthorizedSignatory,
           isWfhEligible: payload.isWfhEligible,
           wfhSchedule: toNullable(payload.wfhSchedule),
+          signatureUrl: toNullable(payload.signatureUrl),
           updatedById: context.userId,
         },
       })

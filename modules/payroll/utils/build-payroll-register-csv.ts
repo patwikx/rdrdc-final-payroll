@@ -27,16 +27,36 @@ const csvEscape = (value: string): string => {
   return value
 }
 
-const findByName = (
-  lines: Array<{ description: string; amount: number }>,
-  patterns: RegExp[]
-): number => {
-  return lines
-    .filter((line) => patterns.some((pattern) => pattern.test(line.description.toLowerCase())))
-    .reduce((sum, line) => sum + line.amount, 0)
+const toCurrencyText = (value: number): string => roundCurrency(value).toFixed(2)
+
+const normalizeText = (value: string | null | undefined): string =>
+  (value ?? "").trim().toUpperCase()
+
+const toColumnCode = (value: string | null | undefined): string => {
+  const normalized = normalizeText(value)
+  if (!normalized) return "UNMAPPED"
+  return normalized
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_") || "UNMAPPED"
 }
 
-type PayslipRegisterRow = {
+type RegisterLineInput = {
+  code: string
+  name: string
+  description: string
+  amount: DecimalLike
+}
+
+export type PayrollRegisterDynamicColumn = {
+  key: string
+  code: string
+  label: string
+  headerLabel: string
+  category: "EARNING" | "DEDUCTION"
+}
+
+export type PayslipRegisterRow = {
   employeeNumber: string
   employeeName: string
   departmentName: string
@@ -48,110 +68,254 @@ type PayslipRegisterRow = {
   pagIbig: number
   tax: number
   sssLoan: number
-  allowance: number
-  otherDeductions: number
   absent: number
   late: number
   undertime: number
+  dynamicAmountsByKey: Record<string, number>
+  dynamicEarningsTotal: number
+  dynamicDeductionsTotal: number
+  netPay: number
+}
+
+export type PayrollRegisterTotals = {
+  basicPay: number
+  sss: number
+  philHealth: number
+  pagIbig: number
+  tax: number
+  sssLoan: number
+  absent: number
+  late: number
+  undertime: number
+  dynamicAmountsByKey: Record<string, number>
+  dynamicEarningsTotal: number
+  dynamicDeductionsTotal: number
   netPay: number
 }
 
 export type DepartmentGroup = {
   name: string
   employees: PayslipRegisterRow[]
+  subtotal: PayrollRegisterTotals
 }
 
 export type PayrollRegisterReportData = {
+  columns: PayrollRegisterDynamicColumn[]
   departments: DepartmentGroup[]
-  grandTotal: {
-    basicPay: number
-    sss: number
-    philHealth: number
-    pagIbig: number
-    tax: number
-    sssLoan: number
-    allowance: number
-    otherDeductions: number
-    absent: number
-    late: number
-    undertime: number
-    netPay: number
-  }
+  grandTotal: PayrollRegisterTotals
   headcount: number
 }
 
-const subtotal = (rows: PayslipRegisterRow[]) => {
-  return rows.reduce(
-    (acc, row) => ({
-      basicPay: acc.basicPay + row.basicPay,
-      sss: acc.sss + row.sss,
-      philHealth: acc.philHealth + row.philHealth,
-      pagIbig: acc.pagIbig + row.pagIbig,
-      tax: acc.tax + row.tax,
-      sssLoan: acc.sssLoan + row.sssLoan,
-      allowance: acc.allowance + row.allowance,
-      otherDeductions: acc.otherDeductions + row.otherDeductions,
-      absent: acc.absent + row.absent,
-      late: acc.late + row.late,
-      undertime: acc.undertime + row.undertime,
-      netPay: acc.netPay + row.netPay,
-    }),
-    {
-      basicPay: 0,
-      sss: 0,
-      philHealth: 0,
-      pagIbig: 0,
-      tax: 0,
-      sssLoan: 0,
-      allowance: 0,
-      otherDeductions: 0,
-      absent: 0,
-      late: 0,
-      undertime: 0,
-      netPay: 0,
-    }
-  )
+type RegisterInputRow = {
+  employeeNumber: string
+  employeeName: string
+  departmentName: string | null
+  periodStart: Date
+  periodEnd: Date
+  basicPay: DecimalLike
+  sss: DecimalLike
+  philHealth: DecimalLike
+  pagIbig: DecimalLike
+  tax: DecimalLike
+  netPay: DecimalLike
+  earnings: RegisterLineInput[]
+  deductions: RegisterLineInput[]
 }
 
-const toCurrencyText = (value: number): string => roundCurrency(value).toFixed(2)
+type RegisterInput = {
+  rows: RegisterInputRow[]
+}
 
-const buildRegisterRows = (input: {
-  rows: Array<{
-    employeeNumber: string
-    employeeName: string
-    departmentName: string | null
-    periodStart: Date
-    periodEnd: Date
-    basicPay: DecimalLike
-    sss: DecimalLike
-    philHealth: DecimalLike
-    pagIbig: DecimalLike
-    tax: DecimalLike
-    totalDeductions: DecimalLike
-    netPay: DecimalLike
-    earnings: Array<{ description: string; amount: DecimalLike }>
-    deductions: Array<{ description: string; amount: DecimalLike }>
-  }>
-}): PayslipRegisterRow[] => {
-  const registerRows: PayslipRegisterRow[] = input.rows.map((row) => {
-    const earnings = row.earnings.map((entry) => ({
-      description: entry.description,
-      amount: toNumber(entry.amount),
-    }))
-    const deductions = row.deductions.map((entry) => ({
-      description: entry.description,
-      amount: toNumber(entry.amount),
-    }))
+const CORE_EARNING_CODES = new Set(["BASIC_PAY", "THIRTEENTH_MONTH", "MID_YEAR_BONUS"])
+const CORE_DEDUCTION_CODES = new Set(["SSS", "PHILHEALTH", "PAGIBIG", "WTAX"])
+const MANUAL_ADJUSTMENT_CODE = "ADJUSTMENT"
 
-    const sssLoan = findByName(deductions, [/sss\s*loan/])
-    const absent = findByName(deductions, [/absent/, /absence/])
-    const late = findByName(deductions, [/late/, /tard/])
-    const undertime = findByName(deductions, [/undertime/])
-    const allowance = findByName(earnings, [/allowance/])
+const isCoreEarning = (line: RegisterLineInput): boolean => {
+  const code = normalizeText(line.code)
+  if (CORE_EARNING_CODES.has(code)) return true
+  const mergedText = `${normalizeText(line.name)} ${normalizeText(line.description)}`
+  return mergedText.includes("BASIC PAY")
+}
 
-    const statutory = toNumber(row.sss) + toNumber(row.philHealth) + toNumber(row.pagIbig) + toNumber(row.tax)
-    const computedOtherDeductions =
-      toNumber(row.totalDeductions) - statutory - sssLoan - absent - late - undertime
+const getDeductionBucket = (
+  line: RegisterLineInput
+): "CORE" | "SSS_LOAN" | "ABSENT" | "LATE" | "UNDERTIME" | "DYNAMIC" => {
+  const code = normalizeText(line.code)
+  if (CORE_DEDUCTION_CODES.has(code)) {
+    return "CORE"
+  }
+
+  const mergedText = `${normalizeText(line.name)} ${normalizeText(line.description)}`
+  if (code === "SSS_LOAN" || /SSS\s*LOAN/.test(mergedText)) {
+    return "SSS_LOAN"
+  }
+  if (code === "ABSENT" || code === "ABSENCE" || /ABSENT|ABSENCE/.test(mergedText)) {
+    return "ABSENT"
+  }
+  if (code === "TARDINESS" || /TARDINESS|LATE/.test(mergedText)) {
+    return "LATE"
+  }
+  if (code === "UNDERTIME" || /UNDERTIME/.test(mergedText)) {
+    return "UNDERTIME"
+  }
+
+  return "DYNAMIC"
+}
+
+const toColumnMetadata = (input: {
+  category: "EARNING" | "DEDUCTION"
+  code: string
+  name: string
+  description: string
+}): PayrollRegisterDynamicColumn => {
+  const normalizedCode = toColumnCode(input.code)
+  const preferredLabel = (input.description || input.name || normalizedCode).trim()
+  const isManualAdjustment = normalizeText(input.code) === MANUAL_ADJUSTMENT_CODE
+
+  if (isManualAdjustment && preferredLabel.length > 0) {
+    const adjustmentCode = `ADJ_${toColumnCode(preferredLabel)}`
+    return {
+      key: `${input.category}:${adjustmentCode}`,
+      code: adjustmentCode,
+      label: preferredLabel,
+      headerLabel: preferredLabel,
+      category: input.category,
+    }
+  }
+
+  return {
+    key: `${input.category}:${normalizedCode}`,
+    code: normalizedCode,
+    label: preferredLabel.length > 0 ? preferredLabel : normalizedCode,
+    headerLabel: normalizedCode,
+    category: input.category,
+  }
+}
+
+const toDynamicColumnHeader = (sign: "+" | "-", column: PayrollRegisterDynamicColumn): string => {
+  return `${sign} ${column.headerLabel}`
+}
+
+const createEmptyTotals = (columns: PayrollRegisterDynamicColumn[]): PayrollRegisterTotals => ({
+  basicPay: 0,
+  sss: 0,
+  philHealth: 0,
+  pagIbig: 0,
+  tax: 0,
+  sssLoan: 0,
+  absent: 0,
+  late: 0,
+  undertime: 0,
+  dynamicAmountsByKey: Object.fromEntries(columns.map((column) => [column.key, 0])),
+  dynamicEarningsTotal: 0,
+  dynamicDeductionsTotal: 0,
+  netPay: 0,
+})
+
+const accumulateRows = (rows: PayslipRegisterRow[], columns: PayrollRegisterDynamicColumn[]): PayrollRegisterTotals => {
+  const totals = createEmptyTotals(columns)
+
+  for (const row of rows) {
+    totals.basicPay += row.basicPay
+    totals.sss += row.sss
+    totals.philHealth += row.philHealth
+    totals.pagIbig += row.pagIbig
+    totals.tax += row.tax
+    totals.sssLoan += row.sssLoan
+    totals.absent += row.absent
+    totals.late += row.late
+    totals.undertime += row.undertime
+    totals.dynamicEarningsTotal += row.dynamicEarningsTotal
+    totals.dynamicDeductionsTotal += row.dynamicDeductionsTotal
+    totals.netPay += row.netPay
+
+    for (const [key, value] of Object.entries(row.dynamicAmountsByKey)) {
+      totals.dynamicAmountsByKey[key] = (totals.dynamicAmountsByKey[key] ?? 0) + value
+    }
+  }
+
+  totals.basicPay = roundCurrency(totals.basicPay)
+  totals.sss = roundCurrency(totals.sss)
+  totals.philHealth = roundCurrency(totals.philHealth)
+  totals.pagIbig = roundCurrency(totals.pagIbig)
+  totals.tax = roundCurrency(totals.tax)
+  totals.sssLoan = roundCurrency(totals.sssLoan)
+  totals.absent = roundCurrency(totals.absent)
+  totals.late = roundCurrency(totals.late)
+  totals.undertime = roundCurrency(totals.undertime)
+  totals.dynamicEarningsTotal = roundCurrency(totals.dynamicEarningsTotal)
+  totals.dynamicDeductionsTotal = roundCurrency(totals.dynamicDeductionsTotal)
+  totals.netPay = roundCurrency(totals.netPay)
+
+  for (const key of Object.keys(totals.dynamicAmountsByKey)) {
+    totals.dynamicAmountsByKey[key] = roundCurrency(totals.dynamicAmountsByKey[key] ?? 0)
+  }
+
+  return totals
+}
+
+const buildRowsAndColumns = (rows: RegisterInputRow[]): { columns: PayrollRegisterDynamicColumn[]; registerRows: PayslipRegisterRow[] } => {
+  const dynamicColumnMap = new Map<string, PayrollRegisterDynamicColumn>()
+
+  const registerRows = rows.map((row) => {
+    const dynamicAmountsByKey: Record<string, number> = {}
+
+    let sssLoan = 0
+    let absent = 0
+    let late = 0
+    let undertime = 0
+    let dynamicEarningsTotal = 0
+    let dynamicDeductionsTotal = 0
+
+    for (const earningLine of row.earnings) {
+      if (isCoreEarning(earningLine)) continue
+
+      const amount = toNumber(earningLine.amount)
+      const column = toColumnMetadata({
+        category: "EARNING",
+        code: earningLine.code,
+        name: earningLine.name,
+        description: earningLine.description,
+      })
+
+      dynamicColumnMap.set(column.key, column)
+      dynamicAmountsByKey[column.key] = (dynamicAmountsByKey[column.key] ?? 0) + amount
+      dynamicEarningsTotal += amount
+    }
+
+    for (const deductionLine of row.deductions) {
+      const amount = toNumber(deductionLine.amount)
+      const bucket = getDeductionBucket(deductionLine)
+
+      if (bucket === "CORE") continue
+      if (bucket === "SSS_LOAN") {
+        sssLoan += amount
+        continue
+      }
+      if (bucket === "ABSENT") {
+        absent += amount
+        continue
+      }
+      if (bucket === "LATE") {
+        late += amount
+        continue
+      }
+      if (bucket === "UNDERTIME") {
+        undertime += amount
+        continue
+      }
+
+      const column = toColumnMetadata({
+        category: "DEDUCTION",
+        code: deductionLine.code,
+        name: deductionLine.name,
+        description: deductionLine.description,
+      })
+
+      dynamicColumnMap.set(column.key, column)
+      dynamicAmountsByKey[column.key] = (dynamicAmountsByKey[column.key] ?? 0) + amount
+      dynamicDeductionsTotal += amount
+    }
 
     return {
       employeeNumber: row.employeeNumber,
@@ -159,159 +323,182 @@ const buildRegisterRows = (input: {
       departmentName: row.departmentName ?? "UNASSIGNED",
       periodStart: row.periodStart,
       periodEnd: row.periodEnd,
-      basicPay: toNumber(row.basicPay),
-      sss: toNumber(row.sss),
-      philHealth: toNumber(row.philHealth),
-      pagIbig: toNumber(row.pagIbig),
-      tax: toNumber(row.tax),
-      sssLoan,
-      allowance,
-      otherDeductions: Math.max(roundCurrency(computedOtherDeductions), 0),
-      absent,
-      late,
-      undertime,
-      netPay: toNumber(row.netPay),
+      basicPay: roundCurrency(toNumber(row.basicPay)),
+      sss: roundCurrency(toNumber(row.sss)),
+      philHealth: roundCurrency(toNumber(row.philHealth)),
+      pagIbig: roundCurrency(toNumber(row.pagIbig)),
+      tax: roundCurrency(toNumber(row.tax)),
+      sssLoan: roundCurrency(sssLoan),
+      absent: roundCurrency(absent),
+      late: roundCurrency(late),
+      undertime: roundCurrency(undertime),
+      dynamicAmountsByKey: Object.fromEntries(
+        Object.entries(dynamicAmountsByKey).map(([key, value]) => [key, roundCurrency(value)])
+      ),
+      dynamicEarningsTotal: roundCurrency(dynamicEarningsTotal),
+      dynamicDeductionsTotal: roundCurrency(dynamicDeductionsTotal),
+      netPay: roundCurrency(toNumber(row.netPay)),
     }
   })
 
-  return registerRows
-}
-
-const groupByDepartment = (rows: PayslipRegisterRow[]): DepartmentGroup[] => {
-  const departmentMap = new Map<string, PayslipRegisterRow[]>()
-  rows.forEach((row) => {
-    const key = row.departmentName
-    const existing = departmentMap.get(key)
-    if (existing) existing.push(row)
-    else departmentMap.set(key, [row])
+  const sortedColumns = Array.from(dynamicColumnMap.values()).sort((a, b) => {
+    if (a.category !== b.category) {
+      return a.category === "EARNING" ? -1 : 1
+    }
+    const codeDiff = a.code.localeCompare(b.code)
+    if (codeDiff !== 0) return codeDiff
+    return a.label.localeCompare(b.label)
   })
 
+  return {
+    columns: sortedColumns,
+    registerRows,
+  }
+}
+
+const groupByDepartment = (rows: PayslipRegisterRow[], columns: PayrollRegisterDynamicColumn[]): DepartmentGroup[] => {
+  const departmentMap = new Map<string, PayslipRegisterRow[]>()
+
+  for (const row of rows) {
+    const key = row.departmentName
+    const existing = departmentMap.get(key)
+    if (existing) {
+      existing.push(row)
+    } else {
+      departmentMap.set(key, [row])
+    }
+  }
+
   return Array.from(departmentMap.entries())
-    .map(([name, employees]) => ({ name, employees }))
+    .map(([name, employees]) => {
+      const sortedEmployees = [...employees].sort((a, b) => {
+        const nameDiff = a.employeeName.localeCompare(b.employeeName)
+        if (nameDiff !== 0) return nameDiff
+        return a.employeeNumber.localeCompare(b.employeeNumber)
+      })
+
+      return {
+        name,
+        employees: sortedEmployees,
+        subtotal: accumulateRows(sortedEmployees, columns),
+      }
+    })
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export const buildPayrollRegisterReportData = (input: {
-  rows: Array<{
-    employeeNumber: string
-    employeeName: string
-    departmentName: string | null
-    periodStart: Date
-    periodEnd: Date
-    basicPay: DecimalLike
-    sss: DecimalLike
-    philHealth: DecimalLike
-    pagIbig: DecimalLike
-    tax: DecimalLike
-    totalDeductions: DecimalLike
-    netPay: DecimalLike
-    earnings: Array<{ description: string; amount: DecimalLike }>
-    deductions: Array<{ description: string; amount: DecimalLike }>
-  }>
-}): PayrollRegisterReportData => {
-  const registerRows = buildRegisterRows(input)
-  const departments = groupByDepartment(registerRows)
+export const buildPayrollRegisterReportData = (input: RegisterInput): PayrollRegisterReportData => {
+  const { columns, registerRows } = buildRowsAndColumns(input.rows)
+  const departments = groupByDepartment(registerRows, columns)
+
   return {
+    columns,
     departments,
-    grandTotal: subtotal(registerRows),
+    grandTotal: accumulateRows(registerRows, columns),
     headcount: registerRows.length,
   }
 }
 
-export const buildPayrollRegisterCsv = (input: {
-  rows: Array<{
-    employeeNumber: string
-    employeeName: string
-    departmentName: string | null
-    periodStart: Date
-    periodEnd: Date
-    basicPay: DecimalLike
-    sss: DecimalLike
-    philHealth: DecimalLike
-    pagIbig: DecimalLike
-    tax: DecimalLike
-    totalDeductions: DecimalLike
-    netPay: DecimalLike
-    earnings: Array<{ description: string; amount: DecimalLike }>
-    deductions: Array<{ description: string; amount: DecimalLike }>
-  }>
-}): string => {
+export const buildPayrollRegisterCsv = (input: RegisterInput): string => {
   const reportData = buildPayrollRegisterReportData(input)
 
-  const lines: string[] = []
-  lines.push(["Emp ID", "Employee Name", "Period Date", "BAS", "SSS", "PHI", "HDMF", "TAX", "SSSL", "ALW", "OTH", "ABS", "LTE", "UT", "NET"].join(","))
+  const earningColumns = reportData.columns.filter((column) => column.category === "EARNING")
+  const deductionColumns = reportData.columns.filter((column) => column.category === "DEDUCTION")
 
-  reportData.departments.forEach((group) => {
+  const headers = [
+    "Emp ID",
+    "Employee Name",
+    "Period Date",
+    "BAS",
+    "SSS",
+    "PHI",
+    "HDMF",
+    "TAX",
+    "SSSL",
+    "ABS",
+    "LTE",
+    "UT",
+    ...earningColumns.map((column) => toDynamicColumnHeader("+", column)),
+    "+ EARN TOTAL",
+    ...deductionColumns.map((column) => toDynamicColumnHeader("-", column)),
+    "- DED TOTAL",
+    "NET",
+  ]
+
+  const lines: string[] = [headers.map(csvEscape).join(",")]
+
+  for (const group of reportData.departments) {
     lines.push(csvEscape(`DEPARTMENT: ${group.name}`))
 
-    group.employees
-      .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
-      .forEach((row) => {
-        lines.push(
-          [
-            row.employeeNumber,
-            row.employeeName,
-            formatDateRange(row.periodStart, row.periodEnd),
-            toCurrencyText(row.basicPay),
-            toCurrencyText(row.sss),
-            toCurrencyText(row.philHealth),
-            toCurrencyText(row.pagIbig),
-            toCurrencyText(row.tax),
-            toCurrencyText(row.sssLoan),
-            toCurrencyText(row.allowance),
-            toCurrencyText(row.otherDeductions),
-            toCurrencyText(row.absent),
-            toCurrencyText(row.late),
-            toCurrencyText(row.undertime),
-            toCurrencyText(row.netPay),
-          ]
-            .map(csvEscape)
-            .join(",")
-        )
-      })
+    for (const row of group.employees) {
+      lines.push(
+        [
+          row.employeeNumber,
+          row.employeeName,
+          formatDateRange(row.periodStart, row.periodEnd),
+          toCurrencyText(row.basicPay),
+          toCurrencyText(row.sss),
+          toCurrencyText(row.philHealth),
+          toCurrencyText(row.pagIbig),
+          toCurrencyText(row.tax),
+          toCurrencyText(row.sssLoan),
+          toCurrencyText(row.absent),
+          toCurrencyText(row.late),
+          toCurrencyText(row.undertime),
+          ...earningColumns.map((column) => toCurrencyText(row.dynamicAmountsByKey[column.key] ?? 0)),
+          toCurrencyText(row.dynamicEarningsTotal),
+          ...deductionColumns.map((column) => toCurrencyText(row.dynamicAmountsByKey[column.key] ?? 0)),
+          toCurrencyText(row.dynamicDeductionsTotal),
+          toCurrencyText(row.netPay),
+        ]
+          .map(csvEscape)
+          .join(",")
+      )
+    }
 
-    const groupSubtotal = subtotal(group.employees)
     lines.push(
       [
         `SUB-TOTAL: ${group.name}`,
         "",
         `HC:${group.employees.length}`,
-        toCurrencyText(groupSubtotal.basicPay),
-        toCurrencyText(groupSubtotal.sss),
-        toCurrencyText(groupSubtotal.philHealth),
-        toCurrencyText(groupSubtotal.pagIbig),
-        toCurrencyText(groupSubtotal.tax),
-        toCurrencyText(groupSubtotal.sssLoan),
-        toCurrencyText(groupSubtotal.allowance),
-        toCurrencyText(groupSubtotal.otherDeductions),
-        toCurrencyText(groupSubtotal.absent),
-        toCurrencyText(groupSubtotal.late),
-        toCurrencyText(groupSubtotal.undertime),
-        toCurrencyText(groupSubtotal.netPay),
+        toCurrencyText(group.subtotal.basicPay),
+        toCurrencyText(group.subtotal.sss),
+        toCurrencyText(group.subtotal.philHealth),
+        toCurrencyText(group.subtotal.pagIbig),
+        toCurrencyText(group.subtotal.tax),
+        toCurrencyText(group.subtotal.sssLoan),
+        toCurrencyText(group.subtotal.absent),
+        toCurrencyText(group.subtotal.late),
+        toCurrencyText(group.subtotal.undertime),
+        ...earningColumns.map((column) => toCurrencyText(group.subtotal.dynamicAmountsByKey[column.key] ?? 0)),
+        toCurrencyText(group.subtotal.dynamicEarningsTotal),
+        ...deductionColumns.map((column) => toCurrencyText(group.subtotal.dynamicAmountsByKey[column.key] ?? 0)),
+        toCurrencyText(group.subtotal.dynamicDeductionsTotal),
+        toCurrencyText(group.subtotal.netPay),
       ]
         .map(csvEscape)
         .join(",")
     )
-  })
+  }
 
-  const grand = reportData.grandTotal
   lines.push(
     [
       "GRAND TOTAL",
       "",
       `HC:${reportData.headcount}`,
-      toCurrencyText(grand.basicPay),
-      toCurrencyText(grand.sss),
-      toCurrencyText(grand.philHealth),
-      toCurrencyText(grand.pagIbig),
-      toCurrencyText(grand.tax),
-      toCurrencyText(grand.sssLoan),
-      toCurrencyText(grand.allowance),
-      toCurrencyText(grand.otherDeductions),
-      toCurrencyText(grand.absent),
-      toCurrencyText(grand.late),
-      toCurrencyText(grand.undertime),
-      toCurrencyText(grand.netPay),
+      toCurrencyText(reportData.grandTotal.basicPay),
+      toCurrencyText(reportData.grandTotal.sss),
+      toCurrencyText(reportData.grandTotal.philHealth),
+      toCurrencyText(reportData.grandTotal.pagIbig),
+      toCurrencyText(reportData.grandTotal.tax),
+      toCurrencyText(reportData.grandTotal.sssLoan),
+      toCurrencyText(reportData.grandTotal.absent),
+      toCurrencyText(reportData.grandTotal.late),
+      toCurrencyText(reportData.grandTotal.undertime),
+      ...earningColumns.map((column) => toCurrencyText(reportData.grandTotal.dynamicAmountsByKey[column.key] ?? 0)),
+      toCurrencyText(reportData.grandTotal.dynamicEarningsTotal),
+      ...deductionColumns.map((column) => toCurrencyText(reportData.grandTotal.dynamicAmountsByKey[column.key] ?? 0)),
+      toCurrencyText(reportData.grandTotal.dynamicDeductionsTotal),
+      toCurrencyText(reportData.grandTotal.netPay),
     ]
       .map(csvEscape)
       .join(",")

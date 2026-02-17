@@ -9,7 +9,7 @@ type SidebarSubItem = {
 export type SidebarModule = {
   id: string
   label: string
-  icon: "employees" | "timekeeping" | "payroll" | "leaveOvertime" | "settings"
+  icon: "employees" | "timekeeping" | "payroll" | "reports" | "leaveOvertime" | "settings"
   matchPrefixes: readonly string[]
   roles: readonly CompanyRole[]
   items: readonly SidebarSubItem[]
@@ -60,7 +60,24 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "payroll-runs", label: "Payroll Runs", path: "/payroll/runs" },
       { id: "payroll-recurring-deductions", label: "Recurring Deductions", path: "/payroll/recurring-deductions" },
       { id: "payslips", label: "Payslips History", path: "/payroll/payslips" },
-      { id: "statutory-reports", label: "Payroll Reports", path: "/payroll/statutory" },
+    ],
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    icon: "reports",
+    matchPrefixes: ["/reports"],
+    roles: ["COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN"],
+    items: [
+      { id: "reports-payroll", label: "Payroll Reports", path: "/reports/payroll" },
+      {
+        id: "reports-certificate-of-employment",
+        label: "Certificate of Employment",
+        path: "/reports/payroll/certificate-of-employment",
+      },
+      { id: "reports-demographics", label: "Demographics", path: "/reports/payroll/demographics" },
+      { id: "reports-salary-history", label: "Salary History", path: "/reports/payroll/salary-history" },
+      { id: "reports-late-overtime", label: "Late & Overtime Totals", path: "/reports/payroll/late-overtime" },
     ],
   },
   {

@@ -11,7 +11,10 @@
     "test": "node --test --experimental-strip-types tests/*.test.ts tests/**/*.test.ts",
     "audit:payroll:ph": "node scripts/payroll-ph-e2e-audit.mjs",
     "backfill:payroll:calc-meta": "node scripts/backfill-payroll-calculation-meta.mjs",
-    "verify:employment:scope": "node scripts/verify-employment-company-scope.mjs"
+    "backfill:payslip:department-snapshot": "node scripts/backfill-payslip-department-snapshot.mjs",
+    "verify:employment:scope": "node scripts/verify-employment-company-scope.mjs",
+    "update:payperiod:year": "node scripts/update-payperiod-year.mjs",
+    "delete:dtr": "node scripts/delete-dtr-records.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.1.0",

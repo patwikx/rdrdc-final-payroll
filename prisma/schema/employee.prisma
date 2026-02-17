@@ -109,6 +109,7 @@ model Employee {
   workSchedule        WorkSchedule? @relation(fields: [workScheduleId], references: [id])
   isNightDiffEligible Boolean       @default(false)
   isOvertimeEligible  Boolean       @default(true)
+  isAuthorizedSignatory Boolean     @default(false)
   isWfhEligible       Boolean       @default(false)
   wfhSchedule         String?
 
@@ -190,6 +191,7 @@ model Employee {
   @@index([isActive])
   @@index([reportingManagerId])
   @@index([companyId, isActive])
+  @@index([companyId, isAuthorizedSignatory])
   @@index([departmentId, isActive])
   @@index([employmentStatusId, isActive])
   @@index([branchId, isActive])

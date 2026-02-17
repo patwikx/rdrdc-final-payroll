@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 
 type PayslipLineItem = {
@@ -75,9 +76,10 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
   const [page, setPage] = useState(1)
   const [logSearch, setLogSearch] = useState("")
   const [logStatus, setLogStatus] = useState<"ALL" | "RELEASED" | "PENDING">("ALL")
+  const debouncedLogSearch = useDebouncedValue(logSearch, 180)
 
   const filteredPayslips = useMemo(() => {
-    const query = logSearch.trim().toLowerCase()
+    const query = debouncedLogSearch.trim().toLowerCase()
 
     return payslips.filter((payslip) => {
       const status = payslip.releasedAt ? "RELEASED" : "PENDING"
@@ -101,7 +103,7 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
 
       return haystack.includes(query)
     })
-  }, [logSearch, logStatus, payslips])
+  }, [debouncedLogSearch, logStatus, payslips])
 
   const totalPages = Math.max(1, Math.ceil(filteredPayslips.length / pageSize))
   const safePage = Math.min(Math.max(1, page), totalPages)
@@ -208,75 +210,139 @@ export function PayslipsClient({ companyId, payslips }: PayslipsClientProps) {
                   Reset
                 </Button>
               </div>
-              <Table>
-                <TableHeader className="bg-muted/30">
-                  <TableRow className="border-border/60 hover:bg-transparent">
-                    <TableHead className="h-9 text-xs text-muted-foreground">Period</TableHead>
-                    <TableHead className="h-9 text-xs text-muted-foreground">Payslip #</TableHead>
-                    <TableHead className="h-9 text-right text-xs text-muted-foreground">Gross</TableHead>
-                    <TableHead className="h-9 text-right text-xs text-muted-foreground">Deductions</TableHead>
-                    <TableHead className="h-9 text-right text-xs text-muted-foreground">Net Pay</TableHead>
-                    <TableHead className="h-9 text-xs text-muted-foreground">Status</TableHead>
-                    <TableHead className="h-9 text-right text-xs text-muted-foreground">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paged.map((payslip) => (
-                    <TableRow key={payslip.id} className="group border-border/60 hover:bg-muted/30">
-                      <TableCell className="py-3 text-xs">
-                        {formatDate(payslip.cutoffStartDate)} <span className="mx-1 text-muted-foreground">-</span> {formatDate(payslip.cutoffEndDate)}
-                      </TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{payslip.payslipNumber}</TableCell>
-                      <TableCell className="py-3 text-right text-xs">{money(payslip.grossPay)}</TableCell>
-                      <TableCell className="py-3 text-right text-xs text-destructive">-{money(payslip.totalDeductions)}</TableCell>
-                      <TableCell className="py-3 text-right text-xs font-semibold text-primary">{money(payslip.netPay)}</TableCell>
-                      <TableCell className="py-3">
-                        {payslip.releasedAt ? (
-                          <Badge variant="default" className="w-full justify-center text-xs font-normal">Released</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="w-full justify-center text-xs font-normal">Pending</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 rounded-lg px-2 text-xs"
-                                onClick={() => setSelectedPayslip(payslip)}
-                              >
-                                <IconEye className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={6}>
-                              View Details
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 rounded-lg px-2 text-xs"
-                                onClick={() => handleDownload(payslip.id)}
-                              >
-                                <IconDownload className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={6}>
-                              Download PDF
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </TableCell>
+              <div className="space-y-2 p-3 lg:hidden">
+                {paged.map((payslip) => (
+                  <div key={payslip.id} className="rounded-xl border border-border/60 bg-background p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground">Payslip #</p>
+                        <p className="truncate text-sm font-medium text-foreground">{payslip.payslipNumber}</p>
+                      </div>
+                      {payslip.releasedAt ? (
+                        <Badge variant="default" className="shrink-0 text-xs font-normal">Released</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="shrink-0 text-xs font-normal">Pending</Badge>
+                      )}
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                      <div className="col-span-2">
+                        <p className="text-[11px] text-muted-foreground">Period</p>
+                        <p className="text-foreground">
+                          {formatDate(payslip.cutoffStartDate)} <span className="mx-1 text-muted-foreground">-</span> {formatDate(payslip.cutoffEndDate)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Gross</p>
+                        <p className="text-foreground">{money(payslip.grossPay)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Deductions</p>
+                        <p className="text-destructive">-{money(payslip.totalDeductions)}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-[11px] text-muted-foreground">Net Pay</p>
+                        <p className="text-sm font-semibold text-primary">{money(payslip.netPay)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        onClick={() => setSelectedPayslip(payslip)}
+                      >
+                        <IconEye className="mr-1.5 h-3.5 w-3.5" />
+                        View
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        onClick={() => handleDownload(payslip.id)}
+                      >
+                        <IconDownload className="mr-1.5 h-3.5 w-3.5" />
+                        PDF
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow className="border-border/60 hover:bg-transparent">
+                      <TableHead className="h-9 text-xs text-muted-foreground">Period</TableHead>
+                      <TableHead className="h-9 text-xs text-muted-foreground">Payslip #</TableHead>
+                      <TableHead className="h-9 text-right text-xs text-muted-foreground">Gross</TableHead>
+                      <TableHead className="h-9 text-right text-xs text-muted-foreground">Deductions</TableHead>
+                      <TableHead className="h-9 text-right text-xs text-muted-foreground">Net Pay</TableHead>
+                      <TableHead className="h-9 text-xs text-muted-foreground">Status</TableHead>
+                      <TableHead className="h-9 text-right text-xs text-muted-foreground">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {paged.map((payslip) => (
+                      <TableRow key={payslip.id} className="group border-border/60 hover:bg-muted/30">
+                        <TableCell className="py-3 text-xs">
+                          {formatDate(payslip.cutoffStartDate)} <span className="mx-1 text-muted-foreground">-</span> {formatDate(payslip.cutoffEndDate)}
+                        </TableCell>
+                        <TableCell className="py-3 text-xs text-muted-foreground">{payslip.payslipNumber}</TableCell>
+                        <TableCell className="py-3 text-right text-xs">{money(payslip.grossPay)}</TableCell>
+                        <TableCell className="py-3 text-right text-xs text-destructive">-{money(payslip.totalDeductions)}</TableCell>
+                        <TableCell className="py-3 text-right text-xs font-semibold text-primary">{money(payslip.netPay)}</TableCell>
+                        <TableCell className="py-3">
+                          {payslip.releasedAt ? (
+                            <Badge variant="default" className="w-full justify-center text-xs font-normal">Released</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="w-full justify-center text-xs font-normal">Pending</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 rounded-lg px-2 text-xs"
+                                  onClick={() => setSelectedPayslip(payslip)}
+                                >
+                                  <IconEye className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                View Details
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 rounded-lg px-2 text-xs"
+                                  onClick={() => handleDownload(payslip.id)}
+                                >
+                                  <IconDownload className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Download PDF
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               {filteredPayslips.length > pageSize ? (
                 <div className="flex items-center justify-between border-t border-border/60 px-3 py-3">
                   <p className="text-xs text-muted-foreground">

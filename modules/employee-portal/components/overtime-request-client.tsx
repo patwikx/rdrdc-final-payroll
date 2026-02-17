@@ -47,6 +47,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 import {
   cancelOvertimeRequestAction,
@@ -138,6 +139,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
   const [logSearch, setLogSearch] = useState("")
   const [logStatus, setLogStatus] = useState("ALL")
   const itemsPerPage = Number(pageSize)
+  const debouncedLogSearch = useDebouncedValue(logSearch, 180)
 
   const requestedHours = useMemo(() => {
     const startMinutes = timeToMinutes(startTime)
@@ -166,7 +168,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
   )
 
   const filteredRequests = useMemo(() => {
-    const query = logSearch.trim().toLowerCase()
+    const query = debouncedLogSearch.trim().toLowerCase()
 
     return requests.filter((request) => {
       if (logStatus !== "ALL" && request.statusCode !== logStatus) {
@@ -189,7 +191,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
 
       return haystack.includes(query)
     })
-  }, [logSearch, logStatus, requests])
+  }, [debouncedLogSearch, logStatus, requests])
 
   const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -483,7 +485,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
 
               {filteredRequests.length > 0 ? (
                 <>
-                  <div className="space-y-2 p-3 md:hidden">
+                  <div className="space-y-2 p-3 lg:hidden">
                     {paginatedRequests.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       return (
@@ -566,6 +568,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                                     <AlertDialogCancel className="rounded-lg">Keep Request</AlertDialogCancel>
                                     <AlertDialogAction
                                       onClick={() => cancel(request.id)}
+                                      disabled={isPending}
                                       className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                     >
                                       Yes, Cancel
@@ -608,7 +611,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                     })}
                   </div>
 
-                  <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+                  <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                     <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                     <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">OT Date</p>
                     <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Time</p>
@@ -617,12 +620,12 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                     <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                     <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
                   </div>
-                  <div className="hidden md:block">
+                  <div className="hidden lg:block">
                     {paginatedRequests.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       return (
                         <div key={request.id} className={cn("group border-b border-border/60 last:border-b-0 transition-colors", isExpanded && "bg-primary/10")}>
-                          <div className="hidden cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 md:grid" onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}>
+                          <div className="hidden cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 lg:grid" onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}>
                             <div className="col-span-2 text-xs text-foreground">{request.requestNumber}</div>
                             <div className="col-span-2 text-xs text-foreground">{request.overtimeDate}</div>
                             <div className="col-span-2 text-xs text-foreground leading-tight">
@@ -685,6 +688,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                                         <AlertDialogCancel className="rounded-lg">Keep Request</AlertDialogCancel>
                                         <AlertDialogAction
                                           onClick={() => cancel(request.id)}
+                                          disabled={isPending}
                                           className="rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                         >
                                           Yes, Cancel
@@ -698,7 +702,7 @@ export function OvertimeRequestClient({ companyId, requests }: OvertimeRequestCl
                           </div>
 
                           {isExpanded && (request.supervisorApproverName || request.hrApproverName || request.statusCode !== "PENDING") ? (
-                            <div className="hidden border-t border-border/60 bg-muted/30 px-4 py-3 md:block">
+                            <div className="hidden border-t border-border/60 bg-muted/30 px-4 py-3 lg:block">
                               <p className="mb-2 text-xs text-muted-foreground">Approval Status</p>
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-background p-3">

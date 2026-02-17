@@ -221,7 +221,37 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-foreground">Requested Items</h2>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+          <div className="space-y-2 lg:hidden">
+            {request.items.map((item) => (
+              <div key={`item-card-${item.id}`} className="rounded-xl border border-border/60 bg-card p-3 text-xs">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <p className="font-medium text-foreground">Line {item.lineNumber}</p>
+                  <span className="text-muted-foreground">{item.uom}</span>
+                </div>
+                <p className="text-sm text-foreground">{item.description}</p>
+                <p className="mt-1 text-muted-foreground">Code: {item.itemCode ?? "-"}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Qty</p>
+                    <p className="text-foreground">{item.quantity.toFixed(3)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Unit Price</p>
+                    <p className="text-foreground">PHP {currency.format(item.unitPrice ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Line Total</p>
+                    <p className="font-medium text-foreground">PHP {currency.format(item.lineTotal ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Remarks</p>
+                    <p className="text-foreground">{item.remarks ?? "-"}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-hidden rounded-2xl border border-border/60 bg-card lg:block">
             <Table className="min-w-[980px] text-xs">
               <TableHeader>
                 <TableRow className="border-b border-border/60 bg-muted/30 hover:bg-muted/30">

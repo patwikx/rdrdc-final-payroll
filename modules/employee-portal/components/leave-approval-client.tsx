@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
@@ -72,6 +72,7 @@ export function LeaveApprovalClient({
 }: LeaveApprovalClientProps) {
   const router = useRouter()
   const historyRequestTokenRef = useRef(0)
+  const historySearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
   const [actionType, setActionType] = useState<"approve" | "reject">("approve")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -93,6 +94,7 @@ export function LeaveApprovalClient({
   const [expandedHistoryRequestId, setExpandedHistoryRequestId] = useState<string | null>(null)
   const ITEMS_PER_PAGE = 10
   const historyItemsPerPage = Number(historyPageSize)
+  const deferredQueueSearch = useDeferredValue(queueSearch.trim().toLowerCase())
 
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId])
   const stats = useMemo(() => {
@@ -105,7 +107,7 @@ export function LeaveApprovalClient({
     }
   }, [rows])
   const filteredRows = useMemo(() => {
-    const query = queueSearch.trim().toLowerCase()
+    const query = deferredQueueSearch
 
     return rows.filter((row) => {
       if (queueStatus !== "ALL" && row.statusCode !== queueStatus) {
@@ -132,11 +134,17 @@ export function LeaveApprovalClient({
 
       return haystack.includes(query)
     })
-  }, [queueSearch, queueStatus, rows])
+  }, [deferredQueueSearch, queueStatus, rows])
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
   const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL"
   const hasActiveHistoryFilters = historySearch.trim().length > 0 || historyStatus !== "ALL" || Boolean(historyFromDate) || Boolean(historyToDate)
+
+  const clearHistorySearchTimer = () => {
+    if (!historySearchTimerRef.current) return
+    clearTimeout(historySearchTimerRef.current)
+    historySearchTimerRef.current = null
+  }
 
   const loadHistoryPage = (params: {
     page: number
@@ -176,6 +184,30 @@ export function LeaveApprovalClient({
       setHistoryPageSize(String(response.data.pageSize))
     })
   }
+
+  const scheduleHistorySearch = (nextSearch: string) => {
+    setHistorySearch(nextSearch)
+    setExpandedHistoryRequestId(null)
+    clearHistorySearchTimer()
+    historySearchTimerRef.current = setTimeout(() => {
+      loadHistoryPage({
+        page: 1,
+        pageSize: historyItemsPerPage,
+        search: nextSearch,
+        status: historyStatus,
+        fromDate: historyFromDate,
+        toDate: historyToDate,
+      })
+    }, 250)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (!historySearchTimerRef.current) return
+      clearTimeout(historySearchTimerRef.current)
+      historySearchTimerRef.current = null
+    }
+  }, [])
 
   const openDecision = (rowId: string, type: "approve" | "reject") => {
     setSelectedId(rowId)
@@ -315,7 +347,7 @@ export function LeaveApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
@@ -332,7 +364,7 @@ export function LeaveApprovalClient({
                 const paginatedRows = filteredRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
                 return (
                   <>
-                    <div className="space-y-2 p-3 md:hidden">
+                    <div className="space-y-2 p-3 lg:hidden">
                       {paginatedRows.map((row) => (
                         <div key={row.id} className="rounded-xl border border-border/60 bg-background p-3">
                           <div className="flex items-start justify-between gap-2">
@@ -367,11 +399,11 @@ export function LeaveApprovalClient({
                             </div>
                           </div>
                           <div className="mt-3 grid grid-cols-2 gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, "reject")}>
+                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, "reject")} disabled={isPending}>
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
                             </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, "approve")} disabled={isPending}>
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
@@ -380,9 +412,9 @@ export function LeaveApprovalClient({
                       ))}
                     </div>
 
-                    <div className="hidden md:block">
+                    <div className="hidden lg:block">
                       {paginatedRows.map((row) => (
-                        <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20 md:grid">
+                        <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20 lg:grid">
                           <div className="col-span-1 min-w-0">
                             <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
                           </div>
@@ -403,11 +435,11 @@ export function LeaveApprovalClient({
                             </Badge>
                           </div>
                           <div className="col-span-2 flex justify-end gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")}>
+                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")} disabled={isPending}>
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
                             </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")}>
+                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")} disabled={isPending}>
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
@@ -457,24 +489,14 @@ export function LeaveApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
               <Input
                 placeholder="Search employee/request..."
                 value={historySearch}
                 onChange={(event) => {
-                  const nextSearch = event.target.value
-                  setHistorySearch(nextSearch)
-                  setExpandedHistoryRequestId(null)
-                  loadHistoryPage({
-                    page: 1,
-                    pageSize: historyItemsPerPage,
-                    search: nextSearch,
-                    status: historyStatus,
-                    fromDate: historyFromDate,
-                    toDate: historyToDate,
-                  })
+                  scheduleHistorySearch(event.target.value)
                 }}
                 className="rounded-lg pl-8"
               />
@@ -485,6 +507,7 @@ export function LeaveApprovalClient({
                 const nextStatus = value as HistoryStatusFilter
                 setHistoryStatus(nextStatus)
                 setExpandedHistoryRequestId(null)
+                clearHistorySearchTimer()
                 loadHistoryPage({
                   page: 1,
                   pageSize: historyItemsPerPage,
@@ -524,6 +547,7 @@ export function LeaveApprovalClient({
                       setHistoryToDate(nextTo)
                     }
                     setExpandedHistoryRequestId(null)
+                    clearHistorySearchTimer()
                     loadHistoryPage({
                       page: 1,
                       pageSize: historyItemsPerPage,
@@ -552,6 +576,7 @@ export function LeaveApprovalClient({
                     const nextTo = toDateValue(date)
                     setHistoryToDate(nextTo)
                     setExpandedHistoryRequestId(null)
+                    clearHistorySearchTimer()
                     loadHistoryPage({
                       page: 1,
                       pageSize: historyItemsPerPage,
@@ -581,6 +606,7 @@ export function LeaveApprovalClient({
                 setHistoryFromDate("")
                 setHistoryToDate("")
                 setExpandedHistoryRequestId(null)
+                clearHistorySearchTimer()
                 loadHistoryPage({
                   page: 1,
                   pageSize: historyItemsPerPage,
@@ -609,7 +635,7 @@ export function LeaveApprovalClient({
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 md:grid">
+              <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Leave Type</p>
@@ -619,7 +645,7 @@ export function LeaveApprovalClient({
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
               </div>
 
-              <div className="space-y-2 p-3 md:hidden">
+              <div className="space-y-2 p-3 lg:hidden">
                 {historyRowsState.map((row) => {
                   const isExpanded = expandedHistoryRequestId === row.id
                   return (
@@ -674,13 +700,13 @@ export function LeaveApprovalClient({
                 })}
               </div>
 
-              <div className="hidden md:block">
+              <div className="hidden lg:block">
                 {historyRowsState.map((row) => {
                   const isExpanded = expandedHistoryRequestId === row.id
                   return (
                     <div key={`history-${row.id}`} className={cn("group border-b border-border/60 last:border-b-0 transition-colors", isExpanded && "bg-primary/10")}>
                       <div
-                        className="hidden cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20 md:grid"
+                        className="hidden cursor-pointer grid-cols-12 items-center gap-3 px-3 py-4 hover:bg-muted/20 lg:grid"
                         onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
                       >
                         <div className="col-span-1 min-w-0">
@@ -756,6 +782,7 @@ export function LeaveApprovalClient({
                     value={historyPageSize}
                     onValueChange={(value) => {
                       setExpandedHistoryRequestId(null)
+                      clearHistorySearchTimer()
                       loadHistoryPage({
                         page: 1,
                         pageSize: Number(value),
@@ -784,6 +811,7 @@ export function LeaveApprovalClient({
                     disabled={activeHistoryPage <= 1 || isHistoryPending}
                     onClick={() => {
                       setExpandedHistoryRequestId(null)
+                      clearHistorySearchTimer()
                       loadHistoryPage({
                         page: Math.max(1, activeHistoryPage - 1),
                         pageSize: historyItemsPerPage,
@@ -803,6 +831,7 @@ export function LeaveApprovalClient({
                     disabled={activeHistoryPage >= historyTotalPages || isHistoryPending}
                     onClick={() => {
                       setExpandedHistoryRequestId(null)
+                      clearHistorySearchTimer()
                       loadHistoryPage({
                         page: Math.min(historyTotalPages, activeHistoryPage + 1),
                         pageSize: historyItemsPerPage,

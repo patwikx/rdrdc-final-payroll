@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import Link from "next/link"
+import { motion } from "framer-motion"
 import {
   IconAlertCircle,
   IconCheck,
@@ -598,191 +599,304 @@ export function MaterialRequestProcessingClient({
             </div>
           ) : (
             <div className="overflow-hidden border border-border/60 bg-card">
-            <div className="overflow-x-auto">
-              <div className="min-w-[980px]">
-                <div className="grid grid-cols-12 items-center gap-1 border-b border-border/60 bg-muted/30 px-3 py-2">
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                  <p className="col-span-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Required</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Items</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
-                  <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
-                </div>
-
+              <div className="space-y-2 p-3 lg:hidden">
                 {rows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-12 items-center gap-1 border-b border-border/60 px-3 py-2 text-xs last:border-b-0 hover:bg-muted/20">
-                    <div className="col-span-1 text-foreground truncate" title={row.requestNumber}>{row.requestNumber}</div>
-                    <div className="col-span-2">
-                      <p className="truncate text-xs text-foreground" title={row.requesterName}>{row.requesterName}</p>
-                    </div>
-                    <div className="col-span-3 truncate text-foreground" title={row.departmentName}>{row.departmentName}</div>
-                    <div className="col-span-1 text-foreground">{row.dateRequiredLabel}</div>
-                    <div className="col-span-1 text-foreground">{row.itemCount}</div>
-                    <div className="col-span-1 font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
-                    <div className="col-span-1">
-                      <Badge variant={statusVariant(row.processingStatus)} className="w-full justify-center rounded-full border px-2 py-1 text-[10px] shadow-none">
+                  <motion.div
+                    key={`processing-mobile-${row.id}`}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                    className="rounded-xl border border-border/60 bg-background p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground">Request #</p>
+                        <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                      </div>
+                      <Badge variant={statusVariant(row.processingStatus)} className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]">
                         {toProcessingStatusLabel(getProcessingStatusLabel(row))}
                       </Badge>
                     </div>
-                    <div className="col-span-2 flex items-center justify-end gap-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button type="button" size="sm" variant="outline" className="h-8 w-8 p-0" asChild>
-                            <Link href={`/${companyId}/employee-portal/material-request-processing/${row.id}`}>
-                              <IconFileText className="h-4 w-4" />
-                              <span className="sr-only">View Details</span>
-                            </Link>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" sideOffset={6}>
-                          View Details
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-8 w-8 p-0"
-                            onClick={() => printRequest(row)}
-                            disabled={isPrintPending && printingRequestId === row.id}
-                          >
-                            <IconPrinter className="h-4 w-4" />
-                            <span className="sr-only">Print</span>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" sideOffset={6}>
-                          {isPrintPending && printingRequestId === row.id ? "Preparing print..." : "Print"}
-                        </TooltipContent>
-                      </Tooltip>
+                    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Requester</p>
+                        <p className="text-foreground">{row.requesterName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Department</p>
+                        <p className="text-foreground">{row.departmentName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Date Required</p>
+                        <p className="text-foreground">{row.dateRequiredLabel}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">Items</p>
+                        <p className="text-foreground">{row.itemCount}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-[11px] text-muted-foreground">Amount</p>
+                        <p className="font-medium text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" asChild>
+                        <Link href={`/${companyId}/employee-portal/material-request-processing/${row.id}`}>
+                          <IconFileText className="mr-1.5 h-3.5 w-3.5" />
+                          View
+                        </Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        onClick={() => printRequest(row)}
+                        disabled={isPrintPending && printingRequestId === row.id}
+                      >
+                        <IconPrinter className="mr-1.5 h-3.5 w-3.5" />
+                        {isPrintPending && printingRequestId === row.id ? "Printing..." : "Print"}
+                      </Button>
                       {row.canMarkCompleted ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() =>
-                                openStatusAction({
-                                  type: "COMPLETED",
-                                  requestId: row.id,
-                                  requestNumber: row.requestNumber,
-                                  processingPoNumber: row.processingPoNumber,
-                                  processingSupplierName: row.processingSupplierName,
-                                })
-                              }
-                              disabled={isActionPending}
-                            >
-                              <IconCheck className="h-4 w-4" />
-                              <span className="sr-only">Mark Completed</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" sideOffset={6}>
-                            Mark Completed
-                          </TooltipContent>
-                        </Tooltip>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          onClick={() =>
+                            openStatusAction({
+                              type: "COMPLETED",
+                              requestId: row.id,
+                              requestNumber: row.requestNumber,
+                              processingPoNumber: row.processingPoNumber,
+                              processingSupplierName: row.processingSupplierName,
+                            })
+                          }
+                          disabled={isActionPending || isActionDetailPending}
+                        >
+                          <IconCheck className="mr-1.5 h-3.5 w-3.5" />
+                          Mark Completed
+                        </Button>
                       ) : row.processingStatus === "PENDING_PURCHASER" || row.processingStatus === "IN_PROGRESS" ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() =>
-                                openStatusAction({
-                                  type: "IN_PROGRESS",
-                                  serveMode: row.processingStatus === "PENDING_PURCHASER" ? "INITIAL" : "ADDITIONAL",
-                                  requestId: row.id,
-                                  requestNumber: row.requestNumber,
-                                  processingPoNumber: row.processingPoNumber,
-                                  processingSupplierName: row.processingSupplierName,
-                                })
-                              }
-                              disabled={isActionPending}
-                            >
-                              <IconTruckDelivery className="h-4 w-4" />
-                              <span className="sr-only">Serve Qty</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" sideOffset={6}>
-                            Serve Qty
-                          </TooltipContent>
-                        </Tooltip>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 rounded-lg text-xs"
+                          onClick={() =>
+                            openStatusAction({
+                              type: "IN_PROGRESS",
+                              serveMode: row.processingStatus === "PENDING_PURCHASER" ? "INITIAL" : "ADDITIONAL",
+                              requestId: row.id,
+                              requestNumber: row.requestNumber,
+                              processingPoNumber: row.processingPoNumber,
+                              processingSupplierName: row.processingSupplierName,
+                            })
+                          }
+                          disabled={isActionPending || isActionDetailPending}
+                        >
+                          <IconTruckDelivery className="mr-1.5 h-3.5 w-3.5" />
+                          {row.processingStatus === "IN_PROGRESS" ? "Add Served Qty" : "Serve Qty"}
+                        </Button>
                       ) : null}
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
-            </div>
 
-            <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <p className="text-muted-foreground">
-                  Page {page} of {totalPages} • {total} records
-                </p>
-                <Select
-                  value={pageSize}
-                  onValueChange={(value) => {
-                    setPageSize(value)
-                    clearSearchDebounceTimeout()
-                    loadPage({
-                      page: 1,
-                      pageSize: Number(value),
-                      search,
-                      status,
-                    })
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-[112px] rounded-lg text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 / page</SelectItem>
-                    <SelectItem value="20">20 / page</SelectItem>
-                    <SelectItem value="30">30 / page</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="hidden lg:block">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[980px]">
+                    <div className="grid grid-cols-12 items-center gap-1 border-b border-border/60 bg-muted/30 px-3 py-2">
+                      <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
+                      <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
+                      <p className="col-span-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Department</p>
+                      <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Required</p>
+                      <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Items</p>
+                      <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
+                      <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                      <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
+                    </div>
+
+                    {rows.map((row) => (
+                      <motion.div
+                        key={row.id}
+                        layout
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                        className="grid grid-cols-12 items-center gap-1 border-b border-border/60 px-3 py-2 text-xs last:border-b-0 hover:bg-muted/20"
+                      >
+                        <div className="col-span-1 truncate text-foreground" title={row.requestNumber}>{row.requestNumber}</div>
+                        <div className="col-span-2">
+                          <p className="truncate text-xs text-foreground" title={row.requesterName}>{row.requesterName}</p>
+                        </div>
+                        <div className="col-span-3 truncate text-foreground" title={row.departmentName}>{row.departmentName}</div>
+                        <div className="col-span-1 text-foreground">{row.dateRequiredLabel}</div>
+                        <div className="col-span-1 text-foreground">{row.itemCount}</div>
+                        <div className="col-span-1 font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
+                        <div className="col-span-1">
+                          <Badge variant={statusVariant(row.processingStatus)} className="w-full justify-center rounded-full border px-2 py-1 text-[10px] shadow-none">
+                            {toProcessingStatusLabel(getProcessingStatusLabel(row))}
+                          </Badge>
+                        </div>
+                        <div className="col-span-2 flex items-center justify-end gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button type="button" size="sm" variant="outline" className="h-8 w-8 p-0" asChild>
+                                <Link href={`/${companyId}/employee-portal/material-request-processing/${row.id}`}>
+                                  <IconFileText className="h-4 w-4" />
+                                  <span className="sr-only">View Details</span>
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
+                              View Details
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0"
+                                onClick={() => printRequest(row)}
+                                disabled={isPrintPending && printingRequestId === row.id}
+                              >
+                                <IconPrinter className="h-4 w-4" />
+                                <span className="sr-only">Print</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
+                              {isPrintPending && printingRequestId === row.id ? "Preparing print..." : "Print"}
+                            </TooltipContent>
+                          </Tooltip>
+                          {row.canMarkCompleted ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    openStatusAction({
+                                      type: "COMPLETED",
+                                      requestId: row.id,
+                                      requestNumber: row.requestNumber,
+                                      processingPoNumber: row.processingPoNumber,
+                                      processingSupplierName: row.processingSupplierName,
+                                    })
+                                  }
+                                  disabled={isActionPending || isActionDetailPending}
+                                >
+                                  <IconCheck className="h-4 w-4" />
+                                  <span className="sr-only">Mark Completed</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Mark Completed
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : row.processingStatus === "PENDING_PURCHASER" || row.processingStatus === "IN_PROGRESS" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() =>
+                                    openStatusAction({
+                                      type: "IN_PROGRESS",
+                                      serveMode: row.processingStatus === "PENDING_PURCHASER" ? "INITIAL" : "ADDITIONAL",
+                                      requestId: row.id,
+                                      requestNumber: row.requestNumber,
+                                      processingPoNumber: row.processingPoNumber,
+                                      processingSupplierName: row.processingSupplierName,
+                                    })
+                                  }
+                                  disabled={isActionPending || isActionDetailPending}
+                                >
+                                  <IconTruckDelivery className="h-4 w-4" />
+                                  <span className="sr-only">Serve Qty</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Serve Qty
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : null}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-lg"
-                  disabled={isListPending || page <= 1}
-                  onClick={() =>
-                    loadPage({
-                      page: page - 1,
-                      pageSize: Number(pageSize),
-                      search,
-                      status,
-                    })
-                  }
-                >
-                  Prev
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-lg"
-                  disabled={isListPending || page >= totalPages}
-                  onClick={() =>
-                    loadPage({
-                      page: page + 1,
-                      pageSize: Number(pageSize),
-                      search,
-                      status,
-                    })
-                  }
-                >
-                  Next
-                </Button>
+
+              <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <p className="text-muted-foreground">
+                    Page {page} of {totalPages} • {total} records
+                  </p>
+                  <Select
+                    value={pageSize}
+                    onValueChange={(value) => {
+                      setPageSize(value)
+                      clearSearchDebounceTimeout()
+                      loadPage({
+                        page: 1,
+                        pageSize: Number(value),
+                        search,
+                        status,
+                      })
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[112px] rounded-lg text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 / page</SelectItem>
+                      <SelectItem value="20">20 / page</SelectItem>
+                      <SelectItem value="30">30 / page</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg"
+                    disabled={isListPending || page <= 1}
+                    onClick={() =>
+                      loadPage({
+                        page: page - 1,
+                        pageSize: Number(pageSize),
+                        search,
+                        status,
+                      })
+                    }
+                  >
+                    Prev
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg"
+                    disabled={isListPending || page >= totalPages}
+                    onClick={() =>
+                      loadPage({
+                        page: page + 1,
+                        pageSize: Number(pageSize),
+                        search,
+                        status,
+                      })
+                    }
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
-            </div>
             </div>
           )}
         </div>
@@ -842,69 +956,73 @@ export function MaterialRequestProcessingClient({
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-foreground">Items to Serve</p>
                 <div className="overflow-hidden rounded-lg border border-border/60">
-                  <div className="grid grid-cols-14 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    <p className="col-span-1">#</p>
-                    <p className="col-span-4">Description</p>
-                    <p className="col-span-2 text-right">Req.</p>
-                    <p className="col-span-2 text-right">Prev.</p>
-                    <p className="col-span-2 text-right">Rem.</p>
-                    <p className="col-span-3 text-right">Serve</p>
-                  </div>
-                  <div className="max-h-56 overflow-y-auto">
-                    {isActionDetailPending && !actionDetail ? (
-                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading request items...</div>
-                    ) : actionDetailError ? (
-                      <div className="px-3 py-4 text-xs text-destructive">{actionDetailError}</div>
-                    ) : actionDetail && actionDetail.items.length > 0 ? (
-                      actionDetail.items.map((item) => (
-                        <div key={item.id} className="grid grid-cols-14 items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                          <p className="col-span-1 text-muted-foreground">{item.lineNumber}</p>
-                          <div className="col-span-4">
-                            <p className="text-foreground">{item.description}</p>
-                            <p className="text-[11px] text-muted-foreground">{item.uom}</p>
-                          </div>
-                          <p className="col-span-2 text-right font-medium text-foreground">{item.quantity.toFixed(3)}</p>
-                          <p className="col-span-2 text-right font-medium text-muted-foreground">{item.servedQuantity.toFixed(3)}</p>
-                          <p className="col-span-2 text-right font-medium text-amber-600 dark:text-amber-400">
-                            {item.remainingQuantity.toFixed(3)}
-                          </p>
-                          <div className="col-span-3">
-                            {action.type === "IN_PROGRESS" ? (
-                              <Input
-                                type="number"
-                                inputMode="decimal"
-                                min={0}
-                                max={item.remainingQuantity}
-                                step="0.001"
-                                value={serveQuantities[item.id] ?? ""}
-                                onChange={(event) =>
-                                  setServeQuantities((current) => ({
-                                    ...current,
-                                    [item.id]: event.target.value,
-                                  }))
-                                }
-                                onBlur={(event) => {
-                                  const normalizedValue = normalizeServeQuantityInput(
-                                    event.target.value,
-                                    item.remainingQuantity
-                                  )
-                                  setServeQuantities((current) => ({
-                                    ...current,
-                                    [item.id]: normalizedValue,
-                                  }))
-                                }}
-                                disabled={isActionPending || item.remainingQuantity <= QUANTITY_TOLERANCE}
-                                className="w-full text-right font-medium tabular-nums"
-                              />
-                            ) : (
-                              <p className="text-right font-medium text-foreground">-</p>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">No line items.</div>
-                    )}
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[760px]">
+                      <div className="grid grid-cols-14 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        <p className="col-span-1">#</p>
+                        <p className="col-span-4">Description</p>
+                        <p className="col-span-2 text-right">Req.</p>
+                        <p className="col-span-2 text-right">Prev.</p>
+                        <p className="col-span-2 text-right">Rem.</p>
+                        <p className="col-span-3 text-right">Serve</p>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto">
+                        {isActionDetailPending && !actionDetail ? (
+                          <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading request items...</div>
+                        ) : actionDetailError ? (
+                          <div className="px-3 py-4 text-xs text-destructive">{actionDetailError}</div>
+                        ) : actionDetail && actionDetail.items.length > 0 ? (
+                          actionDetail.items.map((item) => (
+                            <div key={item.id} className="grid grid-cols-14 items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
+                              <p className="col-span-1 text-muted-foreground">{item.lineNumber}</p>
+                              <div className="col-span-4">
+                                <p className="text-foreground">{item.description}</p>
+                                <p className="text-[11px] text-muted-foreground">{item.uom}</p>
+                              </div>
+                              <p className="col-span-2 text-right font-medium text-foreground">{item.quantity.toFixed(3)}</p>
+                              <p className="col-span-2 text-right font-medium text-muted-foreground">{item.servedQuantity.toFixed(3)}</p>
+                              <p className="col-span-2 text-right font-medium text-amber-600 dark:text-amber-400">
+                                {item.remainingQuantity.toFixed(3)}
+                              </p>
+                              <div className="col-span-3">
+                                {action.type === "IN_PROGRESS" ? (
+                                  <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    max={item.remainingQuantity}
+                                    step="0.001"
+                                    value={serveQuantities[item.id] ?? ""}
+                                    onChange={(event) =>
+                                      setServeQuantities((current) => ({
+                                        ...current,
+                                        [item.id]: event.target.value,
+                                      }))
+                                    }
+                                    onBlur={(event) => {
+                                      const normalizedValue = normalizeServeQuantityInput(
+                                        event.target.value,
+                                        item.remainingQuantity
+                                      )
+                                      setServeQuantities((current) => ({
+                                        ...current,
+                                        [item.id]: normalizedValue,
+                                      }))
+                                    }}
+                                    disabled={isActionPending || item.remainingQuantity <= QUANTITY_TOLERANCE}
+                                    className="w-full text-right font-medium tabular-nums"
+                                  />
+                                ) : (
+                                  <p className="text-right font-medium text-foreground">-</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-3 py-6 text-center text-xs text-muted-foreground">No line items.</div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

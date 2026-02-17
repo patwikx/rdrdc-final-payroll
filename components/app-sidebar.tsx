@@ -116,6 +116,12 @@ const subItemIconMap: Record<string, ReactNode> = {
   "reports-salary-history": <IconFileText className="size-3.5" />,
   "reports-monthly-bir-wtax": <IconReceiptTax className="size-3.5" />,
   "reports-late-overtime": <IconClock className="size-3.5" />,
+  "reports-contact-emergency-directory": <IconUsers className="size-3.5" />,
+  "reports-employment-milestones": <IconCalendarTime className="size-3.5" />,
+  "reports-movement-change-log": <IconSwitchHorizontal className="size-3.5" />,
+  "reports-training-certification-compliance": <IconChecklist className="size-3.5" />,
+  "reports-government-id-compliance": <IconReceiptTax className="size-3.5" />,
+  "reports-separation-attrition-detail": <IconChartBar className="size-3.5" />,
   // Leave & Overtime
   "approval-queue": <IconUserCheck className="size-3.5" />,
   "leave-balances": <IconChartBar className="size-3.5" />,
@@ -215,7 +221,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
         title: sub.label,
         url: toCompanyScopedPath(activeCompany.companyId, sub.path),
         isActive: sub.path === activeSubPath,
-        icon: subItemIconMap[sub.id],
+        icon: subItemIconMap[sub.id] ?? <IconFileText className="size-3.5" />,
       })),
     }
   })

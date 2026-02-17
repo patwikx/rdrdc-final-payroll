@@ -217,3 +217,20 @@ Use this section as the single running log for implementation lessons/progress n
   - retained company-scoped authz, ownership checks, and audit logging.
 - Expanded Material Request editability behavior so pending requests with no acted approval history can be updated, including route/action guard alignment and create-vs-update CTA distinction.
 - Aligned leave/overtime create+update date parsing paths to shared PH date utility usage (`parsePhDateInputToUtcDateOnly`) to preserve expected PH-local date semantics.
+
+### Cross-Module Progress Notes (2026-02-17)
+
+- Added company-scoped HR employee-detail reports under the existing Reports module (`/[companyId]/reports/hr/*`) with dedicated pages, filters, table views, print outputs, and CSV exports:
+  - Contact & Emergency Directory
+  - Employment Milestones
+  - Movement & Change Log
+  - Training & Certification Compliance
+  - Government ID Compliance
+  - Separation & Attrition Detail
+- Removed `Master Data Completeness` report route and related report implementation files based on revised requirements.
+- Updated Reports sidebar mapping to include icon coverage for the new HR report entries and added a safe fallback icon for any unmapped future sub-item IDs.
+- Standardized new HR report table layouts to:
+  - use shadcn `Table` primitives,
+  - avoid viewport-width overflow (`w-full`/wrapped cell content),
+  - and render explicit per-cell borders for document-like readability.
+- Removed the `Employee Scope` switch UI from all newly added HR report filter toolbars.

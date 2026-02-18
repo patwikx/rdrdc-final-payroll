@@ -69,6 +69,9 @@ export type EmployeePortalLeaveApprovalRow = {
   statusCode: string
   employeeName: string
   employeeNumber: string
+  employeePhotoUrl: string | null
+  departmentId: string | null
+  departmentName: string
   leaveTypeName: string
 }
 
@@ -82,4 +85,10 @@ export type EmployeePortalLeaveApprovalHistoryPage = {
   total: number
   page: number
   pageSize: number
+}
+
+export type EmployeePortalLeaveApprovalDepartmentOption = {
+  id: string
+  name: string
+  isActive: boolean
 }

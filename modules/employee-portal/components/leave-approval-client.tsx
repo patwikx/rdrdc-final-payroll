@@ -17,6 +17,7 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   approveLeaveByHrAction,
   approveLeaveBySupervisorAction,
@@ -36,6 +37,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import type {
+  EmployeePortalLeaveApprovalDepartmentOption,
   EmployeePortalLeaveApprovalHistoryRow,
   EmployeePortalLeaveApprovalRow,
 } from "@/modules/leave/types/employee-portal-leave-types"
@@ -43,6 +45,7 @@ import type {
 type LeaveApprovalClientProps = {
   companyId: string
   isHR: boolean
+  departmentOptions: EmployeePortalLeaveApprovalDepartmentOption[]
   rows: EmployeePortalLeaveApprovalRow[]
   historyRows: EmployeePortalLeaveApprovalHistoryRow[]
   initialHistoryTotal: number
@@ -60,10 +63,21 @@ const toLabel = (statusCode: string): string => {
 
 const toDateValue = (date?: Date): string => (date ? format(date, "yyyy-MM-dd") : "")
 const fromDateValue = (value: string): Date | undefined => (value ? (toPhDayStartUtcInstant(value) ?? undefined) : undefined)
+const getNameInitials = (fullName: string): string => {
+  const initials = fullName
+    .split(" ")
+    .filter((part) => part.trim().length > 0)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+
+  return initials || "LV"
+}
 
 export function LeaveApprovalClient({
   companyId,
   isHR,
+  departmentOptions,
   rows,
   historyRows,
   initialHistoryTotal,
@@ -79,8 +93,10 @@ export function LeaveApprovalClient({
   const [remarks, setRemarks] = useState("")
   const [queueSearch, setQueueSearch] = useState("")
   const [queueStatus, setQueueStatus] = useState<QueueStatusFilter>("ALL")
+  const [queueDepartmentId, setQueueDepartmentId] = useState<string>("ALL")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
+  const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -114,6 +130,10 @@ export function LeaveApprovalClient({
         return false
       }
 
+      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
+        return false
+      }
+
       if (!query) {
         return true
       }
@@ -122,6 +142,7 @@ export function LeaveApprovalClient({
         row.requestNumber,
         row.employeeName,
         row.employeeNumber,
+        row.departmentName,
         row.leaveTypeName,
         row.startDate,
         row.endDate,
@@ -134,11 +155,16 @@ export function LeaveApprovalClient({
 
       return haystack.includes(query)
     })
-  }, [deferredQueueSearch, queueStatus, rows])
+  }, [deferredQueueSearch, queueDepartmentId, queueStatus, rows])
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
-  const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL"
-  const hasActiveHistoryFilters = historySearch.trim().length > 0 || historyStatus !== "ALL" || Boolean(historyFromDate) || Boolean(historyToDate)
+  const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL" || queueDepartmentId !== "ALL"
+  const hasActiveHistoryFilters =
+    historySearch.trim().length > 0 ||
+    historyStatus !== "ALL" ||
+    historyDepartmentId !== "ALL" ||
+    Boolean(historyFromDate) ||
+    Boolean(historyToDate)
 
   const clearHistorySearchTimer = () => {
     if (!historySearchTimerRef.current) return
@@ -151,6 +177,7 @@ export function LeaveApprovalClient({
     pageSize: number
     search: string
     status: HistoryStatusFilter
+    departmentId: string
     fromDate: string
     toDate: string
   }) => {
@@ -165,6 +192,7 @@ export function LeaveApprovalClient({
         pageSize: params.pageSize,
         search: params.search,
         status: params.status,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
         fromDate: params.fromDate,
         toDate: params.toDate,
       })
@@ -195,6 +223,7 @@ export function LeaveApprovalClient({
         pageSize: historyItemsPerPage,
         search: nextSearch,
         status: historyStatus,
+        departmentId: historyDepartmentId,
         fromDate: historyFromDate,
         toDate: historyToDate,
       })
@@ -324,6 +353,26 @@ export function LeaveApprovalClient({
                 <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={queueDepartmentId}
+              onValueChange={(value) => {
+                setQueueDepartmentId(value)
+                setRowsPage(1)
+              }}
+            >
+              <SelectTrigger className="w-[220px] rounded-lg">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                <SelectItem value="ALL">All departments</SelectItem>
+                {departmentOptions.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                    {!department.isActive ? " (Inactive)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               type="button"
               variant="outline"
@@ -331,6 +380,7 @@ export function LeaveApprovalClient({
               onClick={() => {
                 setQueueSearch("")
                 setQueueStatus("ALL")
+                setQueueDepartmentId("ALL")
                 setRowsPage(1)
               }}
               disabled={!hasActiveQueueFilters}
@@ -370,7 +420,7 @@ export function LeaveApprovalClient({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-[11px] text-foreground/70">Request #</p>
-                              <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
                             </div>
                             <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="shrink-0 text-xs">
                               {toLabel(row.statusCode)}
@@ -379,7 +429,15 @@ export function LeaveApprovalClient({
                           <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                             <div>
                               <p className="text-[11px] text-foreground/70">Employee</p>
-                              <p className="text-foreground">{row.employeeName}</p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                  <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                    {getNameInitials(row.employeeName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="truncate text-foreground">{row.employeeName}</p>
+                              </div>
                             </div>
                             <div>
                               <p className="text-[11px] text-foreground/70">Leave Type</p>
@@ -416,11 +474,21 @@ export function LeaveApprovalClient({
                       {paginatedRows.map((row) => (
                         <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20 lg:grid">
                           <div className="col-span-1 min-w-0">
-                            <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                            <p className="truncate whitespace-nowrap text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
                           </div>
                           <div className="col-span-2">
-                            <p className="text-xs text-foreground">{row.employeeName}</p>
-                            <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.employeeName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="truncate text-xs text-foreground">{row.employeeName}</p>
+                                <p className="truncate text-[10px] text-foreground/70">{row.employeeNumber}</p>
+                              </div>
+                            </div>
                           </div>
                           <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
                           <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
@@ -489,7 +557,7 @@ export function LeaveApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
             <div className="relative">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
               <Input
@@ -513,6 +581,7 @@ export function LeaveApprovalClient({
                   pageSize: historyItemsPerPage,
                   search: historySearch,
                   status: nextStatus,
+                  departmentId: historyDepartmentId,
                   fromDate: historyFromDate,
                   toDate: historyToDate,
                 })
@@ -526,6 +595,36 @@ export function LeaveApprovalClient({
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="REJECTED">Rejected</SelectItem>
                 <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={historyDepartmentId}
+              onValueChange={(value) => {
+                setHistoryDepartmentId(value)
+                setExpandedHistoryRequestId(null)
+                clearHistorySearchTimer()
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: historySearch,
+                  status: historyStatus,
+                  departmentId: value,
+                  fromDate: historyFromDate,
+                  toDate: historyToDate,
+                })
+              }}
+            >
+              <SelectTrigger className="rounded-lg">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                <SelectItem value="ALL">All departments</SelectItem>
+                {departmentOptions.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                    {!department.isActive ? " (Inactive)" : ""}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Popover>
@@ -553,6 +652,7 @@ export function LeaveApprovalClient({
                       pageSize: historyItemsPerPage,
                       search: historySearch,
                       status: historyStatus,
+                      departmentId: historyDepartmentId,
                       fromDate: nextFrom,
                       toDate: nextTo,
                     })
@@ -582,6 +682,7 @@ export function LeaveApprovalClient({
                       pageSize: historyItemsPerPage,
                       search: historySearch,
                       status: historyStatus,
+                      departmentId: historyDepartmentId,
                       fromDate: historyFromDate,
                       toDate: nextTo,
                     })
@@ -603,6 +704,7 @@ export function LeaveApprovalClient({
               onClick={() => {
                 setHistorySearch("")
                 setHistoryStatus("ALL")
+                setHistoryDepartmentId("ALL")
                 setHistoryFromDate("")
                 setHistoryToDate("")
                 setExpandedHistoryRequestId(null)
@@ -612,6 +714,7 @@ export function LeaveApprovalClient({
                   pageSize: historyItemsPerPage,
                   search: "",
                   status: "ALL",
+                  departmentId: "ALL",
                   fromDate: "",
                   toDate: "",
                 })
@@ -658,7 +761,7 @@ export function LeaveApprovalClient({
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-[11px] text-foreground/70">Request #</p>
-                            <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                            <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
                           </div>
                           <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="shrink-0 text-xs">
                             {toLabel(row.statusCode)}
@@ -667,7 +770,15 @@ export function LeaveApprovalClient({
                         <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                           <div>
                             <p className="text-[11px] text-foreground/70">Employee</p>
-                            <p className="text-foreground">{row.employeeName}</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.employeeName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <p className="truncate text-foreground">{row.employeeName}</p>
+                            </div>
                           </div>
                           <div>
                             <p className="text-[11px] text-foreground/70">Leave Type</p>
@@ -710,11 +821,21 @@ export function LeaveApprovalClient({
                         onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
                       >
                         <div className="col-span-1 min-w-0">
-                          <p className="truncate text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
+                          <p className="truncate whitespace-nowrap text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-xs text-foreground">{row.employeeName}</p>
-                          <p className="text-xs text-foreground/70">{row.employeeNumber}</p>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                              <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                              <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                {getNameInitials(row.employeeName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="truncate text-xs text-foreground">{row.employeeName}</p>
+                              <p className="truncate text-[10px] text-foreground/70">{row.employeeNumber}</p>
+                            </div>
+                          </div>
                         </div>
                         <div className="col-span-2 text-xs text-foreground">{row.leaveTypeName}</div>
                         <div className="col-span-2 whitespace-normal break-words text-xs leading-tight text-foreground">
@@ -788,6 +909,7 @@ export function LeaveApprovalClient({
                         pageSize: Number(value),
                         search: historySearch,
                         status: historyStatus,
+                        departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,
                       })
@@ -817,6 +939,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,
                       })
@@ -837,6 +960,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,
                       })

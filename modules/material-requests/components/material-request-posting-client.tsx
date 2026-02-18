@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -24,6 +25,7 @@ import {
   postMaterialRequestAction,
 } from "@/modules/material-requests/actions/material-request-posting-actions"
 import type {
+  EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestPostingDetail,
   EmployeePortalMaterialRequestPostingRow,
   EmployeePortalMaterialRequestPostingStatusFilter,
@@ -37,6 +39,7 @@ const SEARCH_DEBOUNCE_MS = 300
 
 type MaterialRequestPostingClientProps = {
   companyId: string
+  departmentOptions: EmployeePortalMaterialRequestDepartmentOption[]
   initialRows: EmployeePortalMaterialRequestPostingRow[]
   initialTotal: number
   initialPage: number
@@ -66,8 +69,20 @@ const postingStatusVariant = (
   return "secondary"
 }
 
+const getNameInitials = (fullName: string): string => {
+  const initials = fullName
+    .split(" ")
+    .filter((part) => part.trim().length > 0)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+
+  return initials || "MR"
+}
+
 export function MaterialRequestPostingClient({
   companyId,
+  departmentOptions,
   initialRows,
   initialTotal,
   initialPage,
@@ -82,6 +97,7 @@ export function MaterialRequestPostingClient({
   const [pageSize, setPageSize] = useState(String(initialPageSize))
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<EmployeePortalMaterialRequestPostingStatusFilter>("ALL")
+  const [departmentId, setDepartmentId] = useState<string>("ALL")
 
   const [action, setAction] = useState<PostingAction>({ type: "NONE" })
   const [detail, setDetail] = useState<EmployeePortalMaterialRequestPostingDetail | null>(null)
@@ -138,6 +154,7 @@ export function MaterialRequestPostingClient({
     pageSize: number
     search: string
     status: EmployeePortalMaterialRequestPostingStatusFilter
+    departmentId: string
   }) => {
     const nextToken = loadTokenRef.current + 1
     loadTokenRef.current = nextToken
@@ -149,6 +166,7 @@ export function MaterialRequestPostingClient({
         pageSize: params.pageSize,
         search: params.search,
         status: params.status,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
       })
 
       if (loadTokenRef.current !== nextToken) {
@@ -233,6 +251,7 @@ export function MaterialRequestPostingClient({
         pageSize: Number(pageSize),
         search,
         status,
+        departmentId,
       })
     })
   }
@@ -287,6 +306,7 @@ export function MaterialRequestPostingClient({
                       pageSize: Number(pageSize),
                       search: nextSearch,
                       status,
+                      departmentId,
                     })
                   }, SEARCH_DEBOUNCE_MS)
                 }}
@@ -304,6 +324,7 @@ export function MaterialRequestPostingClient({
                     pageSize: Number(pageSize),
                     search,
                     status,
+                    departmentId,
                   })
                 }}
               />
@@ -320,6 +341,7 @@ export function MaterialRequestPostingClient({
                   pageSize: Number(pageSize),
                   search,
                   status: nextStatus,
+                  departmentId,
                 })
               }}
             >
@@ -333,6 +355,34 @@ export function MaterialRequestPostingClient({
               </SelectContent>
             </Select>
 
+            <Select
+              value={departmentId}
+              onValueChange={(value) => {
+                setDepartmentId(value)
+                clearSearchDebounceTimeout()
+                loadPage({
+                  page: 1,
+                  pageSize: Number(pageSize),
+                  search,
+                  status,
+                  departmentId: value,
+                })
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[240px]">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Departments</SelectItem>
+                {departmentOptions.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                    {!department.isActive ? " (Inactive)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Button
               type="button"
               variant="outline"
@@ -340,12 +390,14 @@ export function MaterialRequestPostingClient({
                 clearSearchDebounceTimeout()
                 setSearch("")
                 setStatus("ALL")
+                setDepartmentId("ALL")
                 setPageSize("10")
                 loadPage({
                   page: 1,
                   pageSize: 10,
                   search: "",
                   status: "ALL",
+                  departmentId: "ALL",
                 })
               }}
               disabled={isListPending}
@@ -383,7 +435,19 @@ export function MaterialRequestPostingClient({
                     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                       <div>
                         <p className="text-[11px] text-muted-foreground">Requester</p>
-                        <p className="text-foreground">{row.requesterName}</p>
+                        <div className="mt-1 flex items-center gap-2">
+                          <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                            <AvatarImage
+                              src={row.requesterPhotoUrl ?? undefined}
+                              alt={row.requesterName}
+                              className="!rounded-md object-cover"
+                            />
+                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                              {getNameInitials(row.requesterName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="truncate text-foreground">{row.requesterName}</p>
+                        </div>
                       </div>
                       <div>
                         <p className="text-[11px] text-muted-foreground">Department</p>
@@ -450,7 +514,19 @@ export function MaterialRequestPostingClient({
                       >
                         <div className="col-span-1 text-foreground">{row.requestNumber}</div>
                         <div className="col-span-2">
-                          <p className="text-xs text-foreground">{row.requesterName}</p>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                              <AvatarImage
+                                src={row.requesterPhotoUrl ?? undefined}
+                                alt={row.requesterName}
+                                className="!rounded-md object-cover"
+                              />
+                              <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                {getNameInitials(row.requesterName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="truncate text-xs text-foreground">{row.requesterName}</p>
+                          </div>
                         </div>
                         <div className="col-span-3 text-foreground">{row.departmentName}</div>
                         <div className="col-span-2 text-foreground">{row.processingCompletedAtLabel ?? "-"}</div>
@@ -502,6 +578,7 @@ export function MaterialRequestPostingClient({
                         pageSize: Number(value),
                         search,
                         status,
+                        departmentId,
                       })
                     }}
                   >
@@ -528,6 +605,7 @@ export function MaterialRequestPostingClient({
                         pageSize: Number(pageSize),
                         search,
                         status,
+                        departmentId,
                       })
                     }
                   >
@@ -545,6 +623,7 @@ export function MaterialRequestPostingClient({
                         pageSize: Number(pageSize),
                         search,
                         status,
+                        departmentId,
                       })
                     }
                   >

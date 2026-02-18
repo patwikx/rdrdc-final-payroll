@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { db } from "@/lib/db"
+import { getRequestAuthContext } from "@/modules/auth/utils/request-context"
 import { cache } from "react"
 
 export type ActiveCompanyContext = {
@@ -130,6 +131,14 @@ const resolveActiveCompanyContext = cache(
 export async function getActiveCompanyContext(
   options?: ActiveCompanyResolverOptions
 ): Promise<ActiveCompanyContext> {
+  const requestContext = getRequestAuthContext()
+  if (
+    requestContext &&
+    (!options?.companyId || options.companyId === requestContext.companyId)
+  ) {
+    return requestContext
+  }
+
   const requestedCompanyIdInput = options?.companyId ?? null
   return resolveActiveCompanyContext(requestedCompanyIdInput)
 }

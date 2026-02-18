@@ -14,6 +14,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -31,6 +32,7 @@ import {
   rejectMaterialRequestStepAction,
 } from "@/modules/material-requests/actions/material-request-approval-actions"
 import type {
+  EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestApprovalDecisionDetail,
   EmployeePortalMaterialRequestApprovalHistoryDetail,
   EmployeePortalMaterialRequestApprovalHistoryRow,
@@ -40,6 +42,7 @@ import type {
 type MaterialRequestApprovalClientProps = {
   companyId: string
   isHR: boolean
+  departmentOptions: EmployeePortalMaterialRequestDepartmentOption[]
   rows: EmployeePortalMaterialRequestApprovalQueueRow[]
   historyRows: EmployeePortalMaterialRequestApprovalHistoryRow[]
   initialHistoryTotal: number
@@ -65,9 +68,21 @@ const statusVariant = (status: string): "default" | "secondary" | "destructive" 
 
 const statusLabel = (status: string): string => status.replace(/_/g, " ")
 
+const getNameInitials = (fullName: string): string => {
+  const initials = fullName
+    .split(" ")
+    .filter((part) => part.trim().length > 0)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+
+  return initials || "MR"
+}
+
 export function MaterialRequestApprovalClient({
   companyId,
   isHR,
+  departmentOptions,
   rows,
   historyRows,
   initialHistoryTotal,
@@ -82,8 +97,10 @@ export function MaterialRequestApprovalClient({
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
   const [queueSearch, setQueueSearch] = useState("")
+  const [queueDepartmentId, setQueueDepartmentId] = useState<string>("ALL")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
+  const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [isPending, startTransition] = useTransition()
   const [isDetailPending, startDetailTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
@@ -109,11 +126,15 @@ export function MaterialRequestApprovalClient({
   const selectedRequest = useMemo(() => rows.find((row) => row.id === selectedRequestId) ?? null, [rows, selectedRequestId])
   const filteredQueueRows = useMemo(() => {
     const query = debouncedQueueSearch.trim().toLowerCase()
-    if (!query) {
+    if (!query && queueDepartmentId === "ALL") {
       return rows
     }
 
     return rows.filter((row) => {
+      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
+        return false
+      }
+
       const haystack = [
         row.requestNumber,
         row.requesterName,
@@ -128,7 +149,7 @@ export function MaterialRequestApprovalClient({
 
       return haystack.includes(query)
     })
-  }, [debouncedQueueSearch, rows])
+  }, [debouncedQueueSearch, queueDepartmentId, rows])
 
   const queueStats = useMemo(() => {
     return rows.reduce(
@@ -148,7 +169,7 @@ export function MaterialRequestApprovalClient({
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
-  const hasQueueFilters = queueSearch.trim().length > 0
+  const hasQueueFilters = queueSearch.trim().length > 0 || queueDepartmentId !== "ALL"
 
   const clearHistorySearchDebounceTimeout = () => {
     if (!historySearchDebounceTimeoutRef.current) {
@@ -172,6 +193,7 @@ export function MaterialRequestApprovalClient({
     pageSize: number
     search: string
     status: HistoryStatusFilter
+    departmentId: string
   }) => {
     const token = historyRequestTokenRef.current + 1
     historyRequestTokenRef.current = token
@@ -184,6 +206,7 @@ export function MaterialRequestApprovalClient({
         pageSize: params.pageSize,
         search: params.search,
         status: params.status,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
       })
 
       if (historyRequestTokenRef.current !== token) {
@@ -301,7 +324,8 @@ export function MaterialRequestApprovalClient({
     })
   }
 
-  const hasHistoryFilters = historySearch.trim().length > 0 || historyStatus !== "ALL"
+  const hasHistoryFilters =
+    historySearch.trim().length > 0 || historyStatus !== "ALL" || historyDepartmentId !== "ALL"
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
@@ -372,11 +396,32 @@ export function MaterialRequestApprovalClient({
                 className="rounded-lg pl-8"
               />
             </div>
+            <Select
+              value={queueDepartmentId}
+              onValueChange={(value) => {
+                setQueueDepartmentId(value)
+                setQueuePage(1)
+              }}
+            >
+              <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                <SelectItem value="ALL">All departments</SelectItem>
+                {departmentOptions.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                    {!department.isActive ? " (Inactive)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               className="rounded-lg"
               onClick={() => {
                 setQueueSearch("")
+                setQueueDepartmentId("ALL")
                 setQueuePage(1)
               }}
               disabled={!hasQueueFilters}
@@ -427,7 +472,7 @@ export function MaterialRequestApprovalClient({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-[11px] text-muted-foreground">Request #</p>
-                              <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
                             </div>
                             <Badge variant="secondary" className="shrink-0 text-xs">
                               Step {row.currentStep}/{row.requiredSteps}
@@ -436,7 +481,19 @@ export function MaterialRequestApprovalClient({
                           <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                             <div>
                               <p className="text-[11px] text-muted-foreground">Requester</p>
-                              <p className="text-foreground">{row.requesterName}</p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                  <AvatarImage
+                                    src={row.requesterPhotoUrl ?? undefined}
+                                    alt={row.requesterName}
+                                    className="!rounded-md object-cover"
+                                  />
+                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                    {getNameInitials(row.requesterName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="truncate text-foreground">{row.requesterName}</p>
+                              </div>
                             </div>
                             <div>
                               <p className="text-[11px] text-muted-foreground">Department</p>
@@ -492,9 +549,23 @@ export function MaterialRequestApprovalClient({
                           transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
                           className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20 lg:grid"
                         >
-                          <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
+                          <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.requestNumber}>
+                            {row.requestNumber}
+                          </div>
                           <div className="col-span-2">
-                            <p className="text-xs text-foreground">{row.requesterName}</p>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage
+                                  src={row.requesterPhotoUrl ?? undefined}
+                                  alt={row.requesterName}
+                                  className="!rounded-md object-cover"
+                                />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.requesterName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <p className="truncate text-xs text-foreground">{row.requesterName}</p>
+                            </div>
                           </div>
                           <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
                             {row.departmentName}
@@ -592,6 +663,7 @@ export function MaterialRequestApprovalClient({
                       pageSize: historyItemsPerPage,
                       search: nextSearch,
                       status: historyStatus,
+                      departmentId: historyDepartmentId,
                     })
                   }, HISTORY_SEARCH_DEBOUNCE_MS)
                 }}
@@ -608,11 +680,12 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: historyStatus,
+                    departmentId: historyDepartmentId,
                   })
                 }}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={historyStatus}
                 onValueChange={(value) => {
@@ -625,6 +698,7 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: nextStatus,
+                    departmentId: historyDepartmentId,
                   })
                 }}
               >
@@ -639,12 +713,41 @@ export function MaterialRequestApprovalClient({
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={historyDepartmentId}
+                onValueChange={(value) => {
+                  setHistoryDepartmentId(value)
+                  setExpandedHistoryRequestId(null)
+                  clearHistorySearchDebounceTimeout()
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: historySearch,
+                    status: historyStatus,
+                    departmentId: value,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All departments</SelectItem>
+                  {departmentOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                      {!department.isActive ? " (Inactive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 className="rounded-lg"
                 onClick={() => {
                   setHistorySearch("")
                   setHistoryStatus("ALL")
+                  setHistoryDepartmentId("ALL")
                   setExpandedHistoryRequestId(null)
                   clearHistorySearchDebounceTimeout()
                   loadHistoryPage({
@@ -652,6 +755,7 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: "",
                     status: "ALL",
+                    departmentId: "ALL",
                   })
                 }}
                 disabled={!hasHistoryFilters}
@@ -708,7 +812,7 @@ export function MaterialRequestApprovalClient({
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="text-[11px] text-muted-foreground">Request #</p>
-                                <p className="truncate text-sm font-medium text-foreground">{row.requestNumber}</p>
+                                <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
                               </div>
                               <Badge variant={statusVariant(row.status)} className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]">
                                 {statusLabel(row.status)}
@@ -717,7 +821,19 @@ export function MaterialRequestApprovalClient({
                             <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                               <div>
                                 <p className="text-[11px] text-muted-foreground">Requester</p>
-                                <p className="text-foreground">{row.requesterName}</p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                    <AvatarImage
+                                      src={row.requesterPhotoUrl ?? undefined}
+                                      alt={row.requesterName}
+                                      className="!rounded-md object-cover"
+                                    />
+                                    <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                      {getNameInitials(row.requesterName)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <p className="truncate text-foreground">{row.requesterName}</p>
+                                </div>
                               </div>
                               <div>
                                 <p className="text-[11px] text-muted-foreground">Department</p>
@@ -737,9 +853,23 @@ export function MaterialRequestApprovalClient({
                             className="hidden cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20 lg:grid"
                             onClick={() => toggleHistoryDetails(row.id)}
                           >
-                            <div className="col-span-1 text-xs text-foreground">{row.requestNumber}</div>
+                            <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.requestNumber}>
+                              {row.requestNumber}
+                            </div>
                             <div className="col-span-2">
-                              <p className="text-xs text-foreground">{row.requesterName}</p>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                  <AvatarImage
+                                    src={row.requesterPhotoUrl ?? undefined}
+                                    alt={row.requesterName}
+                                    className="!rounded-md object-cover"
+                                  />
+                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                    {getNameInitials(row.requesterName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="truncate text-xs text-foreground">{row.requesterName}</p>
+                              </div>
                             </div>
                             <div className="col-span-2 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
                               {row.departmentName}
@@ -906,6 +1036,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: nextPageSize,
                               search: historySearch,
                               status: historyStatus,
+                              departmentId: historyDepartmentId,
                             })
                           }}
                         >
@@ -933,6 +1064,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: historyItemsPerPage,
                               search: historySearch,
                               status: historyStatus,
+                              departmentId: historyDepartmentId,
                             })
                           }}
                         >
@@ -951,6 +1083,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: historyItemsPerPage,
                               search: historySearch,
                               status: historyStatus,
+                              departmentId: historyDepartmentId,
                             })
                           }}
                         >

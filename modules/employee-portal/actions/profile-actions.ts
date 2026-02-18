@@ -1,52 +1,17 @@
 "use server"
 
-import { z } from "zod"
-
 import { db } from "@/lib/db"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-
-const inputSchema = z.object({
-  companyId: z.string().uuid(),
-  email: z.string().email().optional(),
-  phone: z.string().trim().min(3).max(30).optional(),
-  phoneCountryCode: z.string().trim().max(8).optional(),
-  address: z
-    .object({
-      street: z.string().trim().max(200).optional(),
-      barangay: z.string().trim().max(120).optional(),
-      city: z.string().trim().max(120).optional(),
-      province: z.string().trim().max(120).optional(),
-      postalCode: z.string().trim().max(20).optional(),
-    })
-    .optional(),
-  emergencyContact: z
-    .object({
-      name: z.string().trim().max(160).optional(),
-      relationshipId: z.enum(["SPOUSE", "CHILD", "PARENT", "SIBLING", "OTHER"]).optional(),
-      mobileNumber: z.string().trim().max(30).optional(),
-    })
-    .optional(),
-  documents: z
-    .array(
-      z.object({
-        id: z.string().uuid().optional(),
-        title: z.string().trim().min(2).max(180),
-        fileUrl: z.string().url(),
-        fileType: z.string().trim().min(2).max(20),
-        fileSize: z.coerce.number().int().min(1).max(20 * 1024 * 1024).optional(),
-      })
-    )
-    .max(10)
-    .optional(),
-})
-
-type UpdateProfileInput = z.infer<typeof inputSchema>
+import {
+  updateEmployeeSelfServiceInputSchema,
+  type UpdateEmployeeSelfServiceInput,
+} from "@/modules/employee-portal/schemas/profile-actions-schema"
 
 type ActionResult = { ok: true; message: string } | { ok: false; error: string }
 
-export async function updateEmployeeSelfServiceAction(input: UpdateProfileInput): Promise<ActionResult> {
-  const parsed = inputSchema.safeParse(input)
+export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfServiceInput): Promise<ActionResult> {
+  const parsed = updateEmployeeSelfServiceInputSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid profile payload." }
   }

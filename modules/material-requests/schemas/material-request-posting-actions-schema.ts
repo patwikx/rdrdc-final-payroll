@@ -6,6 +6,7 @@ export const getMaterialRequestPostingPageInputSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "PENDING_POSTING", "POSTED"]).default("ALL"),
+  departmentId: z.string().uuid().optional(),
 })
 
 export const getMaterialRequestPostingDetailsInputSchema = z.object({

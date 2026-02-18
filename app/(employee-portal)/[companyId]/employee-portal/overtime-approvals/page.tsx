@@ -5,7 +5,10 @@ import {
   OvertimeApprovalClient,
 } from "@/modules/employee-portal/components/overtime-approval-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
-import { getEmployeePortalOvertimeApprovalReadModel } from "@/modules/overtime/utils/overtime-domain"
+import {
+  getEmployeePortalOvertimeApprovalDepartmentOptions,
+  getEmployeePortalOvertimeApprovalReadModel,
+} from "@/modules/overtime/utils/overtime-domain"
 
 type OvertimeApprovalsPageProps = {
   params: Promise<{ companyId: string }>
@@ -36,16 +39,22 @@ export default async function OvertimeApprovalsPage({ params }: OvertimeApproval
     )
   }
 
-  const overtimeApprovalData = await getEmployeePortalOvertimeApprovalReadModel({
-    companyId: context.companyId,
-    isHR,
-    approverEmployeeId: context.employee?.id,
-  })
+  const [overtimeApprovalData, departmentOptions] = await Promise.all([
+    getEmployeePortalOvertimeApprovalReadModel({
+      companyId: context.companyId,
+      isHR,
+      approverEmployeeId: context.employee?.id,
+    }),
+    getEmployeePortalOvertimeApprovalDepartmentOptions({
+      companyId: context.companyId,
+    }),
+  ])
 
   return (
     <OvertimeApprovalClient
       companyId={context.companyId}
       isHR={isHR}
+      departmentOptions={departmentOptions}
       rows={overtimeApprovalData.rows}
       historyRows={overtimeApprovalData.historyRows}
       initialHistoryTotal={overtimeApprovalData.historyTotal}

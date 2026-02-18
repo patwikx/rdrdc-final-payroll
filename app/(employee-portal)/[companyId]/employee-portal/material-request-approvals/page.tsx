@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation"
 
 import { MaterialRequestApprovalClient } from "@/modules/material-requests/components/material-request-approval-client"
-import { getEmployeePortalMaterialRequestApprovalReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
+import {
+  getEmployeePortalMaterialRequestApprovalReadModel,
+  getEmployeePortalMaterialRequestDepartmentOptions,
+} from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 
 type MaterialRequestApprovalsPageProps = {
@@ -26,16 +29,22 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
     redirect(`/${context.companyId}/employee-portal`)
   }
 
-  const approvalData = await getEmployeePortalMaterialRequestApprovalReadModel({
-    companyId: context.companyId,
-    approverUserId: context.userId,
-    isHR,
-  })
+  const [approvalData, departmentOptions] = await Promise.all([
+    getEmployeePortalMaterialRequestApprovalReadModel({
+      companyId: context.companyId,
+      approverUserId: context.userId,
+      isHR,
+    }),
+    getEmployeePortalMaterialRequestDepartmentOptions({
+      companyId: context.companyId,
+    }),
+  ])
 
   return (
     <MaterialRequestApprovalClient
       companyId={context.companyId}
       isHR={isHR}
+      departmentOptions={departmentOptions}
       rows={approvalData.rows}
       historyRows={approvalData.historyRows}
       initialHistoryTotal={approvalData.historyTotal}

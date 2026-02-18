@@ -266,6 +266,7 @@ export async function getMaterialRequestApprovalHistoryPageAction(
     pageSize: payload.pageSize,
     search: payload.search,
     status: payload.status,
+    departmentId: payload.departmentId,
   })
 
   return {

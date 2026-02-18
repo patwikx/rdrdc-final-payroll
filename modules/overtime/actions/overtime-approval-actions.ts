@@ -31,6 +31,7 @@ const historyPageSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "APPROVED", "REJECTED", "SUPERVISOR_APPROVED"]).default("ALL"),
+  departmentId: z.string().uuid().optional(),
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
 })
@@ -174,6 +175,7 @@ export async function getOvertimeApprovalHistoryPageAction(
     pageSize: payload.pageSize,
     search: payload.search,
     status: payload.status,
+    departmentId: payload.departmentId,
     fromDate: payload.fromDate,
     toDate: payload.toDate,
   })

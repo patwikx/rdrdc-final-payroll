@@ -176,15 +176,18 @@ type UserAccessQueryState = {
   sysPage: number
 }
 
+type UserAccessFetchScope = "ALL" | "EMPLOYEES" | "SYSTEM_USERS"
+
 type UserAccessDataResponse = {
-  rows: UserAccessPreviewRow[]
-  systemUsers: SystemUserAccountRow[]
+  scope: UserAccessFetchScope
+  rows?: UserAccessPreviewRow[]
+  systemUsers?: SystemUserAccountRow[]
   query: string
   employeeLinkFilter: UserAccessLinkFilter
   systemLinkFilter: UserAccessLinkFilter
   roleFilter: UserAccessRoleFilter
-  employeePagination: UserAccessPageProps["employeePagination"]
-  systemUserPagination: UserAccessPageProps["systemUserPagination"]
+  employeePagination?: UserAccessPageProps["employeePagination"]
+  systemUserPagination?: UserAccessPageProps["systemUserPagination"]
 }
 
 export function UserAccessPage({
@@ -213,6 +216,8 @@ export function UserAccessPage({
   const [systemUserPaginationState, setSystemUserPaginationState] = useState(systemUserPagination)
   const [isDataPending, setIsDataPending] = useState(false)
   const dataRequestControllerRef = useRef<AbortController | null>(null)
+  const dataCacheRef = useRef<Map<string, UserAccessDataResponse>>(new Map())
+  const inFlightPrefetchKeysRef = useRef<Set<string>>(new Set())
   const lastRequestedStateRef = useRef<UserAccessQueryState>({
     q: query,
     empLink: employeeLinkFilter,
@@ -227,6 +232,22 @@ export function UserAccessPage({
   const [isAvailableUsersPending, startAvailableUsersTransition] = useTransition()
   const isPending = isMutationPending || isDataPending
   const [availableUsers, setAvailableUsers] = useState<AvailableSystemUserOption[]>([])
+
+  const buildDataCacheKey = useCallback((scope: UserAccessFetchScope, state: UserAccessQueryState): string => {
+    const base = [
+      `q=${state.q.trim().toLowerCase()}`,
+      `empLink=${state.empLink}`,
+      `sysLink=${state.sysLink}`,
+      `role=${state.role}`,
+    ]
+    if (scope === "ALL") {
+      return [...base, `empPage=${state.empPage}`, `sysPage=${state.sysPage}`].join("&")
+    }
+    if (scope === "EMPLOYEES") {
+      return [...base, `scope=EMPLOYEES`, `empPage=${state.empPage}`].join("&")
+    }
+    return [...base, `scope=SYSTEM_USERS`, `sysPage=${state.sysPage}`].join("&")
+  }, [])
 
   const [createUsername, setCreateUsername] = useState("")
   const [createEmail, setCreateEmail] = useState("")
@@ -296,6 +317,41 @@ export function UserAccessPage({
       sysPage: systemUserPagination.page,
     }
   }, [employeeLinkFilter, employeePagination.page, query, roleFilter, systemLinkFilter, systemUserPagination.page])
+
+  useEffect(() => {
+    const initialPayload: UserAccessDataResponse = {
+      scope: "ALL",
+      query,
+      employeeLinkFilter,
+      systemLinkFilter,
+      roleFilter,
+      rows,
+      systemUsers,
+      employeePagination,
+      systemUserPagination,
+    }
+    dataCacheRef.current.set(
+      buildDataCacheKey("ALL", {
+        q: query,
+        empLink: employeeLinkFilter,
+        sysLink: systemLinkFilter,
+        role: roleFilter,
+        empPage: employeePagination.page,
+        sysPage: systemUserPagination.page,
+      }),
+      initialPayload
+    )
+  }, [
+    buildDataCacheKey,
+    employeeLinkFilter,
+    employeePagination,
+    query,
+    roleFilter,
+    rows,
+    systemLinkFilter,
+    systemUserPagination,
+    systemUsers,
+  ])
 
   useEffect(() => {
     return () => {
@@ -392,6 +448,90 @@ export function UserAccessPage({
     return next ? `${pathname}?${next}` : pathname
   }, [pathname])
 
+  const buildDataRequestParams = useCallback((state: UserAccessQueryState, scope: UserAccessFetchScope) => {
+    const params = new URLSearchParams()
+    const queryValue = state.q.trim()
+    if (queryValue) params.set("q", queryValue)
+    if (state.empLink !== "ALL") params.set("empLink", state.empLink)
+    if (state.sysLink !== "ALL") params.set("sysLink", state.sysLink)
+    if (state.role !== "ALL") params.set("role", state.role)
+    if (state.empPage > 1) params.set("empPage", String(state.empPage))
+    if (state.sysPage > 1) params.set("sysPage", String(state.sysPage))
+    if (scope !== "ALL") params.set("scope", scope)
+    return params
+  }, [])
+
+  const applyDataPayload = useCallback((payload: UserAccessDataResponse, fallbackState: UserAccessQueryState) => {
+    if (payload.rows && payload.employeePagination) {
+      setRowsState(payload.rows)
+      setEmployeePaginationState(payload.employeePagination)
+    }
+    if (payload.systemUsers && payload.systemUserPagination) {
+      setSystemUsersState(payload.systemUsers)
+      setSystemUserPaginationState(payload.systemUserPagination)
+    }
+
+    lastRequestedStateRef.current = {
+      q: payload.query,
+      empLink: payload.employeeLinkFilter,
+      sysLink: payload.systemLinkFilter,
+      role: payload.roleFilter,
+      empPage: payload.employeePagination?.page ?? fallbackState.empPage,
+      sysPage: payload.systemUserPagination?.page ?? fallbackState.sysPage,
+    }
+  }, [])
+
+  const prefetchScopedData = useCallback(
+    (state: UserAccessQueryState, scope: UserAccessFetchScope) => {
+      const cacheKey = buildDataCacheKey(scope, state)
+      if (dataCacheRef.current.has(cacheKey) || inFlightPrefetchKeysRef.current.has(cacheKey)) {
+        return
+      }
+
+      inFlightPrefetchKeysRef.current.add(cacheKey)
+      const params = buildDataRequestParams(state, scope)
+
+      void fetch(`/${companyId}/employees/user-access/data?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          if (!response.ok) return
+          const payload = (await response.json()) as UserAccessDataResponse
+          dataCacheRef.current.set(cacheKey, payload)
+        })
+        .catch(() => {
+          // Swallow prefetch errors; active request handles user-visible failures.
+        })
+        .finally(() => {
+          inFlightPrefetchKeysRef.current.delete(cacheKey)
+        })
+    },
+    [buildDataCacheKey, buildDataRequestParams, companyId]
+  )
+
+  const prefetchNeighborPages = useCallback(
+    (state: UserAccessQueryState, payload: UserAccessDataResponse, scope: UserAccessFetchScope) => {
+      if (scope === "EMPLOYEES" && payload.employeePagination) {
+        if (payload.employeePagination.page < payload.employeePagination.totalPages) {
+          prefetchScopedData({ ...state, empPage: payload.employeePagination.page + 1 }, "EMPLOYEES")
+        }
+        if (payload.employeePagination.page > 1) {
+          prefetchScopedData({ ...state, empPage: payload.employeePagination.page - 1 }, "EMPLOYEES")
+        }
+      }
+      if (scope === "SYSTEM_USERS" && payload.systemUserPagination) {
+        if (payload.systemUserPagination.page < payload.systemUserPagination.totalPages) {
+          prefetchScopedData({ ...state, sysPage: payload.systemUserPagination.page + 1 }, "SYSTEM_USERS")
+        }
+        if (payload.systemUserPagination.page > 1) {
+          prefetchScopedData({ ...state, sysPage: payload.systemUserPagination.page - 1 }, "SYSTEM_USERS")
+        }
+      }
+    },
+    [prefetchScopedData]
+  )
+
   const updateWorkspaceData = useCallback(async (updates: {
     q?: string
     empLink?: UserAccessLinkFilter
@@ -399,7 +539,9 @@ export function UserAccessPage({
     role?: UserAccessRoleFilter
     empPage?: number
     sysPage?: number
+    scope?: UserAccessFetchScope
   }) => {
+    const scope = updates.scope ?? "ALL"
     const nextState = buildQueryState(updates)
     const previousState = lastRequestedStateRef.current
     const isSameState =
@@ -413,6 +555,19 @@ export function UserAccessPage({
     if (isSameState) return
 
     dataRequestControllerRef.current?.abort()
+    const cacheKey = buildDataCacheKey(scope, nextState)
+    const cachedPayload = dataCacheRef.current.get(cacheKey)
+    if (cachedPayload) {
+      applyDataPayload(cachedPayload, nextState)
+      prefetchNeighborPages(nextState, cachedPayload, scope)
+      const normalizedCachedUrl = buildRouteHref(lastRequestedStateRef.current)
+      const locationCachedUrl = `${window.location.pathname}${window.location.search}`
+      if (normalizedCachedUrl !== locationCachedUrl) {
+        window.history.replaceState(null, "", normalizedCachedUrl)
+      }
+      return
+    }
+
     const controller = new AbortController()
     dataRequestControllerRef.current = controller
     setIsDataPending(true)
@@ -424,14 +579,7 @@ export function UserAccessPage({
     }
 
     try {
-      const params = new URLSearchParams()
-      const queryValue = nextState.q.trim()
-      if (queryValue) params.set("q", queryValue)
-      if (nextState.empLink !== "ALL") params.set("empLink", nextState.empLink)
-      if (nextState.sysLink !== "ALL") params.set("sysLink", nextState.sysLink)
-      if (nextState.role !== "ALL") params.set("role", nextState.role)
-      if (nextState.empPage > 1) params.set("empPage", String(nextState.empPage))
-      if (nextState.sysPage > 1) params.set("sysPage", String(nextState.sysPage))
+      const params = buildDataRequestParams(nextState, scope)
 
       const response = await fetch(
         `/${companyId}/employees/user-access/data?${params.toString()}`,
@@ -447,18 +595,9 @@ export function UserAccessPage({
       }
 
       const payload = (await response.json()) as UserAccessDataResponse
-      setRowsState(payload.rows)
-      setSystemUsersState(payload.systemUsers)
-      setEmployeePaginationState(payload.employeePagination)
-      setSystemUserPaginationState(payload.systemUserPagination)
-      lastRequestedStateRef.current = {
-        q: payload.query,
-        empLink: payload.employeeLinkFilter,
-        sysLink: payload.systemLinkFilter,
-        role: payload.roleFilter,
-        empPage: payload.employeePagination.page,
-        sysPage: payload.systemUserPagination.page,
-      }
+      dataCacheRef.current.set(cacheKey, payload)
+      applyDataPayload(payload, nextState)
+      prefetchNeighborPages(nextState, payload, scope)
 
       const normalizedUrl = buildRouteHref(lastRequestedStateRef.current)
       const locationUrl = `${window.location.pathname}${window.location.search}`
@@ -476,7 +615,15 @@ export function UserAccessPage({
       }
       setIsDataPending(false)
     }
-  }, [buildQueryState, buildRouteHref, companyId])
+  }, [
+    applyDataPayload,
+    buildDataCacheKey,
+    buildDataRequestParams,
+    buildQueryState,
+    buildRouteHref,
+    companyId,
+    prefetchNeighborPages,
+  ])
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -487,6 +634,7 @@ export function UserAccessPage({
         role: roleFilterInput,
         empPage: 1,
         sysPage: 1,
+        scope: "ALL",
       })
     }, 250)
 
@@ -506,6 +654,7 @@ export function UserAccessPage({
       role: "ALL",
       empPage: 1,
       sysPage: 1,
+      scope: "ALL",
     })
   }
 
@@ -882,8 +1031,10 @@ export function UserAccessPage({
           isPending={isPending}
           employeePagination={employeePaginationState}
           systemUserPagination={systemUserPaginationState}
-          onEmployeePageChange={(nextPage) => void updateWorkspaceData({ empPage: nextPage })}
-          onSystemUserPageChange={(nextPage) => void updateWorkspaceData({ sysPage: nextPage })}
+          onEmployeePageChange={(nextPage) => void updateWorkspaceData({ empPage: nextPage, scope: "EMPLOYEES" })}
+          onSystemUserPageChange={(nextPage) =>
+            void updateWorkspaceData({ sysPage: nextPage, scope: "SYSTEM_USERS" })
+          }
         />
       </section>
 

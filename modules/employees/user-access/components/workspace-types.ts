@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { UserAccessPreviewRow, SystemUserAccountRow } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
 
 export type WorkspaceProps = {
@@ -8,6 +9,7 @@ export type WorkspaceProps = {
   onUnlink: (row: UserAccessPreviewRow) => void
   onEdit: (row: UserAccessPreviewRow) => void
   onCreateSystemAccount: () => void
+  filtersToolbar?: ReactNode
   isPending: boolean
   employeePagination: {
     page: number

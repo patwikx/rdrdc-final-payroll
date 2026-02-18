@@ -11,6 +11,8 @@
     "mobile:build:android:release": "JAVA_HOME=$HOME/.local/jdk/21 ANDROID_SDK_ROOT=$HOME/.local/android-sdk PATH=$HOME/.local/jdk/21/bin:$HOME/.local/android-sdk/platform-tools:$PATH ./android/gradlew -p android assembleRelease",
     "mobile:bundle:android:release": "JAVA_HOME=$HOME/.local/jdk/21 ANDROID_SDK_ROOT=$HOME/.local/android-sdk PATH=$HOME/.local/jdk/21/bin:$HOME/.local/android-sdk/platform-tools:$PATH ./android/gradlew -p android bundleRelease",
     "mobile:install:android:debug": "$HOME/.local/android-sdk/platform-tools/adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
+    "native:android:build:debug": "JAVA_HOME=$HOME/.local/jdk/21 ANDROID_SDK_ROOT=$HOME/.local/android-sdk PATH=$HOME/.local/jdk/21/bin:$HOME/.local/android-sdk/platform-tools:$PATH ./native-android/gradlew -p native-android :app:assembleDebug",
+    "native:android:test:unit": "JAVA_HOME=$HOME/.local/jdk/21 ANDROID_SDK_ROOT=$HOME/.local/android-sdk PATH=$HOME/.local/jdk/21/bin:$HOME/.local/android-sdk/platform-tools:$PATH ./native-android/gradlew -p native-android :app:testDebugUnitTest",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types tests/*.test.ts tests/**/*.test.ts",

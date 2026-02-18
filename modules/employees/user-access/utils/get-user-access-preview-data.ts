@@ -6,6 +6,7 @@ const MAX_PAGE_SIZE = 100
 
 export type UserAccessLinkFilter = "ALL" | "LINKED" | "UNLINKED"
 export type UserAccessRoleFilter = "ALL" | "EMPLOYEE" | "HR_ADMIN" | "PAYROLL_ADMIN" | "COMPANY_ADMIN"
+export type UserAccessPreviewScope = "ALL" | "EMPLOYEES" | "SYSTEM_USERS"
 
 export type UserAccessPreviewRow = {
   employeeId: string
@@ -65,6 +66,8 @@ export type SystemUserAccountRow = {
 
 export type UserAccessPreviewQuery = {
   query?: string
+  scope?: UserAccessPreviewScope
+  includeCompanyOptions?: boolean
   employeePage?: number
   employeePageSize?: number
   employeeLinkFilter?: UserAccessLinkFilter
@@ -133,6 +136,10 @@ export async function getUserAccessPreviewData(
   options: UserAccessPreviewQuery = {}
 ): Promise<UserAccessPreviewData> {
   const normalizedQuery = options.query?.trim() ?? ""
+  const scope = options.scope ?? "ALL"
+  const shouldLoadEmployees = scope !== "SYSTEM_USERS"
+  const shouldLoadSystemUsers = scope !== "EMPLOYEES"
+  const shouldLoadCompanyOptions = options.includeCompanyOptions !== false
   const employeePage = normalizePage(options.employeePage)
   const employeePageSize = normalizePageSize(options.employeePageSize, DEFAULT_EMPLOYEE_PAGE_SIZE)
   const systemUserPage = normalizePage(options.systemUserPage)
@@ -194,13 +201,7 @@ export async function getUserAccessPreviewData(
       : {}),
   }
 
-  const [employeeTotalItems, systemUserTotalItems, employees, companyUsers, companyOptions] = await Promise.all([
-    db.employee.count({
-      where: employeeWhere,
-    }),
-    db.userCompanyAccess.count({
-      where: systemUserWhere,
-    }),
+  const loadEmployeesPage = () =>
     db.employee.findMany({
       where: employeeWhere,
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -245,7 +246,9 @@ export async function getUserAccessPreviewData(
       },
       skip: (employeePage - 1) * employeePageSize,
       take: employeePageSize,
-    }),
+    })
+
+  const loadSystemUsersPage = () =>
     db.userCompanyAccess.findMany({
       where: systemUserWhere,
       orderBy: [{ user: { lastName: "asc" } }, { user: { firstName: "asc" } }],
@@ -274,7 +277,9 @@ export async function getUserAccessPreviewData(
       },
       skip: (systemUserPage - 1) * systemUserPageSize,
       take: systemUserPageSize,
-    }),
+    })
+
+  const loadCompanyOptions = () =>
     db.company.findMany({
       where: {
         isActive: true,
@@ -285,11 +290,46 @@ export async function getUserAccessPreviewData(
         code: true,
         name: true,
       },
-    }),
+    })
+
+  const employeeTotalItemsPromise = shouldLoadEmployees
+    ? db.employee.count({
+        where: employeeWhere,
+      })
+    : Promise.resolve(0)
+
+  const systemUserTotalItemsPromise = shouldLoadSystemUsers
+    ? db.userCompanyAccess.count({
+        where: systemUserWhere,
+      })
+    : Promise.resolve(0)
+
+  const employeesPromise = shouldLoadEmployees
+    ? loadEmployeesPage()
+    : Promise.resolve([] as Awaited<ReturnType<typeof loadEmployeesPage>>)
+
+  const companyUsersPromise = shouldLoadSystemUsers
+    ? loadSystemUsersPage()
+    : Promise.resolve([] as Awaited<ReturnType<typeof loadSystemUsersPage>>)
+
+  const companyOptionsPromise = shouldLoadCompanyOptions
+    ? loadCompanyOptions()
+    : Promise.resolve([] as Awaited<ReturnType<typeof loadCompanyOptions>>)
+
+  const [employeeTotalItems, systemUserTotalItems, employees, companyUsers, companyOptions] = await Promise.all([
+    employeeTotalItemsPromise,
+    systemUserTotalItemsPromise,
+    employeesPromise,
+    companyUsersPromise,
+    companyOptionsPromise,
   ])
 
-  const employeeTotalPages = Math.max(1, Math.ceil(employeeTotalItems / employeePageSize))
-  const systemUserTotalPages = Math.max(1, Math.ceil(systemUserTotalItems / systemUserPageSize))
+  const employeeTotalPages = shouldLoadEmployees
+    ? Math.max(1, Math.ceil(employeeTotalItems / employeePageSize))
+    : 1
+  const systemUserTotalPages = shouldLoadSystemUsers
+    ? Math.max(1, Math.ceil(systemUserTotalItems / systemUserPageSize))
+    : 1
 
   const rows: UserAccessPreviewRow[] = employees.map((employee) => ({
     // The first block is current-company scoped summary for table columns.

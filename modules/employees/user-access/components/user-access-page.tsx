@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState, useTransition } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useCallback, useEffect, useRef, useState, useTransition } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import {
   IconBuilding,
   IconLink,
@@ -167,6 +167,26 @@ const resolveUnifiedLinkFilter = (
   systemFilter: UserAccessLinkFilter
 ): UserAccessLinkFilter => (employeeFilter !== "ALL" ? employeeFilter : systemFilter)
 
+type UserAccessQueryState = {
+  q: string
+  empLink: UserAccessLinkFilter
+  sysLink: UserAccessLinkFilter
+  role: UserAccessRoleFilter
+  empPage: number
+  sysPage: number
+}
+
+type UserAccessDataResponse = {
+  rows: UserAccessPreviewRow[]
+  systemUsers: SystemUserAccountRow[]
+  query: string
+  employeeLinkFilter: UserAccessLinkFilter
+  systemLinkFilter: UserAccessLinkFilter
+  roleFilter: UserAccessRoleFilter
+  employeePagination: UserAccessPageProps["employeePagination"]
+  systemUserPagination: UserAccessPageProps["systemUserPagination"]
+}
+
 export function UserAccessPage({
   companyId,
   companyName,
@@ -182,18 +202,30 @@ export function UserAccessPage({
 }: UserAccessPageProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [queryInput, setQueryInput] = useState(query)
   const [linkFilterInput, setLinkFilterInput] = useState<UserAccessLinkFilter>(
     resolveUnifiedLinkFilter(employeeLinkFilter, systemLinkFilter)
   )
   const [roleFilterInput, setRoleFilterInput] = useState<UserAccessRoleFilter>(roleFilter)
+  const [rowsState, setRowsState] = useState<UserAccessPreviewRow[]>(rows)
+  const [systemUsersState, setSystemUsersState] = useState<SystemUserAccountRow[]>(systemUsers)
+  const [employeePaginationState, setEmployeePaginationState] = useState(employeePagination)
+  const [systemUserPaginationState, setSystemUserPaginationState] = useState(systemUserPagination)
+  const [isDataPending, setIsDataPending] = useState(false)
+  const dataRequestControllerRef = useRef<AbortController | null>(null)
+  const lastRequestedStateRef = useRef<UserAccessQueryState>({
+    q: query,
+    empLink: employeeLinkFilter,
+    sysLink: systemLinkFilter,
+    role: roleFilter,
+    empPage: employeePagination.page,
+    sysPage: systemUserPagination.page,
+  })
 
   const [dialogState, setDialogState] = useState<ActionDialogState>({ type: "NONE" })
   const [isMutationPending, startMutationTransition] = useTransition()
-  const [isRoutePending, startRouteTransition] = useTransition()
   const [isAvailableUsersPending, startAvailableUsersTransition] = useTransition()
-  const isPending = isMutationPending || isRoutePending
+  const isPending = isMutationPending || isDataPending
   const [availableUsers, setAvailableUsers] = useState<AvailableSystemUserOption[]>([])
 
   const [createUsername, setCreateUsername] = useState("")
@@ -238,6 +270,39 @@ export function UserAccessPage({
     setRoleFilterInput(roleFilter)
   }, [roleFilter])
 
+  useEffect(() => {
+    setRowsState(rows)
+  }, [rows])
+
+  useEffect(() => {
+    setSystemUsersState(systemUsers)
+  }, [systemUsers])
+
+  useEffect(() => {
+    setEmployeePaginationState(employeePagination)
+  }, [employeePagination])
+
+  useEffect(() => {
+    setSystemUserPaginationState(systemUserPagination)
+  }, [systemUserPagination])
+
+  useEffect(() => {
+    lastRequestedStateRef.current = {
+      q: query,
+      empLink: employeeLinkFilter,
+      sysLink: systemLinkFilter,
+      role: roleFilter,
+      empPage: employeePagination.page,
+      sysPage: systemUserPagination.page,
+    }
+  }, [employeeLinkFilter, employeePagination.page, query, roleFilter, systemLinkFilter, systemUserPagination.page])
+
+  useEffect(() => {
+    return () => {
+      dataRequestControllerRef.current?.abort()
+    }
+  }, [])
+
   const buildEditableCompanyAccesses = (row: UserAccessPreviewRow): EditableCompanyAccess[] => {
     const accessByCompanyId = new Map(row.linkedCompanyAccesses.map((entry) => [entry.companyId, entry]))
 
@@ -269,7 +334,7 @@ export function UserAccessPage({
     return mapped
   }
 
-  const buildRouteHref = useCallback((updates: {
+  const buildQueryState = useCallback((updates: {
     q?: string
     empLink?: UserAccessLinkFilter
     sysLink?: UserAccessLinkFilter
@@ -277,62 +342,57 @@ export function UserAccessPage({
     empPage?: number
     sysPage?: number
   }) => {
-    const params = new URLSearchParams(searchParams.toString())
+    return {
+      q: typeof updates.q !== "undefined" ? updates.q : queryInput,
+      empLink: typeof updates.empLink !== "undefined" ? updates.empLink : linkFilterInput,
+      sysLink: typeof updates.sysLink !== "undefined" ? updates.sysLink : linkFilterInput,
+      role: typeof updates.role !== "undefined" ? updates.role : roleFilterInput,
+      empPage:
+        typeof updates.empPage !== "undefined" ? updates.empPage : employeePaginationState.page,
+      sysPage:
+        typeof updates.sysPage !== "undefined" ? updates.sysPage : systemUserPaginationState.page,
+    } satisfies UserAccessQueryState
+  }, [
+    employeePaginationState.page,
+    linkFilterInput,
+    queryInput,
+    roleFilterInput,
+    systemUserPaginationState.page,
+  ])
 
-    if (typeof updates.q !== "undefined") {
-      const value = updates.q.trim()
-      if (value) {
-        params.set("q", value)
-      } else {
-        params.delete("q")
-      }
+  const buildRouteHref = useCallback((state: UserAccessQueryState) => {
+    const params = new URLSearchParams()
+
+    const queryValue = state.q.trim()
+    if (queryValue) {
+      params.set("q", queryValue)
     }
 
-    if (typeof updates.empLink !== "undefined") {
-      if (updates.empLink === "ALL") {
-        params.delete("empLink")
-      } else {
-        params.set("empLink", updates.empLink)
-      }
+    if (state.empLink !== "ALL") {
+      params.set("empLink", state.empLink)
     }
 
-    if (typeof updates.sysLink !== "undefined") {
-      if (updates.sysLink === "ALL") {
-        params.delete("sysLink")
-      } else {
-        params.set("sysLink", updates.sysLink)
-      }
+    if (state.sysLink !== "ALL") {
+      params.set("sysLink", state.sysLink)
     }
 
-    if (typeof updates.role !== "undefined") {
-      if (updates.role === "ALL") {
-        params.delete("role")
-      } else {
-        params.set("role", updates.role)
-      }
+    if (state.role !== "ALL") {
+      params.set("role", state.role)
     }
 
-    if (typeof updates.empPage !== "undefined") {
-      if (updates.empPage > 1) {
-        params.set("empPage", String(updates.empPage))
-      } else {
-        params.delete("empPage")
-      }
+    if (state.empPage > 1) {
+      params.set("empPage", String(state.empPage))
     }
 
-    if (typeof updates.sysPage !== "undefined") {
-      if (updates.sysPage > 1) {
-        params.set("sysPage", String(updates.sysPage))
-      } else {
-        params.delete("sysPage")
-      }
+    if (state.sysPage > 1) {
+      params.set("sysPage", String(state.sysPage))
     }
 
     const next = params.toString()
     return next ? `${pathname}?${next}` : pathname
-  }, [pathname, searchParams])
+  }, [pathname])
 
-  const updateRoute = useCallback((updates: {
+  const updateWorkspaceData = useCallback(async (updates: {
     q?: string
     empLink?: UserAccessLinkFilter
     sysLink?: UserAccessLinkFilter
@@ -340,20 +400,87 @@ export function UserAccessPage({
     empPage?: number
     sysPage?: number
   }) => {
-    const nextUrl = buildRouteHref(updates)
-    const currentQuery = searchParams.toString()
-    const currentUrl = currentQuery ? `${pathname}?${currentQuery}` : pathname
+    const nextState = buildQueryState(updates)
+    const previousState = lastRequestedStateRef.current
+    const isSameState =
+      previousState.q === nextState.q &&
+      previousState.empLink === nextState.empLink &&
+      previousState.sysLink === nextState.sysLink &&
+      previousState.role === nextState.role &&
+      previousState.empPage === nextState.empPage &&
+      previousState.sysPage === nextState.sysPage
 
-    if (nextUrl === currentUrl) return
+    if (isSameState) return
 
-    startRouteTransition(() => {
-      router.replace(nextUrl, { scroll: false })
-    })
-  }, [buildRouteHref, pathname, router, searchParams, startRouteTransition])
+    dataRequestControllerRef.current?.abort()
+    const controller = new AbortController()
+    dataRequestControllerRef.current = controller
+    setIsDataPending(true)
+
+    const nextUrl = buildRouteHref(nextState)
+    const currentUrl = `${window.location.pathname}${window.location.search}`
+    if (nextUrl !== currentUrl) {
+      window.history.replaceState(null, "", nextUrl)
+    }
+
+    try {
+      const params = new URLSearchParams()
+      const queryValue = nextState.q.trim()
+      if (queryValue) params.set("q", queryValue)
+      if (nextState.empLink !== "ALL") params.set("empLink", nextState.empLink)
+      if (nextState.sysLink !== "ALL") params.set("sysLink", nextState.sysLink)
+      if (nextState.role !== "ALL") params.set("role", nextState.role)
+      if (nextState.empPage > 1) params.set("empPage", String(nextState.empPage))
+      if (nextState.sysPage > 1) params.set("sysPage", String(nextState.sysPage))
+
+      const response = await fetch(
+        `/${companyId}/employees/user-access/data?${params.toString()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Unable to load user access data.")
+      }
+
+      const payload = (await response.json()) as UserAccessDataResponse
+      setRowsState(payload.rows)
+      setSystemUsersState(payload.systemUsers)
+      setEmployeePaginationState(payload.employeePagination)
+      setSystemUserPaginationState(payload.systemUserPagination)
+      lastRequestedStateRef.current = {
+        q: payload.query,
+        empLink: payload.employeeLinkFilter,
+        sysLink: payload.systemLinkFilter,
+        role: payload.roleFilter,
+        empPage: payload.employeePagination.page,
+        sysPage: payload.systemUserPagination.page,
+      }
+
+      const normalizedUrl = buildRouteHref(lastRequestedStateRef.current)
+      const locationUrl = `${window.location.pathname}${window.location.search}`
+      if (normalizedUrl !== locationUrl) {
+        window.history.replaceState(null, "", normalizedUrl)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return
+      }
+      toast.error("Unable to update user access list right now.")
+    } finally {
+      if (dataRequestControllerRef.current === controller) {
+        dataRequestControllerRef.current = null
+      }
+      setIsDataPending(false)
+    }
+  }, [buildQueryState, buildRouteHref, companyId])
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      updateRoute({
+      void updateWorkspaceData({
         q: queryInput,
         empLink: linkFilterInput,
         sysLink: linkFilterInput,
@@ -368,44 +495,11 @@ export function UserAccessPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkFilterInput, queryInput, roleFilterInput])
 
-  useEffect(() => {
-    const employeeNextPage =
-      employeePagination.page < employeePagination.totalPages
-        ? employeePagination.page + 1
-        : null
-    const employeePrevPage = employeePagination.page > 1 ? employeePagination.page - 1 : null
-    const systemNextPage =
-      systemUserPagination.page < systemUserPagination.totalPages
-        ? systemUserPagination.page + 1
-        : null
-    const systemPrevPage = systemUserPagination.page > 1 ? systemUserPagination.page - 1 : null
-
-    if (employeeNextPage) {
-      router.prefetch(buildRouteHref({ empPage: employeeNextPage }))
-    }
-    if (employeePrevPage) {
-      router.prefetch(buildRouteHref({ empPage: employeePrevPage }))
-    }
-    if (systemNextPage) {
-      router.prefetch(buildRouteHref({ sysPage: systemNextPage }))
-    }
-    if (systemPrevPage) {
-      router.prefetch(buildRouteHref({ sysPage: systemPrevPage }))
-    }
-  }, [
-    buildRouteHref,
-    employeePagination.page,
-    employeePagination.totalPages,
-    router,
-    systemUserPagination.page,
-    systemUserPagination.totalPages,
-  ])
-
   const resetFilters = () => {
     setQueryInput("")
     setLinkFilterInput("ALL")
     setRoleFilterInput("ALL")
-    updateRoute({
+    void updateWorkspaceData({
       q: "",
       empLink: "ALL",
       sysLink: "ALL",
@@ -717,75 +811,79 @@ export function UserAccessPage({
             </Badge>
             <Badge variant="secondary" className="h-6 px-2 text-[11px]">
               <IconUsers className="mr-1 size-3.5" />
-              {employeePagination.totalItems} Employees
+              {employeePaginationState.totalItems} Employees
             </Badge>
             <Badge variant="secondary" className="h-6 px-2 text-[11px]">
               <IconShieldCheck className="mr-1 size-3.5" />
-              {systemUserPagination.totalItems} System Users
+              {systemUserPaginationState.totalItems} System Users
             </Badge>
           </div>
         </div>
-      </section>
-
-      <section className="border-b border-border/60 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="relative min-w-0 xl:w-[360px] xl:flex-none">
-            <IconSearch className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              value={queryInput}
-              onChange={(event) => setQueryInput(event.target.value)}
-              placeholder="Search employee, username, email"
-              className="h-9 pl-9"
-            />
-          </div>
-          <Select value={linkFilterInput} onValueChange={(value) => setLinkFilterInput(value as UserAccessLinkFilter)}>
-            <SelectTrigger className="h-9 w-full xl:w-[220px]">
-              <IconLink className="mr-1.5 size-4 text-muted-foreground" />
-              <SelectValue placeholder="Link Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All</SelectItem>
-              <SelectItem value="LINKED">Linked</SelectItem>
-              <SelectItem value="UNLINKED">Unlinked</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={roleFilterInput} onValueChange={(value) => setRoleFilterInput(value as UserAccessRoleFilter)}>
-            <SelectTrigger className="h-9 w-full xl:w-[220px]">
-              <IconShieldCheck className="mr-1.5 size-4 text-muted-foreground" />
-              <SelectValue placeholder="Role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Roles</SelectItem>
-              <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
-              <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
-              <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
-              <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="button" variant="outline" className="h-9" onClick={resetFilters} disabled={isPending}>
-            <IconRefresh className="mr-1.5 size-4" />
-            Reset
-          </Button>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Employees: {employeePagination.totalItems} total | System users: {systemUserPagination.totalItems} total
-        </p>
       </section>
 
       <section className="px-4 py-4 sm:px-6 lg:px-8">
         <UserAccessWorkspace
-          rows={rows}
-          systemUsers={systemUsers}
+          rows={rowsState}
+          systemUsers={systemUsersState}
           onCreate={openCreate}
           onLink={openLink}
           onUnlink={submitUnlink}
           onEdit={openEdit}
           onCreateSystemAccount={openCreateSystemAccount}
+          filtersToolbar={
+            <>
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                <div className="relative min-w-0 xl:w-[360px] xl:flex-none">
+                  <IconSearch className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    value={queryInput}
+                    onChange={(event) => setQueryInput(event.target.value)}
+                    placeholder="Search employee, username, email"
+                    className="h-9 pl-9"
+                  />
+                </div>
+                <Select
+                  value={linkFilterInput}
+                  onValueChange={(value) => setLinkFilterInput(value as UserAccessLinkFilter)}
+                >
+                  <SelectTrigger className="h-9 w-full xl:w-[220px]">
+                    <IconLink className="mr-1.5 size-4 text-muted-foreground" />
+                    <SelectValue placeholder="Link Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All</SelectItem>
+                    <SelectItem value="LINKED">Linked</SelectItem>
+                    <SelectItem value="UNLINKED">Unlinked</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={roleFilterInput}
+                  onValueChange={(value) => setRoleFilterInput(value as UserAccessRoleFilter)}
+                >
+                  <SelectTrigger className="h-9 w-full xl:w-[220px]">
+                    <IconShieldCheck className="mr-1.5 size-4 text-muted-foreground" />
+                    <SelectValue placeholder="Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Roles</SelectItem>
+                    <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                    <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                    <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                    <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" className="h-9" onClick={resetFilters} disabled={isPending}>
+                  <IconRefresh className="mr-1.5 size-4" />
+                  Reset
+                </Button>
+              </div>
+            </>
+          }
           isPending={isPending}
-          employeePagination={employeePagination}
-          systemUserPagination={systemUserPagination}
-          onEmployeePageChange={(nextPage) => updateRoute({ empPage: nextPage })}
-          onSystemUserPageChange={(nextPage) => updateRoute({ sysPage: nextPage })}
+          employeePagination={employeePaginationState}
+          systemUserPagination={systemUserPaginationState}
+          onEmployeePageChange={(nextPage) => void updateWorkspaceData({ empPage: nextPage })}
+          onSystemUserPageChange={(nextPage) => void updateWorkspaceData({ sysPage: nextPage })}
         />
       </section>
 

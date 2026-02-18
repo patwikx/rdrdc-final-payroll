@@ -5,7 +5,10 @@ import {
   LeaveApprovalClient,
 } from "@/modules/employee-portal/components/leave-approval-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
-import { getEmployeePortalLeaveApprovalReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
+import {
+  getEmployeePortalLeaveApprovalDepartmentOptions,
+  getEmployeePortalLeaveApprovalReadModel,
+} from "@/modules/leave/utils/employee-portal-leave-read-models"
 
 type LeaveApprovalsPageProps = {
   params: Promise<{ companyId: string }>
@@ -36,16 +39,22 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
     )
   }
 
-  const leaveApprovalData = await getEmployeePortalLeaveApprovalReadModel({
-    companyId: context.companyId,
-    isHR,
-    approverEmployeeId: context.employee?.id,
-  })
+  const [leaveApprovalData, departmentOptions] = await Promise.all([
+    getEmployeePortalLeaveApprovalReadModel({
+      companyId: context.companyId,
+      isHR,
+      approverEmployeeId: context.employee?.id,
+    }),
+    getEmployeePortalLeaveApprovalDepartmentOptions({
+      companyId: context.companyId,
+    }),
+  ])
 
   return (
     <LeaveApprovalClient
       companyId={context.companyId}
       isHR={isHR}
+      departmentOptions={departmentOptions}
       rows={leaveApprovalData.rows}
       historyRows={leaveApprovalData.historyRows}
       initialHistoryTotal={leaveApprovalData.historyTotal}

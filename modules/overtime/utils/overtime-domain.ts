@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { parsePhDateInputToUtcDateOnly, toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { overtimeDateInputSchema, overtimeTimeInputSchema } from "@/modules/overtime/schemas/overtime-domain-schemas"
 import type {
+  EmployeePortalOvertimeApprovalDepartmentOption,
   EmployeePortalOvertimeApprovalHistoryPage,
   EmployeePortalOvertimeApprovalHistoryRow,
   EmployeePortalOvertimeApprovalRow,
@@ -123,6 +124,11 @@ const toOvertimeApprovalRow = (
       lastName: string
       employeeNumber: string
       isOvertimeEligible: boolean
+      photoUrl: string | null
+      departmentId: string | null
+      department: {
+        name: string
+      } | null
     }
   },
   directReportCountByManagerId: Map<string, number>
@@ -136,6 +142,9 @@ const toOvertimeApprovalRow = (
     statusCode: item.statusCode,
     employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
     employeeNumber: item.employee.employeeNumber,
+    employeePhotoUrl: item.employee.photoUrl,
+    departmentId: item.employee.departmentId,
+    departmentName: item.employee.department?.name ?? "Unassigned",
     ctoConversionPreview:
       !item.employee.isOvertimeEligible || (directReportCountByManagerId.get(item.employee.id) ?? 0) > 0,
   }
@@ -161,6 +170,11 @@ const toOvertimeApprovalHistoryRow = (
       lastName: string
       employeeNumber: string
       isOvertimeEligible: boolean
+      photoUrl: string | null
+      departmentId: string | null
+      department: {
+        name: string
+      } | null
     }
   },
   isHR: boolean,
@@ -183,6 +197,7 @@ const buildOvertimeApprovalHistoryWhere = (params: {
   approverEmployeeId?: string
   search: string
   status: OvertimeApprovalHistoryStatusFilter
+  departmentId?: string
   fromDate: string
   toDate: string
 }): Prisma.OvertimeRequestWhereInput => {
@@ -206,6 +221,15 @@ const buildOvertimeApprovalHistoryWhere = (params: {
 
   const search = params.search.trim()
   const andFilters: Prisma.OvertimeRequestWhereInput[] = []
+
+  if (params.departmentId) {
+    andFilters.push({
+      employee: {
+        departmentId: params.departmentId,
+      },
+    })
+  }
+
   if (search.length > 0) {
     andFilters.push({
       OR: [
@@ -236,6 +260,16 @@ const buildOvertimeApprovalHistoryWhere = (params: {
             employeeNumber: {
               contains: search,
               mode: "insensitive",
+            },
+          },
+        },
+        {
+          employee: {
+            department: {
+              name: {
+                contains: search,
+                mode: "insensitive",
+              },
             },
           },
         },
@@ -288,6 +322,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
   pageSize: number
   search: string
   status: OvertimeApprovalHistoryStatusFilter
+  departmentId?: string
   fromDate: string
   toDate: string
 }): Promise<EmployeePortalOvertimeApprovalHistoryPage> {
@@ -309,6 +344,13 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
             lastName: true,
             employeeNumber: true,
             isOvertimeEligible: true,
+            photoUrl: true,
+            departmentId: true,
+            department: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
@@ -412,6 +454,13 @@ export async function getEmployeePortalOvertimeApprovalReadModel(params: {
             lastName: true,
             employeeNumber: true,
             isOvertimeEligible: true,
+            photoUrl: true,
+            departmentId: true,
+            department: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
@@ -427,6 +476,7 @@ export async function getEmployeePortalOvertimeApprovalReadModel(params: {
       status: "ALL",
       fromDate: "",
       toDate: "",
+      departmentId: undefined,
     }),
   ])
 
@@ -442,4 +492,20 @@ export async function getEmployeePortalOvertimeApprovalReadModel(params: {
     historyPage: historyPage.page,
     historyPageSize: historyPage.pageSize,
   }
+}
+
+export async function getEmployeePortalOvertimeApprovalDepartmentOptions(params: {
+  companyId: string
+}): Promise<EmployeePortalOvertimeApprovalDepartmentOption[]> {
+  return db.department.findMany({
+    where: {
+      companyId: params.companyId,
+    },
+    orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+    },
+  })
 }

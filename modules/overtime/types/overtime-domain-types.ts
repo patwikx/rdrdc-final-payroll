@@ -27,6 +27,9 @@ export type EmployeePortalOvertimeApprovalRow = {
   statusCode: string
   employeeName: string
   employeeNumber: string
+  employeePhotoUrl: string | null
+  departmentId: string | null
+  departmentName: string
   ctoConversionPreview: boolean
 }
 
@@ -40,4 +43,10 @@ export type EmployeePortalOvertimeApprovalHistoryPage = {
   total: number
   page: number
   pageSize: number
+}
+
+export type EmployeePortalOvertimeApprovalDepartmentOption = {
+  id: string
+  name: string
+  isActive: boolean
 }

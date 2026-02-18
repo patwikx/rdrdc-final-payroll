@@ -32,6 +32,7 @@ const historyPageSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "APPROVED", "REJECTED", "SUPERVISOR_APPROVED"]).default("ALL"),
+  departmentId: z.string().uuid().optional(),
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
 })
@@ -193,6 +194,7 @@ export async function getLeaveApprovalHistoryPageAction(
     status: payload.status,
     fromDate: payload.fromDate,
     toDate: payload.toDate,
+    departmentId: payload.departmentId,
   })
 
   return {

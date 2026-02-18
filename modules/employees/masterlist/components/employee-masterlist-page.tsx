@@ -70,7 +70,7 @@ export function EmployeeMasterlistPage({
 }: EmployeeMasterlistPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [isPending, startTransition] = useTransition()
+  const [isDeletePending, startDeleteTransition] = useTransition()
   const [searchTerm, setSearchTerm] = useState("")
   const [activeDept, setActiveDept] = useState<string | null>(null)
   const [activeBranch, setActiveBranch] = useState<string | null>(null)
@@ -155,7 +155,7 @@ export function EmployeeMasterlistPage({
     if (!deleteTarget) return
     const target = deleteTarget
 
-    startTransition(async () => {
+    startDeleteTransition(async () => {
       const result = await deleteEmployeeAction({
         companyId,
         employeeId: target.id,
@@ -170,7 +170,7 @@ export function EmployeeMasterlistPage({
         action: {
           label: "Undo",
           onClick: () => {
-            startTransition(async () => {
+            startDeleteTransition(async () => {
               const restoreResult = await restoreEmployeeAction({
                 companyId,
                 employeeId: target.id,
@@ -221,14 +221,14 @@ export function EmployeeMasterlistPage({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 border-border/70"
-                onClick={() => toast.info("Export action will be wired in a follow-up pass.")}
-              >
-                <IconFileExport className="mr-1.5 size-3.5" />
-                Export
+              <Button asChild variant="outline" size="sm" className="h-8 border-border/70">
+                <a href={`/${companyId}/employees/bulk-template`}>
+                  <IconFileExport className="mr-1.5 size-3.5" />
+                  CSV Template
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm" className="h-8 border-border/70">
+                <Link href={`/${companyId}/employees/bulk-update`}>Bulk Update</Link>
               </Button>
               <Button
                 variant="outline"
@@ -579,16 +579,16 @@ export function EmployeeMasterlistPage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletePending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={isPending}
+              disabled={isDeletePending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={(event) => {
                 event.preventDefault()
                 handleConfirmDelete()
               }}
             >
-              {isPending ? "Deleting..." : "Confirm Delete"}
+              {isDeletePending ? "Deleting..." : "Confirm Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

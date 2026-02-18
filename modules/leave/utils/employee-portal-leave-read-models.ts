@@ -3,6 +3,7 @@ import { RequestStatus, type Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
 import type {
+  EmployeePortalLeaveApprovalDepartmentOption,
   EmployeePortalLeaveApprovalHistoryPage,
   EmployeePortalLeaveApprovalHistoryRow,
   EmployeePortalLeaveApprovalRow,
@@ -167,6 +168,11 @@ const toLeaveApprovalRow = (item: {
     firstName: string
     lastName: string
     employeeNumber: string
+    photoUrl: string | null
+    departmentId: string | null
+    department: {
+      name: string
+    } | null
   }
   leaveType: {
     name: string
@@ -182,6 +188,9 @@ const toLeaveApprovalRow = (item: {
     statusCode: item.statusCode,
     employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
     employeeNumber: item.employee.employeeNumber,
+    employeePhotoUrl: item.employee.photoUrl,
+    departmentId: item.employee.departmentId,
+    departmentName: item.employee.department?.name ?? "Unassigned",
     leaveTypeName: item.leaveType.name,
   }
 }
@@ -205,6 +214,11 @@ const toLeaveApprovalHistoryRow = (
       firstName: string
       lastName: string
       employeeNumber: string
+      photoUrl: string | null
+      departmentId: string | null
+      department: {
+        name: string
+      } | null
     }
     leaveType: {
       name: string
@@ -226,6 +240,9 @@ const toLeaveApprovalHistoryRow = (
     statusCode: item.statusCode,
     employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
     employeeNumber: item.employee.employeeNumber,
+    employeePhotoUrl: item.employee.photoUrl,
+    departmentId: item.employee.departmentId,
+    departmentName: item.employee.department?.name ?? "Unassigned",
     leaveTypeName: item.leaveType.name,
     decidedAtIso: decidedAt.toISOString(),
     decidedAtLabel: dateTimeLabel.format(decidedAt),
@@ -240,6 +257,7 @@ const buildLeaveApprovalHistoryWhere = (params: {
   status: LeaveApprovalHistoryStatusFilter
   fromDate: string
   toDate: string
+  departmentId?: string
 }): Prisma.LeaveRequestWhereInput => {
   const where: Prisma.LeaveRequestWhereInput = params.isHR
     ? {
@@ -261,6 +279,15 @@ const buildLeaveApprovalHistoryWhere = (params: {
 
   const search = params.search.trim()
   const andFilters: Prisma.LeaveRequestWhereInput[] = []
+
+  if (params.departmentId) {
+    andFilters.push({
+      employee: {
+        departmentId: params.departmentId,
+      },
+    })
+  }
+
   if (search.length > 0) {
     andFilters.push({
       OR: [
@@ -299,6 +326,16 @@ const buildLeaveApprovalHistoryWhere = (params: {
             name: {
               contains: search,
               mode: "insensitive",
+            },
+          },
+        },
+        {
+          employee: {
+            department: {
+              name: {
+                contains: search,
+                mode: "insensitive",
+              },
             },
           },
         },
@@ -353,6 +390,7 @@ export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params:
   status: LeaveApprovalHistoryStatusFilter
   fromDate: string
   toDate: string
+  departmentId?: string
 }): Promise<EmployeePortalLeaveApprovalHistoryPage> {
   const where = buildLeaveApprovalHistoryWhere(params)
   const skip = (params.page - 1) * params.pageSize
@@ -370,6 +408,13 @@ export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params:
             firstName: true,
             lastName: true,
             employeeNumber: true,
+            photoUrl: true,
+            departmentId: true,
+            department: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
         leaveType: {
@@ -413,6 +458,13 @@ export async function getEmployeePortalLeaveApprovalReadModel(params: {
             firstName: true,
             lastName: true,
             employeeNumber: true,
+            photoUrl: true,
+            departmentId: true,
+            department: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
         leaveType: {
@@ -433,6 +485,7 @@ export async function getEmployeePortalLeaveApprovalReadModel(params: {
       status: "ALL",
       fromDate: "",
       toDate: "",
+      departmentId: undefined,
     }),
   ])
 
@@ -443,4 +496,20 @@ export async function getEmployeePortalLeaveApprovalReadModel(params: {
     historyPage: historyPage.page,
     historyPageSize: historyPage.pageSize,
   }
+}
+
+export async function getEmployeePortalLeaveApprovalDepartmentOptions(params: {
+  companyId: string
+}): Promise<EmployeePortalLeaveApprovalDepartmentOption[]> {
+  return db.department.findMany({
+    where: {
+      companyId: params.companyId,
+    },
+    orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+    },
+  })
 }

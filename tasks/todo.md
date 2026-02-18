@@ -97,39 +97,6 @@ Last updated: 2026-02-17 (extended)
 
 ## Next
 
-- [x] Scaffold native Android project shell in `native-android/`.
-  - Added Gradle project, Compose app shell, navigation skeleton, feature package placeholders, and initial unit test.
-  - Verified build with `:app:assembleDebug`.
-  - Added npm helper scripts: `native:android:build:debug`, `native:android:test:unit`.
-- [x] Implement initial native auth + session + API client foundation.
-  - Added Retrofit/OkHttp network module with authorization interceptor.
-  - Added DataStore-backed session persistence and app-level dependency graph bootstrap.
-  - Added login ViewModel/state flow and functional Compose auth screen wired to repository.
-- [x] Add initial mobile auth API routes in Next.js backend.
-  - Added token-based endpoints under `app/api/mobile/v1/auth/*` (`login`, `refresh`, `session`, `logout`).
-  - Added compatibility aliases under `app/api/mobile/auth/*`.
-  - Extracted shared credential authentication logic for reuse by NextAuth and mobile API routes.
-- [x] Add employee-portal bootstrap API and native dashboard integration.
-  - Added `GET app/api/mobile/v1/employee-portal/bootstrap` (+ compatibility alias) with token auth, company/employee context, and module flags.
-  - Wired native dashboard repository + ViewModel to consume bootstrap and render feature entry points by access flags.
-- [x] Ship first mobile employee-portal feature API set + native data integration.
-  - Added token-authenticated mobile endpoints for leaves, overtime, payslips, and profile under `app/api/mobile/v1/employee-portal/*` (+ compatibility aliases).
-  - Added native repositories + ViewModels for leaves/overtime/payslips/profile and replaced placeholder screens with live API-backed views.
-  - Added global system-bar safe-area padding in native navigation/screens to prevent status-bar overlap.
-- [ ] Start full native Android Employee Portal migration (parallel to Capacitor).
-  - Keep Capacitor app active until native parity and UAT sign-off.
-  - Follow execution plan in `docs/native-android-migration-plan.md`.
-  - Reserve and use `native-android/` as the native app workspace.
-- [ ] Complete mobile API contract parity for employee-portal workflows.
-  - Convert current server-action-dependent flows into stable mobile API endpoints.
-  - Publish and freeze OpenAPI contract for Android consumption.
-- [ ] Build native app foundation (Kotlin + Compose).
-  - Auth/session lifecycle, navigation shell, design system tokens, system-bar safe-area handling.
-- [ ] Implement native feature modules (phase order).
-  - Dashboard/profile/leaves/overtime/payslips first, then material request request/approval/processing/posting.
-- [ ] Prepare native cutover and Capacitor decommission plan.
-  - Remove Capacitor files only after parity, QA/UAT completion, and rollout stabilization.
-
 - [x] Implement leave balance yearly initialization (priority).
   - Added company-scoped, year-scoped initialization action (`Asia/Manila` year semantics) in settings leave/overtime module.
   - Resolves entitlement from `LeavePolicy` by employee employment status with proration support.

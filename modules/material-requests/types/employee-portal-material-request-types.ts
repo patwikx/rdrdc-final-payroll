@@ -103,6 +103,8 @@ export type EmployeePortalMaterialRequestApprovalQueueRow = {
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
+  departmentId: string
   departmentName: string
   datePreparedLabel: string
   dateRequiredLabel: string
@@ -117,6 +119,7 @@ export type EmployeePortalMaterialRequestApprovalHistoryRow = {
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
   departmentName: string
   status: MaterialRequestStatus
   datePreparedLabel: string
@@ -219,6 +222,7 @@ export type EmployeePortalMaterialRequestProcessingRow = {
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
   departmentName: string
   datePreparedLabel: string
   dateRequiredLabel: string
@@ -247,6 +251,7 @@ export type EmployeePortalMaterialRequestPostingRow = {
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
   departmentName: string
   datePreparedLabel: string
   dateRequiredLabel: string

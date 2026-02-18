@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation"
 
 import { MaterialRequestProcessingClient } from "@/modules/material-requests/components/material-request-processing-client"
-import { getEmployeePortalMaterialRequestProcessingPageReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
+import {
+  getEmployeePortalMaterialRequestDepartmentOptions,
+  getEmployeePortalMaterialRequestProcessingPageReadModel,
+} from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 
 type MaterialRequestProcessingPageProps = {
@@ -26,19 +29,25 @@ export default async function MaterialRequestProcessingPage({ params }: Material
     redirect(`/${context.companyId}/employee-portal`)
   }
 
-  const processingData = await getEmployeePortalMaterialRequestProcessingPageReadModel({
-    companyId: context.companyId,
-    page: 1,
-    pageSize: 10,
-    search: "",
-    status: "OPEN",
-  })
+  const [processingData, departmentOptions] = await Promise.all([
+    getEmployeePortalMaterialRequestProcessingPageReadModel({
+      companyId: context.companyId,
+      page: 1,
+      pageSize: 10,
+      search: "",
+      status: "OPEN",
+    }),
+    getEmployeePortalMaterialRequestDepartmentOptions({
+      companyId: context.companyId,
+    }),
+  ])
 
   return (
     <MaterialRequestProcessingClient
       companyId={context.companyId}
       companyName={context.companyName}
       isHR={isHR}
+      departmentOptions={departmentOptions}
       initialRows={processingData.rows}
       initialTotal={processingData.total}
       initialPage={processingData.page}

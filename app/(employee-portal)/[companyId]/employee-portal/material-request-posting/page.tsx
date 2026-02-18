@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation"
 
 import { MaterialRequestPostingClient } from "@/modules/material-requests/components/material-request-posting-client"
-import { getEmployeePortalMaterialRequestPostingPageReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
+import {
+  getEmployeePortalMaterialRequestDepartmentOptions,
+  getEmployeePortalMaterialRequestPostingPageReadModel,
+} from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 
 type MaterialRequestPostingPageProps = {
@@ -26,17 +29,23 @@ export default async function MaterialRequestPostingPage({ params }: MaterialReq
     redirect(`/${context.companyId}/employee-portal`)
   }
 
-  const postingData = await getEmployeePortalMaterialRequestPostingPageReadModel({
-    companyId: context.companyId,
-    page: 1,
-    pageSize: 10,
-    search: "",
-    status: "ALL",
-  })
+  const [postingData, departmentOptions] = await Promise.all([
+    getEmployeePortalMaterialRequestPostingPageReadModel({
+      companyId: context.companyId,
+      page: 1,
+      pageSize: 10,
+      search: "",
+      status: "ALL",
+    }),
+    getEmployeePortalMaterialRequestDepartmentOptions({
+      companyId: context.companyId,
+    }),
+  ])
 
   return (
     <MaterialRequestPostingClient
       companyId={context.companyId}
+      departmentOptions={departmentOptions}
       initialRows={postingData.rows}
       initialTotal={postingData.total}
       initialPage={postingData.page}

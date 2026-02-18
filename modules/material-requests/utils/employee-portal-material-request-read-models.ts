@@ -380,6 +380,23 @@ export async function getEmployeePortalMaterialRequestFormOptions(params: {
   }
 }
 
+export async function getEmployeePortalMaterialRequestDepartmentOptions(params: {
+  companyId: string
+}): Promise<EmployeePortalMaterialRequestDepartmentOption[]> {
+  return db.department.findMany({
+    where: {
+      companyId: params.companyId,
+    },
+    orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      isActive: true,
+    },
+  })
+}
+
 export async function getEmployeePortalMaterialRequestNumberPreview(params: {
   companyId: string
 }): Promise<Record<MaterialRequestSeries, string>> {
@@ -415,6 +432,7 @@ export async function getEmployeePortalMaterialRequestNumberPreview(params: {
 const toQueueRow = (request: {
   id: string
   requestNumber: string
+  departmentId: string
   datePrepared: Date
   dateRequired: Date
   currentStep: number | null
@@ -425,6 +443,7 @@ const toQueueRow = (request: {
     firstName: string
     lastName: string
     employeeNumber: string
+    photoUrl: string | null
   }
   department: {
     name: string
@@ -435,6 +454,8 @@ const toQueueRow = (request: {
     requestNumber: request.requestNumber,
     requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
     requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
+    requesterPhotoUrl: request.requesterEmployee.photoUrl,
+    departmentId: request.departmentId,
     departmentName: request.department.name,
     datePreparedLabel: dateLabel.format(request.datePrepared),
     dateRequiredLabel: dateLabel.format(request.dateRequired),
@@ -453,6 +474,7 @@ const buildMaterialRequestApprovalHistoryWhere = (params: {
   isHR: boolean
   search: string
   status: MaterialRequestApprovalHistoryStatusFilter
+  departmentId?: string
 }): Prisma.MaterialRequestWhereInput => {
   const where: Prisma.MaterialRequestWhereInput = params.isHR
     ? {
@@ -475,6 +497,10 @@ const buildMaterialRequestApprovalHistoryWhere = (params: {
 
   if (params.status !== "ALL") {
     where.status = params.status
+  }
+
+  if (params.departmentId) {
+    where.departmentId = params.departmentId
   }
 
   const query = params.search.trim()
@@ -562,6 +588,7 @@ const toHistoryRow = (params: {
     firstName: string
     lastName: string
     employeeNumber: string
+    photoUrl: string | null
   }
   department: {
     name: string
@@ -587,6 +614,7 @@ const toHistoryRow = (params: {
     requestNumber: params.requestNumber,
     requesterName: `${params.requesterEmployee.firstName} ${params.requesterEmployee.lastName}`,
     requesterEmployeeNumber: params.requesterEmployee.employeeNumber,
+    requesterPhotoUrl: params.requesterEmployee.photoUrl,
     departmentName: params.department.name,
     status: params.status,
     datePreparedLabel: dateLabel.format(params.datePrepared),
@@ -615,6 +643,7 @@ export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadMod
   pageSize: number
   search: string
   status: MaterialRequestApprovalHistoryStatusFilter
+  departmentId?: string
 }): Promise<EmployeePortalMaterialRequestApprovalHistoryPage> {
   const where = buildMaterialRequestApprovalHistoryWhere(params)
   const skip = (params.page - 1) * params.pageSize
@@ -645,6 +674,7 @@ export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadMod
             firstName: true,
             lastName: true,
             employeeNumber: true,
+            photoUrl: true,
           },
         },
         department: {
@@ -709,6 +739,7 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
     select: {
       id: true,
       requestNumber: true,
+      departmentId: true,
       datePrepared: true,
       dateRequired: true,
       currentStep: true,
@@ -720,6 +751,7 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
           firstName: true,
           lastName: true,
           employeeNumber: true,
+          photoUrl: true,
         },
       },
       department: {
@@ -769,6 +801,7 @@ const buildMaterialRequestProcessingWhere = (params: {
   companyId: string
   search: string
   status: EmployeePortalMaterialRequestProcessingStatusFilter
+  departmentId?: string
 }): Prisma.MaterialRequestWhereInput => {
   const andConditions: Prisma.MaterialRequestWhereInput[] = [
     {
@@ -780,6 +813,10 @@ const buildMaterialRequestProcessingWhere = (params: {
     companyId: params.companyId,
     status: MaterialRequestStatus.APPROVED,
     AND: andConditions,
+  }
+
+  if (params.departmentId) {
+    where.departmentId = params.departmentId
   }
 
   if (params.status === "OPEN") {
@@ -920,6 +957,7 @@ const toProcessingRow = (request: {
     firstName: string
     lastName: string
     employeeNumber: string
+    photoUrl: string | null
   }
   department: {
     name: string
@@ -964,6 +1002,7 @@ const toProcessingRow = (request: {
     requestNumber: request.requestNumber,
     requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
     requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
+    requesterPhotoUrl: request.requesterEmployee.photoUrl,
     departmentName: request.department.name,
     datePreparedLabel: dateLabel.format(request.datePrepared),
     dateRequiredLabel: dateLabel.format(request.dateRequired),
@@ -989,6 +1028,7 @@ export async function getEmployeePortalMaterialRequestProcessingPageReadModel(pa
   pageSize: number
   search: string
   status: EmployeePortalMaterialRequestProcessingStatusFilter
+  departmentId?: string
 }): Promise<EmployeePortalMaterialRequestProcessingPage> {
   const where = buildMaterialRequestProcessingWhere(params)
   const skip = (params.page - 1) * params.pageSize
@@ -1023,6 +1063,7 @@ export async function getEmployeePortalMaterialRequestProcessingPageReadModel(pa
             firstName: true,
             lastName: true,
             employeeNumber: true,
+            photoUrl: true,
           },
         },
         department: {
@@ -1239,6 +1280,7 @@ const buildMaterialRequestPostingWhere = (params: {
   companyId: string
   search: string
   status: EmployeePortalMaterialRequestPostingStatusFilter
+  departmentId?: string
 }): Prisma.MaterialRequestWhereInput => {
   const andConditions: Prisma.MaterialRequestWhereInput[] = []
   const where: Prisma.MaterialRequestWhereInput = {
@@ -1246,6 +1288,10 @@ const buildMaterialRequestPostingWhere = (params: {
     status: MaterialRequestStatus.APPROVED,
     processingStatus: MaterialRequestProcessingStatus.COMPLETED,
     AND: andConditions,
+  }
+
+  if (params.departmentId) {
+    where.departmentId = params.departmentId
   }
 
   if (params.status === "PENDING_POSTING") {
@@ -1332,6 +1378,7 @@ const toPostingRow = (request: {
     firstName: string
     lastName: string
     employeeNumber: string
+    photoUrl: string | null
   }
   department: {
     name: string
@@ -1349,6 +1396,7 @@ const toPostingRow = (request: {
     requestNumber: request.requestNumber,
     requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
     requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
+    requesterPhotoUrl: request.requesterEmployee.photoUrl,
     departmentName: request.department.name,
     datePreparedLabel: dateLabel.format(request.datePrepared),
     dateRequiredLabel: dateLabel.format(request.dateRequired),
@@ -1370,6 +1418,7 @@ export async function getEmployeePortalMaterialRequestPostingPageReadModel(param
   pageSize: number
   search: string
   status: EmployeePortalMaterialRequestPostingStatusFilter
+  departmentId?: string
 }): Promise<EmployeePortalMaterialRequestPostingPage> {
   const where = buildMaterialRequestPostingWhere(params)
   const skip = (params.page - 1) * params.pageSize
@@ -1396,6 +1445,7 @@ export async function getEmployeePortalMaterialRequestPostingPageReadModel(param
             firstName: true,
             lastName: true,
             employeeNumber: true,
+            photoUrl: true,
           },
         },
         department: {

@@ -33,12 +33,20 @@ export const dtrEmployeeScheduleInputSchema = z.object({
   attendanceDate: z.string().regex(datePattern),
 })
 
+export const dtrEmployeeLeaveContextInputSchema = z.object({
+  companyId: z.string().uuid(),
+  employeeId: z.string().uuid(),
+  attendanceDate: z.string().regex(datePattern),
+  dtrId: z.string().uuid().optional(),
+})
+
 export const updateDtrRecordInputSchema = z.object({
   companyId: z.string().uuid(),
   dtrId: z.string().uuid().optional(),
   employeeId: z.string().uuid(),
   attendanceDate: z.string().regex(datePattern),
   attendanceStatus: z.enum(["PRESENT", "ABSENT", "ON_LEAVE", "HOLIDAY", "REST_DAY", "SUSPENDED", "AWOL"]),
+  leaveTypeId: z.string().uuid().optional(),
   dayFraction: z.enum(["FULL", "HALF"]).optional(),
   actualTimeIn: z.string().regex(timePattern).optional().or(z.literal("")),
   actualTimeOut: z.string().regex(timePattern).optional().or(z.literal("")),
@@ -57,5 +65,6 @@ export type DtrDateRangeInput = z.infer<typeof dtrDateRangeInputSchema>
 export type DtrCompanyInput = z.infer<typeof dtrCompanyInputSchema>
 export type DtrEmployeeDateRangeInput = z.infer<typeof dtrEmployeeDateRangeInputSchema>
 export type DtrEmployeeScheduleInput = z.infer<typeof dtrEmployeeScheduleInputSchema>
+export type DtrEmployeeLeaveContextInput = z.infer<typeof dtrEmployeeLeaveContextInputSchema>
 export type UpdateDtrRecordInput = z.infer<typeof updateDtrRecordInputSchema>
 export type OverridePendingRequestApprovalInput = z.infer<typeof overridePendingRequestApprovalInputSchema>

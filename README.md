@@ -708,11 +708,16 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - Payroll UI/route reference source: `payroll-page-reference/**` and `payroll-components-reference/**`.
 - Implementation must follow this project's module/code structure (`modules/*`, `app/(dashboard)/[companyId]/*`) and not mirror reference folder structure directly.
 - DTR policy note: manual DTR auto-approval is intentional for the HR-operated workflow.
+- Manual DTR leave policy note: `ON_LEAVE` entries without a leave request now use the selected DTR leave type to determine payroll treatment (paid leave types remain payable; unpaid leave types are treated as unpaid absences).
 - Approval direction: continue using `User.isRequestApprover` for approver assignment and access in current portal flows.
 - Approval workflow engine expansion is currently out of scope.
 
 ## Recent Changes
 
+- 2026-02-19: Updated manual DTR leave policy for payroll alignment:
+  - `ON_LEAVE` days without approved leave requests are now treated as paid or unpaid based on selected DTR leave type (`isPaid` policy) instead of always unpaid.
+  - Manual DTR leave selection now persists via internal DTR remarks token metadata so payroll/validation can resolve leave type behavior consistently.
+  - Manual DTR leave balance handling now deducts balances only for paid leave types; unpaid leave types (for example LWOP) do not deduct leave balance.
 - 2026-02-17: Delivered HR employee-detail report set under `/[companyId]/reports/hr/*` with dedicated pages, filters, print outputs, and CSV exports for Contact & Emergency Directory, Employment Milestones, Movement & Change Log, Training & Certification Compliance, Government ID Compliance, and Separation & Attrition Detail.
 - 2026-02-17: Removed `Master Data Completeness` report route/files and sidebar entry after requirement change.
 - 2026-02-17: Updated app sidebar sub-item icon mapping for new HR reports and added fallback icon behavior for future unmapped report IDs.
@@ -770,7 +775,7 @@ Project backlog and active to-do list now live in `tasks/todo.md`.
 - 2026-02-09: Extended PH payroll audit harness to verify presence/readability of calculation trace metadata in step-3 notes.
 - 2026-02-09: Hardened payroll calculation edge handling for policy-risk scenarios:
   - DTR half-day detection now supports additional normalized markers (`[HALF_DAY]`, `HALF DAY`, `HALFDAY`).
-  - `ON_LEAVE` DTR days without matching approved leave records are now treated as unpaid (instead of defaulting to payable).
+  - Initial manual DTR fallback policy set `ON_LEAVE` days without matching approved leave records as unpaid (later superseded by 2026-02-19 leave-type-driven paid/unpaid handling).
   - Recurring deductions marked as pre-tax are now deducted from taxable income before withholding-tax computation.
 - 2026-02-09: Completed quality-gate validation pass after payroll updates: repository-wide `eslint` and full `next build` now pass cleanly.
 - 2026-02-09: Executed PH payroll audit sweep on available recent runs (current local dataset: `RUN-2026-00001`) with zero failures and zero warnings under refined policy checks.

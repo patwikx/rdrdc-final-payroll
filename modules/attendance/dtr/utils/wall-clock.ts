@@ -8,10 +8,14 @@ const PH_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
 })
 
 const ISO_HHMM_PATTERN = /^\d{2}:\d{2}$/
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export const HALF_DAY_TOKEN = "[DTR_DAY_FRACTION:HALF]"
+export const DTR_LEAVE_TYPE_TOKEN_PREFIX = "[DTR_LEAVE_TYPE_ID:"
 
 const LEGACY_HALF_DAY_MARKERS = ["[HALF_DAY]", "HALF DAY", "HALFDAY", HALF_DAY_TOKEN]
+const DTR_LEAVE_TYPE_TOKEN_PATTERN = /\[DTR_LEAVE_TYPE_ID:([^\]]+)\]/i
+const DTR_LEAVE_TYPE_TOKEN_GLOBAL_PATTERN = /\[DTR_LEAVE_TYPE_ID:[^\]]+\]/gi
 
 export const toPhDateKey = (value: Date): string => PH_DATE_FORMATTER.format(value)
 
@@ -68,4 +72,33 @@ export const normalizeHalfDayToken = (remarks: string | null | undefined, dayFra
   }
 
   return seed.length > 0 ? seed : null
+}
+
+export const extractDtrLeaveTypeIdFromRemarks = (remarks: string | null | undefined): string | null => {
+  if (!remarks) return null
+
+  const match = remarks.match(DTR_LEAVE_TYPE_TOKEN_PATTERN)
+  if (!match?.[1]) return null
+
+  const leaveTypeId = match[1].trim()
+  return UUID_PATTERN.test(leaveTypeId) ? leaveTypeId : null
+}
+
+export const normalizeDtrLeaveTypeToken = (remarks: string | null | undefined, leaveTypeId: string | null): string | null => {
+  const seed = (remarks ?? "").replace(DTR_LEAVE_TYPE_TOKEN_GLOBAL_PATTERN, "").trim()
+  if (!leaveTypeId) {
+    return seed.length > 0 ? seed : null
+  }
+
+  const token = `${DTR_LEAVE_TYPE_TOKEN_PREFIX}${leaveTypeId}]`
+  return seed.length > 0 ? `${token} ${seed}` : token
+}
+
+export const stripDtrInternalTokens = (remarks: string | null | undefined): string => {
+  if (!remarks) return ""
+
+  return remarks
+    .replaceAll(HALF_DAY_TOKEN, "")
+    .replace(DTR_LEAVE_TYPE_TOKEN_GLOBAL_PATTERN, "")
+    .trim()
 }

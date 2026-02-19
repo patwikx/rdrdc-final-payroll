@@ -44,6 +44,9 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   return Number(value.toString())
 }
 
+const PAYSLIPS_PAGE_SIZE = 10
+const EMPLOYEE_LIST_LIMIT = 20
+
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const companyId = params.get("companyId")
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
   }
 
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1)
-  const pageSize = Math.min(50, Math.max(5, Number(params.get("pageSize") ?? "20") || 20))
+  const pageSize = PAYSLIPS_PAGE_SIZE
   const search = (params.get("search") ?? "").trim()
   const selectedEmployeeIdParam = (params.get("selectedEmployeeId") ?? "").trim()
 
@@ -147,7 +150,7 @@ export async function GET(request: NextRequest) {
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
 
-  const pagedEmployees = allEmployeeRows.slice(0, pageSize)
+  const pagedEmployees = allEmployeeRows.slice(0, EMPLOYEE_LIST_LIMIT)
   const selectedEmployeeId =
     selectedEmployeeIdParam && pagedEmployees.some((row) => row.employeeId === selectedEmployeeIdParam)
       ? selectedEmployeeIdParam

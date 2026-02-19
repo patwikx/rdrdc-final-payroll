@@ -77,7 +77,6 @@ export async function approveLeaveRequestByHrAction(
       leaveTypeId: true,
       numberOfDays: true,
       startDate: true,
-      leaveType: { select: { isPaid: true } },
       hrApproverId: true,
       hrApprovedAt: true,
       hrApprovalRemarks: true,
@@ -98,20 +97,18 @@ export async function approveLeaveRequestByHrAction(
 
   try {
     await db.$transaction(async (tx) => {
-      if (request.leaveType.isPaid) {
-        const consumed = await consumeReservedLeaveBalanceForRequest(tx, {
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          requestId: request.id,
-          requestNumber: request.requestNumber,
-          requestStartDate: request.startDate,
-          numberOfDays: Number(request.numberOfDays),
-          processedById: context.userId,
-        })
+      const consumed = await consumeReservedLeaveBalanceForRequest(tx, {
+        employeeId: request.employeeId,
+        leaveTypeId: request.leaveTypeId,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        requestStartDate: request.startDate,
+        numberOfDays: Number(request.numberOfDays),
+        processedById: context.userId,
+      })
 
-        if (!consumed.ok) {
-          throw new Error(consumed.error)
-        }
+      if (!consumed.ok) {
+        throw new Error(consumed.error)
       }
 
       const updated = await tx.leaveRequest.update({
@@ -201,7 +198,6 @@ export async function rejectLeaveRequestByHrAction(
       leaveTypeId: true,
       numberOfDays: true,
       startDate: true,
-      leaveType: { select: { isPaid: true } },
       hrApproverId: true,
       hrRejectedAt: true,
       hrRejectionReason: true,
@@ -221,20 +217,18 @@ export async function rejectLeaveRequestByHrAction(
 
   try {
     await db.$transaction(async (tx) => {
-      if (request.leaveType.isPaid) {
-        const released = await releaseReservedLeaveBalanceForRequest(tx, {
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          requestId: request.id,
-          requestNumber: request.requestNumber,
-          requestStartDate: request.startDate,
-          numberOfDays: Number(request.numberOfDays),
-          processedById: context.userId,
-        })
+      const released = await releaseReservedLeaveBalanceForRequest(tx, {
+        employeeId: request.employeeId,
+        leaveTypeId: request.leaveTypeId,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        requestStartDate: request.startDate,
+        numberOfDays: Number(request.numberOfDays),
+        processedById: context.userId,
+      })
 
-        if (!released.ok) {
-          throw new Error(released.error)
-        }
+      if (!released.ok) {
+        throw new Error(released.error)
       }
 
       const updated = await tx.leaveRequest.update({

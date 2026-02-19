@@ -262,7 +262,6 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
       leaveTypeId: true,
       numberOfDays: true,
       startDate: true,
-      leaveType: { select: { isPaid: true } },
     },
   })
 
@@ -270,20 +269,18 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
 
   try {
     await db.$transaction(async (tx) => {
-      if (request.leaveType.isPaid) {
-        const released = await releaseReservedLeaveBalanceForRequest(tx, {
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          requestId: request.id,
-          requestNumber: request.requestNumber,
-          requestStartDate: request.startDate,
-          numberOfDays: Number(request.numberOfDays),
-          processedById: context.userId,
-        })
+      const released = await releaseReservedLeaveBalanceForRequest(tx, {
+        employeeId: request.employeeId,
+        leaveTypeId: request.leaveTypeId,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        requestStartDate: request.startDate,
+        numberOfDays: Number(request.numberOfDays),
+        processedById: context.userId,
+      })
 
-        if (!released.ok) {
-          throw new Error(released.error)
-        }
+      if (!released.ok) {
+        throw new Error(released.error)
       }
 
       await tx.leaveRequest.update({
@@ -328,27 +325,24 @@ export async function approveLeaveByHrAction(input: z.input<typeof decisionSchem
       leaveTypeId: true,
       numberOfDays: true,
       startDate: true,
-      leaveType: { select: { isPaid: true } },
     },
   })
   if (!request) return { ok: false, error: "Leave request not found or no longer eligible." }
 
   try {
     await db.$transaction(async (tx) => {
-      if (request.leaveType.isPaid) {
-        const consumed = await consumeReservedLeaveBalanceForRequest(tx, {
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          requestId: request.id,
-          requestNumber: request.requestNumber,
-          requestStartDate: request.startDate,
-          numberOfDays: Number(request.numberOfDays),
-          processedById: context.userId,
-        })
+      const consumed = await consumeReservedLeaveBalanceForRequest(tx, {
+        employeeId: request.employeeId,
+        leaveTypeId: request.leaveTypeId,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        requestStartDate: request.startDate,
+        numberOfDays: Number(request.numberOfDays),
+        processedById: context.userId,
+      })
 
-        if (!consumed.ok) {
-          throw new Error(consumed.error)
-        }
+      if (!consumed.ok) {
+        throw new Error(consumed.error)
       }
 
       await tx.leaveRequest.update({
@@ -396,27 +390,24 @@ export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema
       leaveTypeId: true,
       numberOfDays: true,
       startDate: true,
-      leaveType: { select: { isPaid: true } },
     },
   })
   if (!request) return { ok: false, error: "Leave request not found or no longer eligible." }
 
   try {
     await db.$transaction(async (tx) => {
-      if (request.leaveType.isPaid) {
-        const released = await releaseReservedLeaveBalanceForRequest(tx, {
-          employeeId: request.employeeId,
-          leaveTypeId: request.leaveTypeId,
-          requestId: request.id,
-          requestNumber: request.requestNumber,
-          requestStartDate: request.startDate,
-          numberOfDays: Number(request.numberOfDays),
-          processedById: context.userId,
-        })
+      const released = await releaseReservedLeaveBalanceForRequest(tx, {
+        employeeId: request.employeeId,
+        leaveTypeId: request.leaveTypeId,
+        requestId: request.id,
+        requestNumber: request.requestNumber,
+        requestStartDate: request.startDate,
+        numberOfDays: Number(request.numberOfDays),
+        processedById: context.userId,
+      })
 
-        if (!released.ok) {
-          throw new Error(released.error)
-        }
+      if (!released.ok) {
+        throw new Error(released.error)
       }
 
       await tx.leaveRequest.update({

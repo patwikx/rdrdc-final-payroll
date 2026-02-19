@@ -28,7 +28,7 @@ import {
   type PayrollRunActionInput,
 } from "@/modules/payroll/schemas/payroll-run-actions-schema"
 import { validatePayrollRun } from "@/modules/payroll/utils/validate-payroll-run"
-import { isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
+import { extractDtrLeaveTypeIdFromRemarks, isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
 import {
   getDateRange,
   getDayName,
@@ -315,6 +315,7 @@ const calculateAttendanceSnapshot = (params: {
   dtrs: Array<{
     attendanceDate: Date
     attendanceStatus: AttendanceStatus
+    manualLeaveIsPaid: boolean | null
     hoursWorked: Prisma.Decimal | null
     overtimeHours: Prisma.Decimal | null
     nightDiffHours: Prisma.Decimal | null
@@ -387,6 +388,8 @@ const calculateAttendanceSnapshot = (params: {
         totalPayableDays += leaveDayValue
       } else if (activeLeave && !activeLeave.isPaid) {
         unpaidAbsences += leaveDayValue
+      } else if (dtr.manualLeaveIsPaid) {
+        totalPayableDays += dtrPayableValue
       } else {
         unpaidAbsences += dtrPayableValue
       }
@@ -1295,14 +1298,40 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     }
   }
 
+  const manualLeaveTypeIds = Array.from(
+    new Set(
+      dtrRows
+        .map((row) => extractDtrLeaveTypeIdFromRemarks(row.remarks))
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+  const manualLeaveTypes = manualLeaveTypeIds.length
+    ? await db.leaveType.findMany({
+        where: { id: { in: manualLeaveTypeIds } },
+        select: {
+          id: true,
+          isPaid: true,
+        },
+      })
+    : []
+  const manualLeavePaidByTypeId = new Map(manualLeaveTypes.map((item) => [item.id, item.isPaid]))
+
   const holidaysByDate = new Map(
     holidays.map((holiday) => [toDateKey(holiday.holidayDate), { holidayTypeCode: holiday.holidayTypeCode, payMultiplier: toNumber(holiday.payMultiplier) }])
   )
-  const dtrsByEmployeeId = new Map<string, typeof dtrRows>()
+  const dtrsByEmployeeId = new Map<
+    string,
+    Array<(typeof dtrRows)[number] & { manualLeaveIsPaid: boolean | null }>
+  >()
   for (const row of dtrRows) {
+    const manualLeaveTypeId = extractDtrLeaveTypeIdFromRemarks(row.remarks)
+    const manualLeaveIsPaid =
+      row.attendanceStatus === AttendanceStatus.ON_LEAVE && manualLeaveTypeId
+        ? (manualLeavePaidByTypeId.get(manualLeaveTypeId) ?? null)
+        : null
     const list = dtrsByEmployeeId.get(row.employeeId)
-    if (list) list.push(row)
-    else dtrsByEmployeeId.set(row.employeeId, [row])
+    if (list) list.push({ ...row, manualLeaveIsPaid })
+    else dtrsByEmployeeId.set(row.employeeId, [{ ...row, manualLeaveIsPaid }])
   }
 
   const approvedLeavesByEmployeeId = new Map<string, Array<{ startDate: Date; endDate: Date; isHalfDay: boolean; isPaid: boolean }>>()

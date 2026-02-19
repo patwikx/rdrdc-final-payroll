@@ -520,13 +520,13 @@ export function PayrollRecurringDeductionsPageClient({
                     >
                       <td className="px-3 py-2.5 align-top">
                         <div className="flex items-center gap-2.5">
-                          <Avatar className="h-8 w-8 border border-border/60">
+                          <Avatar className="h-8 w-8 rounded-md border border-border/60 after:rounded-md">
                             <AvatarImage
                               src={record.employeePhotoUrl ?? undefined}
                               alt={record.employeeName}
-                              className="object-cover"
+                              className="rounded-md object-cover"
                             />
-                            <AvatarFallback className="text-[10px]">
+                            <AvatarFallback className="rounded-md text-[10px]">
                               {getEmployeeInitials(record.employeeName)}
                             </AvatarFallback>
                           </Avatar>

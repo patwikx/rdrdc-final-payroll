@@ -1,6 +1,7 @@
 import { AttendanceStatus, DtrApprovalStatus, RequestStatus, type Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
+import { extractDtrLeaveTypeIdFromRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type PayrollRunWithRelations = Prisma.PayrollRunGetPayload<{
   include: {
@@ -266,6 +267,7 @@ export async function validatePayrollRun(
         employeeId: true,
         attendanceDate: true,
         attendanceStatus: true,
+        remarks: true,
         actualTimeIn: true,
         actualTimeOut: true,
         overtimeHours: true,
@@ -332,13 +334,36 @@ export async function validatePayrollRun(
     )
   }
 
-  const dtrsByEmployeeId = new Map<string, typeof dtrRows>()
+  const manualLeaveTypeIds = Array.from(
+    new Set(
+      dtrRows
+        .map((row) => extractDtrLeaveTypeIdFromRemarks(row.remarks))
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+  const manualLeaveTypes = manualLeaveTypeIds.length
+    ? await db.leaveType.findMany({
+        where: { id: { in: manualLeaveTypeIds } },
+        select: {
+          id: true,
+          isPaid: true,
+        },
+      })
+    : []
+  const manualLeavePaidByTypeId = new Map(manualLeaveTypes.map((item) => [item.id, item.isPaid]))
+
+  const dtrsByEmployeeId = new Map<string, Array<(typeof dtrRows)[number] & { manualLeaveIsPaid: boolean | null }>>()
   for (const row of dtrRows) {
+    const manualLeaveTypeId = extractDtrLeaveTypeIdFromRemarks(row.remarks)
+    const manualLeaveIsPaid =
+      row.attendanceStatus === AttendanceStatus.ON_LEAVE && manualLeaveTypeId
+        ? (manualLeavePaidByTypeId.get(manualLeaveTypeId) ?? null)
+        : null
     const existing = dtrsByEmployeeId.get(row.employeeId)
     if (existing) {
-      existing.push(row)
+      existing.push({ ...row, manualLeaveIsPaid })
     } else {
-      dtrsByEmployeeId.set(row.employeeId, [row])
+      dtrsByEmployeeId.set(row.employeeId, [{ ...row, manualLeaveIsPaid }])
     }
   }
 
@@ -397,7 +422,7 @@ export async function validatePayrollRun(
       }
 
       if (dtr.attendanceStatus === AttendanceStatus.ABSENT) absentDays += 1
-      if (dtr.attendanceStatus === AttendanceStatus.ON_LEAVE && !onApprovedLeave) absentDays += 1
+      if (dtr.attendanceStatus === AttendanceStatus.ON_LEAVE && !onApprovedLeave && !dtr.manualLeaveIsPaid) absentDays += 1
       if (dtr.attendanceStatus === AttendanceStatus.PRESENT || dtr.attendanceStatus === AttendanceStatus.HOLIDAY) presentDays += 1
 
       const approvedOvertimeHours = approvedOvertimeHoursByEmployeeDate.get(`${employee.id}:${key}`) ?? 0

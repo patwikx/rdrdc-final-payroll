@@ -27,6 +27,6 @@ export async function getPayrollPayslipsViewModel(companyId: string): Promise<Pa
     companyName: context.companyName,
     defaultStartDate: toDateInput(start),
     defaultEndDate: toDateInput(end),
-    pageSize: 20,
+    pageSize: 10,
   }
 }

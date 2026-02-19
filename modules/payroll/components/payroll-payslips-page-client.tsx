@@ -256,13 +256,13 @@ export function PayrollPayslipsPageClient({
                         )}
                       >
                         <div className="flex items-start gap-2">
-                          <Avatar className="h-9 w-9 shrink-0 border border-border/60">
+                          <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
                             <AvatarImage
                               src={employee.employeePhotoUrl ?? undefined}
                               alt={employee.employeeName}
-                              className="object-cover"
+                              className="rounded-md object-cover"
                             />
-                            <AvatarFallback className="bg-primary/5 text-[10px] font-semibold text-primary">
+                            <AvatarFallback className="rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
                               {employee.employeeName
                                 .split(",")
                                 .map((part) => part.trim()[0] ?? "")

@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client"
 
+import { resolveLeaveBalanceChargeDecisionForRequest } from "@/modules/leave/utils/leave-balance-policy"
+
 type TxClient = Prisma.TransactionClient
 
 type LeaveBalanceMutationResult =
@@ -48,13 +50,24 @@ export async function reserveLeaveBalanceForRequest(
   tx: TxClient,
   input: BaseMutationInput
 ): Promise<LeaveBalanceMutationResult> {
+  const chargeDecision = await resolveLeaveBalanceChargeDecisionForRequest(tx, {
+    employeeId: input.employeeId,
+    leaveTypeId: input.leaveTypeId,
+  })
+  if (!chargeDecision.ok) {
+    return { ok: false, error: chargeDecision.error }
+  }
+  if (!chargeDecision.chargeLeaveTypeId) {
+    return { ok: true }
+  }
+
   const year = requestYear(input.requestStartDate)
-  const leaveBalance = await getLeaveBalance(tx, input.employeeId, input.leaveTypeId, year)
+  const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
   if (!leaveBalance) {
     return {
       ok: false,
-      error: `No leave balance found for ${year}. Please initialize yearly leave balances first.`,
+      error: `No leave balance found for ${chargeDecision.chargeLeaveTypeName ?? "this leave type"} in ${year}. Please initialize yearly leave balances first.`,
     }
   }
 
@@ -88,7 +101,7 @@ export async function reserveLeaveBalanceForRequest(
       runningBalance: leaveBalance.currentBalance,
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Reserved ${toDecimalText(numberOfDays)} day(s) for leave request ${input.requestNumber}`,
+      remarks: `Reserved ${toDecimalText(numberOfDays)} day(s) for leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })
@@ -100,13 +113,24 @@ export async function releaseReservedLeaveBalanceForRequest(
   tx: TxClient,
   input: BaseMutationInput
 ): Promise<LeaveBalanceMutationResult> {
+  const chargeDecision = await resolveLeaveBalanceChargeDecisionForRequest(tx, {
+    employeeId: input.employeeId,
+    leaveTypeId: input.leaveTypeId,
+  })
+  if (!chargeDecision.ok) {
+    return { ok: false, error: chargeDecision.error }
+  }
+  if (!chargeDecision.chargeLeaveTypeId) {
+    return { ok: true }
+  }
+
   const year = requestYear(input.requestStartDate)
-  const leaveBalance = await getLeaveBalance(tx, input.employeeId, input.leaveTypeId, year)
+  const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
   if (!leaveBalance) {
     return {
       ok: false,
-      error: `No leave balance found for ${year}.`,
+      error: `No leave balance found for ${chargeDecision.chargeLeaveTypeName ?? "this leave type"} in ${year}.`,
     }
   }
 
@@ -140,7 +164,7 @@ export async function releaseReservedLeaveBalanceForRequest(
       runningBalance: leaveBalance.currentBalance,
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Released ${toDecimalText(numberOfDays)} day(s) back to available balance for ${input.requestNumber}`,
+      remarks: `Released ${toDecimalText(numberOfDays)} day(s) back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })
@@ -152,13 +176,24 @@ export async function consumeReservedLeaveBalanceForRequest(
   tx: TxClient,
   input: BaseMutationInput
 ): Promise<LeaveBalanceMutationResult> {
+  const chargeDecision = await resolveLeaveBalanceChargeDecisionForRequest(tx, {
+    employeeId: input.employeeId,
+    leaveTypeId: input.leaveTypeId,
+  })
+  if (!chargeDecision.ok) {
+    return { ok: false, error: chargeDecision.error }
+  }
+  if (!chargeDecision.chargeLeaveTypeId) {
+    return { ok: true }
+  }
+
   const year = requestYear(input.requestStartDate)
-  const leaveBalance = await getLeaveBalance(tx, input.employeeId, input.leaveTypeId, year)
+  const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
   if (!leaveBalance) {
     return {
       ok: false,
-      error: `No leave balance found for ${year}.`,
+      error: `No leave balance found for ${chargeDecision.chargeLeaveTypeName ?? "this leave type"} in ${year}.`,
     }
   }
 
@@ -211,7 +246,7 @@ export async function consumeReservedLeaveBalanceForRequest(
       runningBalance: toDecimalText(nextCurrentBalance),
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Consumed ${toDecimalText(numberOfDays)} day(s) for approved leave request ${input.requestNumber}`,
+      remarks: `Consumed ${toDecimalText(numberOfDays)} day(s) for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })

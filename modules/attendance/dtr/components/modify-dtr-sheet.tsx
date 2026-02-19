@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { AttendanceStatus } from "@prisma/client"
 import {
@@ -25,10 +25,11 @@ import {
 } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { getEmployeeLeaveBalancesAction } from "@/modules/attendance/dtr/actions/get-employee-leave-balances-action"
 import { updateDtrRecordAction } from "@/modules/attendance/dtr/actions/update-dtr-record-action"
 import { getEmployeeScheduleAction } from "@/modules/attendance/dtr/actions/get-employee-schedule-action"
 import type { DtrLogItem } from "@/modules/attendance/dtr/types"
-import { formatWallClockTime, isHalfDayRemarks } from "@/modules/attendance/dtr/utils/wall-clock"
+import { formatWallClockTime, isHalfDayRemarks, stripDtrInternalTokens } from "@/modules/attendance/dtr/utils/wall-clock"
 
 type ModifyDtrSheetProps = {
   companyId: string
@@ -51,6 +52,36 @@ const DAY_FRACTION_OPTIONS = [
   { value: "FULL", label: "Full Day" },
   { value: "HALF", label: "Half Day" },
 ] as const
+
+type LeaveOption = {
+  leaveTypeId: string
+  name: string
+  code: string
+  currentBalance: number
+  availableBalance: number
+}
+
+type LeaveLookupState = {
+  key: string
+  year: number | null
+  leaveOptions: LeaveOption[]
+  error: string | null
+}
+
+const EMPTY_LEAVE_OPTIONS: LeaveOption[] = []
+
+const toLeaveDays = (dayFraction: "FULL" | "HALF"): number => (dayFraction === "HALF" ? 0.5 : 1)
+
+const formatLeaveDays = (value: number): string => {
+  if (Number.isInteger(value)) {
+    return `${value}`
+  }
+
+  return value.toFixed(2).replace(/\.?0+$/, "")
+}
+
+const leaveBalanceLabel = (option: LeaveOption | null): string =>
+  `${formatLeaveDays(option?.availableBalance ?? 0)} day(s)`
 
 export function ModifyDtrSheet({ companyId, record, isOpen, onClose }: ModifyDtrSheetProps) {
   if (!record) return null
@@ -80,10 +111,77 @@ function ModifyDtrSheetForm({
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<AttendanceStatus>(record.attendanceStatus)
   const [dayFraction, setDayFraction] = useState<"FULL" | "HALF">(isHalfDayRemarks(record.remarks) ? "HALF" : "FULL")
-  const [remarks, setRemarks] = useState(record.remarks ?? "")
+  const [remarks, setRemarks] = useState(stripDtrInternalTokens(record.remarks))
   const [timeIn, setTimeIn] = useState(formatWallClockTime(record.actualTimeIn))
   const [timeOut, setTimeOut] = useState(formatWallClockTime(record.actualTimeOut))
   const [pickedDate, setPickedDate] = useState<Date | undefined>(new Date(record.attendanceDate))
+  const [leaveLookupState, setLeaveLookupState] = useState<LeaveLookupState>({
+    key: "",
+    year: null,
+    leaveOptions: [],
+    error: null,
+  })
+  const [selectedLeaveTypeId, setSelectedLeaveTypeId] = useState("")
+
+  const attendanceDateValue = format(pickedDate ?? new Date(record.attendanceDate), "yyyy-MM-dd")
+  const leaveLookupKey = `${record.id}:${attendanceDateValue}`
+  const isLeaveOptionsLoading = isOpen && leaveLookupState.key !== leaveLookupKey
+  const leaveOptions = leaveLookupState.key === leaveLookupKey ? leaveLookupState.leaveOptions : EMPTY_LEAVE_OPTIONS
+  const leaveYear = leaveLookupState.key === leaveLookupKey ? leaveLookupState.year : null
+  const leaveOptionsError = leaveLookupState.key === leaveLookupKey ? leaveLookupState.error : null
+  const requiredLeaveDays = toLeaveDays(dayFraction)
+  const selectedLeaveOption = useMemo(
+    () => leaveOptions.find((item) => item.leaveTypeId === selectedLeaveTypeId) ?? null,
+    [leaveOptions, selectedLeaveTypeId]
+  )
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    let active = true
+
+    void getEmployeeLeaveBalancesAction({
+      companyId,
+      employeeId: record.employee.id,
+      attendanceDate: attendanceDateValue,
+      dtrId: record.id.startsWith("draft-") ? undefined : record.id,
+    }).then((result) => {
+      if (!active) return
+
+      if (!result.ok) {
+        setLeaveLookupState({
+          key: leaveLookupKey,
+          year: null,
+          leaveOptions: [],
+          error: result.error,
+        })
+        return
+      }
+
+      setLeaveLookupState({
+        key: leaveLookupKey,
+        year: result.data.year,
+        leaveOptions: result.data.leaveOptions,
+        error: null,
+      })
+      setSelectedLeaveTypeId((current) => {
+        if (current && result.data.leaveOptions.some((item) => item.leaveTypeId === current)) {
+          return current
+        }
+
+        const activeManualLeaveTypeId = result.data.activeManualLeave?.leaveTypeId
+        if (activeManualLeaveTypeId && result.data.leaveOptions.some((item) => item.leaveTypeId === activeManualLeaveTypeId)) {
+          return activeManualLeaveTypeId
+        }
+
+        return result.data.leaveOptions[0]?.leaveTypeId ?? ""
+      })
+    })
+
+    return () => {
+      active = false
+    }
+  }, [attendanceDateValue, companyId, isOpen, leaveLookupKey, record.employee.id, record.id])
 
   const handleAutofill = async () => {
     if (!record || !pickedDate) return
@@ -110,13 +208,33 @@ function ModifyDtrSheetForm({
   const handleSubmit = async () => {
     if (!record) return
 
+    if (status === AttendanceStatus.ON_LEAVE) {
+      if (isLeaveOptionsLoading) {
+        toast.error("Leave balances are still loading. Please wait a moment.")
+        return
+      }
+
+      if (!selectedLeaveTypeId) {
+        toast.error("Please select a leave type for ON_LEAVE status.")
+        return
+      }
+
+      if (selectedLeaveOption && selectedLeaveOption.availableBalance < requiredLeaveDays) {
+        toast.error(
+          `Insufficient balance for ${selectedLeaveOption.name}. Available: ${formatLeaveDays(selectedLeaveOption.availableBalance)} day(s).`
+        )
+        return
+      }
+    }
+
     setLoading(true)
     const result = await updateDtrRecordAction({
       companyId,
       dtrId: record.id.startsWith("draft-") ? undefined : record.id,
       employeeId: record.employee.id,
-      attendanceDate: format(pickedDate ?? new Date(record.attendanceDate), "yyyy-MM-dd"),
+      attendanceDate: attendanceDateValue,
       attendanceStatus: status,
+      leaveTypeId: status === AttendanceStatus.ON_LEAVE ? selectedLeaveTypeId : undefined,
       dayFraction,
       actualTimeIn: timeIn,
       actualTimeOut: timeOut,
@@ -171,22 +289,6 @@ function ModifyDtrSheetForm({
           </Button>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground sm:text-sm">Attendance Status</label>
-            <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
-              <SelectTrigger className="h-9 sm:h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground sm:text-sm">Attendance Date</label>
             <Popover>
               <PopoverTrigger asChild>
@@ -206,23 +308,91 @@ function ModifyDtrSheetForm({
             </Popover>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground sm:text-sm">Day Fraction</label>
-            <Select value={dayFraction} onValueChange={(value) => setDayFraction(value as "FULL" | "HALF")}>
-              <SelectTrigger className="h-9 sm:h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DAY_FRACTION_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground sm:text-sm">Attendance Status</label>
+              <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
+                <SelectTrigger className="h-9 w-full sm:h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground sm:text-sm">Day Fraction</label>
+              <Select value={dayFraction} onValueChange={(value) => setDayFraction(value as "FULL" | "HALF")}>
+                <SelectTrigger className="h-9 w-full sm:h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DAY_FRACTION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
+          {status === AttendanceStatus.ON_LEAVE ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground sm:text-sm">
+                    Leave Type <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={selectedLeaveTypeId}
+                    onValueChange={setSelectedLeaveTypeId}
+                    disabled={isLeaveOptionsLoading}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue
+                        placeholder={isLeaveOptionsLoading ? "Loading leave balances..." : "Select leave type"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leaveOptions.map((option) => (
+                        <SelectItem key={option.leaveTypeId} value={option.leaveTypeId}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground sm:text-sm">Leave Balance</label>
+                  <Input
+                    readOnly
+                    value={leaveBalanceLabel(selectedLeaveOption)}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+              {isLeaveOptionsLoading ? (
+                <p className="text-xs text-muted-foreground">Loading leave balances...</p>
+              ) : null}
+              {!isLeaveOptionsLoading && !leaveOptionsError && leaveOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No leave balances found for {leaveYear ?? "the selected"} year.
+                </p>
+              ) : null}
+              {leaveOptionsError ? (
+                <p className="text-xs text-destructive">{leaveOptionsError}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground sm:text-sm">Actual Clock-In</label>
               <Input
@@ -256,7 +426,7 @@ function ModifyDtrSheetForm({
           <div className="space-y-2 border-t border-border/40 pt-3">
             <Button
               type="button"
-              disabled={loading}
+              disabled={loading || (status === AttendanceStatus.ON_LEAVE && isLeaveOptionsLoading)}
               onClick={handleSubmit}
               className="h-9 w-full gap-2 sm:h-10"
             >
@@ -276,7 +446,7 @@ function ModifyDtrSheetForm({
           <div className="flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/40 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-950/10">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
             <p className="text-xs leading-tight text-muted-foreground sm:text-sm">
-            Manual adjustments are logged for auditing and will bypass biometric validation.
+              Manual adjustments are logged for auditing and will bypass biometric validation.
             </p>
           </div>
         </div>

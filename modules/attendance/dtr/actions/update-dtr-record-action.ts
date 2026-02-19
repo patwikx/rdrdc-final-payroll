@@ -15,12 +15,15 @@ import {
 } from "@/modules/attendance/dtr/schemas/dtr-actions-schema"
 import {
   createWallClockDateTime,
+  extractDtrLeaveTypeIdFromRemarks,
   ensureEndAfterStart,
   formatWallClockTime,
   isHalfDayRemarks,
+  normalizeDtrLeaveTypeToken,
   normalizeHalfDayToken,
   parsePhDateInput,
 } from "@/modules/attendance/dtr/utils/wall-clock"
+import { DTR_MANUAL_LEAVE_REFERENCE_TYPE } from "@/modules/attendance/dtr/utils/manual-dtr-leave"
 
 type UpdateDtrRecordActionResult =
   | { ok: true; message: string }
@@ -30,6 +33,48 @@ type DayOverride = {
   isWorkingDay?: boolean
   timeIn?: string
   timeOut?: string
+}
+
+type ExistingRecordSnapshot = {
+  id: string
+  attendanceDate: Date
+  actualTimeIn: Date | null
+  actualTimeOut: Date | null
+  attendanceStatus: string
+  remarks: string | null
+  hoursWorked: Prisma.Decimal | null
+  tardinessMins: number
+  undertimeMins: number
+  overtimeHours: Prisma.Decimal | null
+  nightDiffHours: Prisma.Decimal | null
+  approvalStatusCode: string
+}
+
+type UpdatedRecordSnapshot = {
+  id: string
+  actualTimeIn: Date | null
+  actualTimeOut: Date | null
+  attendanceStatus: string
+  remarks: string | null
+  hoursWorked: Prisma.Decimal | null
+  tardinessMins: number
+  undertimeMins: number
+  overtimeHours: Prisma.Decimal | null
+  nightDiffHours: Prisma.Decimal | null
+  approvalStatusCode: string
+}
+
+type ManualDtrLeaveState = {
+  leaveBalanceId: string
+  leaveTypeId: string
+  employeeId: string
+  year: number
+  numberOfDays: number
+}
+
+type AppliedManualDtrLeaveState = {
+  leaveTypeId: string
+  numberOfDays: number
 }
 
 const DAY_NAMES = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const
@@ -59,6 +104,10 @@ const toNumber = (value: { toString(): string } | null | undefined): number => {
   if (!value) return 0
   return Number(value.toString())
 }
+
+const roundTo2 = (value: number): number => Math.round(value * 100) / 100
+const toDecimalText = (value: number): string => roundTo2(value).toFixed(2)
+const toLeaveDays = (dayFraction: "FULL" | "HALF"): number => (dayFraction === "HALF" ? 0.5 : 1)
 
 const calculateNightDiffHours = (timeIn: Date, timeOut: Date): number => {
   if (timeOut <= timeIn) return 0
@@ -130,6 +179,178 @@ const getScheduleTimes = (
   return { scheduledIn, scheduledOut: ensureEndAfterStart(scheduledIn, scheduledOut) }
 }
 
+const resolveActiveManualDtrLeaveState = async (
+  tx: Prisma.TransactionClient,
+  dtrId: string
+): Promise<ManualDtrLeaveState | null> => {
+  const latestTransaction = await tx.leaveBalanceTransaction.findFirst({
+    where: {
+      referenceType: DTR_MANUAL_LEAVE_REFERENCE_TYPE,
+      referenceId: dtrId,
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      leaveBalanceId: true,
+      transactionType: true,
+      amount: true,
+      leaveBalance: {
+        select: {
+          employeeId: true,
+          leaveTypeId: true,
+          year: true,
+        },
+      },
+    },
+  })
+
+  if (!latestTransaction || latestTransaction.transactionType !== "USAGE") {
+    return null
+  }
+
+  const numberOfDays = roundTo2(Math.abs(toNumber(latestTransaction.amount)))
+  if (numberOfDays <= 0) {
+    return null
+  }
+
+  return {
+    leaveBalanceId: latestTransaction.leaveBalanceId,
+    leaveTypeId: latestTransaction.leaveBalance.leaveTypeId,
+    employeeId: latestTransaction.leaveBalance.employeeId,
+    year: latestTransaction.leaveBalance.year,
+    numberOfDays,
+  }
+}
+
+const applyManualDtrLeaveUsage = async (params: {
+  tx: Prisma.TransactionClient
+  employeeId: string
+  leaveTypeId: string
+  year: number
+  numberOfDays: number
+  dtrId: string
+  processedById: string
+}): Promise<AppliedManualDtrLeaveState> => {
+  const leaveBalance = await params.tx.leaveBalance.findUnique({
+    where: {
+      employeeId_leaveTypeId_year: {
+        employeeId: params.employeeId,
+        leaveTypeId: params.leaveTypeId,
+        year: params.year,
+      },
+    },
+    select: {
+      id: true,
+      currentBalance: true,
+      pendingRequests: true,
+      creditsUsed: true,
+    },
+  })
+
+  if (!leaveBalance) {
+    throw new Error(`No leave balance found for ${params.year}. Please initialize yearly leave balances first.`)
+  }
+
+  const numberOfDays = roundTo2(params.numberOfDays)
+  const currentBalance = toNumber(leaveBalance.currentBalance)
+  const pendingRequests = toNumber(leaveBalance.pendingRequests)
+  const creditsUsed = toNumber(leaveBalance.creditsUsed)
+
+  if (currentBalance < numberOfDays) {
+    throw new Error("Insufficient leave balance for the selected leave type.")
+  }
+
+  const nextCurrentBalance = roundTo2(currentBalance - numberOfDays)
+  const nextCreditsUsed = roundTo2(creditsUsed + numberOfDays)
+  const nextAvailableBalance = roundTo2(nextCurrentBalance - pendingRequests)
+
+  if (nextAvailableBalance < 0) {
+    throw new Error("Leave balance is insufficient after pending requests are considered.")
+  }
+
+  await params.tx.leaveBalance.update({
+    where: { id: leaveBalance.id },
+    data: {
+      currentBalance: toDecimalText(nextCurrentBalance),
+      creditsUsed: toDecimalText(nextCreditsUsed),
+      availableBalance: toDecimalText(nextAvailableBalance),
+    },
+  })
+
+  await params.tx.leaveBalanceTransaction.create({
+    data: {
+      leaveBalanceId: leaveBalance.id,
+      transactionType: "USAGE",
+      amount: toDecimalText(numberOfDays),
+      runningBalance: toDecimalText(nextCurrentBalance),
+      referenceType: DTR_MANUAL_LEAVE_REFERENCE_TYPE,
+      referenceId: params.dtrId,
+      remarks: `Applied ${toDecimalText(numberOfDays)} day(s) for manual DTR ON_LEAVE adjustment.`,
+      processedById: params.processedById,
+    },
+  })
+
+  return {
+    leaveTypeId: params.leaveTypeId,
+    numberOfDays,
+  }
+}
+
+const reverseManualDtrLeaveUsage = async (params: {
+  tx: Prisma.TransactionClient
+  state: ManualDtrLeaveState
+  dtrId: string
+  processedById: string
+}): Promise<void> => {
+  const leaveBalance = await params.tx.leaveBalance.findUnique({
+    where: { id: params.state.leaveBalanceId },
+    select: {
+      id: true,
+      currentBalance: true,
+      pendingRequests: true,
+      creditsUsed: true,
+    },
+  })
+
+  if (!leaveBalance) {
+    throw new Error("Unable to reverse prior DTR leave deduction because the leave balance row no longer exists.")
+  }
+
+  const numberOfDays = roundTo2(params.state.numberOfDays)
+  const currentBalance = toNumber(leaveBalance.currentBalance)
+  const pendingRequests = toNumber(leaveBalance.pendingRequests)
+  const creditsUsed = toNumber(leaveBalance.creditsUsed)
+
+  if (creditsUsed < numberOfDays) {
+    throw new Error("Unable to reverse prior DTR leave deduction because used credits are lower than expected.")
+  }
+
+  const nextCurrentBalance = roundTo2(currentBalance + numberOfDays)
+  const nextCreditsUsed = roundTo2(Math.max(0, creditsUsed - numberOfDays))
+  const nextAvailableBalance = roundTo2(nextCurrentBalance - pendingRequests)
+
+  await params.tx.leaveBalance.update({
+    where: { id: leaveBalance.id },
+    data: {
+      currentBalance: toDecimalText(nextCurrentBalance),
+      creditsUsed: toDecimalText(nextCreditsUsed),
+      availableBalance: toDecimalText(nextAvailableBalance),
+    },
+  })
+
+  await params.tx.leaveBalanceTransaction.create({
+    data: {
+      leaveBalanceId: leaveBalance.id,
+      transactionType: "ADJUSTMENT",
+      amount: toDecimalText(numberOfDays),
+      runningBalance: toDecimalText(nextCurrentBalance),
+      referenceType: DTR_MANUAL_LEAVE_REFERENCE_TYPE,
+      referenceId: params.dtrId,
+      remarks: `Reversed ${toDecimalText(numberOfDays)} day(s) from manual DTR ON_LEAVE adjustment.`,
+      processedById: params.processedById,
+    },
+  })
+}
+
 export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promise<UpdateDtrRecordActionResult> {
   const parsed = updateDtrRecordInputSchema.safeParse(input)
 
@@ -180,19 +401,7 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
     return { ok: false, error: "Employee not found for this company." }
   }
 
-  let record: {
-    id: string
-    actualTimeIn: Date | null
-    actualTimeOut: Date | null
-    attendanceStatus: string
-    remarks: string | null
-    hoursWorked: Prisma.Decimal | null
-    tardinessMins: number
-    undertimeMins: number
-    overtimeHours: Prisma.Decimal | null
-    nightDiffHours: Prisma.Decimal | null
-    approvalStatusCode: string
-  } | null = null
+  let record: ExistingRecordSnapshot | null = null
 
   if (payload.dtrId) {
     record = await db.dailyTimeRecord.findFirst({
@@ -202,6 +411,7 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
       },
       select: {
         id: true,
+        attendanceDate: true,
         actualTimeIn: true,
         actualTimeOut: true,
         attendanceStatus: true,
@@ -226,6 +436,7 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
       },
       select: {
         id: true,
+        attendanceDate: true,
         actualTimeIn: true,
         actualTimeOut: true,
         attendanceStatus: true,
@@ -240,8 +451,11 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
     })
   }
 
-  const actualTimeIn = toDateTimeOnAttendanceDate(attendanceDate, payload.actualTimeIn || undefined)
-  const rawActualTimeOut = toDateTimeOnAttendanceDate(attendanceDate, payload.actualTimeOut || undefined)
+  const effectiveAttendanceDate = record?.attendanceDate ?? attendanceDate
+  const effectiveAttendanceYear = effectiveAttendanceDate.getUTCFullYear()
+
+  const actualTimeIn = toDateTimeOnAttendanceDate(effectiveAttendanceDate, payload.actualTimeIn || undefined)
+  const rawActualTimeOut = toDateTimeOnAttendanceDate(effectiveAttendanceDate, payload.actualTimeOut || undefined)
 
   if ((actualTimeIn && !rawActualTimeOut) || (!actualTimeIn && rawActualTimeOut)) {
     return { ok: false, error: "Both time in and time out are required when providing attendance time." }
@@ -265,7 +479,7 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
     hoursWorked = Math.max(0, (totalMs - breakMins * 60 * 1000) / (1000 * 60 * 60))
     nightDiffHours = calculateNightDiffHours(actualTimeIn, actualTimeOut)
 
-    const scheduleTimes = getScheduleTimes(attendanceDate, employee.workSchedule)
+    const scheduleTimes = getScheduleTimes(effectiveAttendanceDate, employee.workSchedule)
 
     if (scheduleTimes.scheduledIn && scheduleTimes.scheduledOut) {
       const gracePeriod = employee.workSchedule?.gracePeriodMins ?? 0
@@ -289,48 +503,159 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
   const resolvedDayFraction: "FULL" | "HALF" =
     payload.dayFraction ??
     (isHalfDayRemarks(payload.remarks) || isHalfDayRemarks(record?.remarks) ? "HALF" : "FULL")
-  const remarks = normalizeHalfDayToken(payload.remarks?.trim() || null, resolvedDayFraction)
+  const baseRemarks = normalizeHalfDayToken(payload.remarks?.trim() || null, resolvedDayFraction)
+  const recordLeaveTypeId = extractDtrLeaveTypeIdFromRemarks(record?.remarks)
+  const requestedLeaveTypeId = payload.attendanceStatus === "ON_LEAVE" ? payload.leaveTypeId ?? null : null
 
-  const updated = record
-    ? await db.dailyTimeRecord.update({
-        where: { id: record.id },
-        data: {
-          actualTimeIn,
-          actualTimeOut,
-          attendanceStatus: payload.attendanceStatus,
-          remarks,
-          hoursWorked,
-          tardinessMins,
-          undertimeMins,
-          overtimeHours,
-          nightDiffHours,
-          approvalStatusCode: "APPROVED",
-          approvedById: context.userId,
-          approvedAt: new Date(),
-          timeInSourceCode: actualTimeIn ? DtrSource.MANUAL : null,
-          timeOutSourceCode: actualTimeOut ? DtrSource.MANUAL : null,
-        },
-      })
-    : await db.dailyTimeRecord.create({
-        data: {
-          employeeId: payload.employeeId,
-          attendanceDate,
-          actualTimeIn,
-          actualTimeOut,
-          attendanceStatus: payload.attendanceStatus,
-          remarks,
-          hoursWorked,
-          tardinessMins,
-          undertimeMins,
-          overtimeHours,
-          nightDiffHours,
-          approvalStatusCode: "APPROVED",
-          approvedById: context.userId,
-          approvedAt: new Date(),
-          timeInSourceCode: actualTimeIn ? DtrSource.MANUAL : null,
-          timeOutSourceCode: actualTimeOut ? DtrSource.MANUAL : null,
-        },
-      })
+  const expectedLeaveDays = toLeaveDays(resolvedDayFraction)
+  let updated: UpdatedRecordSnapshot
+  let previousManualLeaveState: ManualDtrLeaveState | null = null
+  let finalManualLeaveState: AppliedManualDtrLeaveState | null = null
+
+  try {
+    const transactionResult = await db.$transaction(async (tx) => {
+      const existingManualLeaveState = record ? await resolveActiveManualDtrLeaveState(tx, record.id) : null
+      const desiredLeaveTypeId =
+        payload.attendanceStatus === "ON_LEAVE"
+          ? requestedLeaveTypeId ?? recordLeaveTypeId ?? existingManualLeaveState?.leaveTypeId ?? null
+          : null
+
+      if (payload.attendanceStatus === "ON_LEAVE" && !desiredLeaveTypeId) {
+        throw new Error("Leave type is required when attendance status is ON_LEAVE.")
+      }
+
+      const selectedLeaveType = desiredLeaveTypeId
+        ? await tx.leaveType.findFirst({
+            where: {
+              id: desiredLeaveTypeId,
+              isActive: true,
+              OR: [{ companyId: context.companyId }, { companyId: null }],
+            },
+            select: {
+              id: true,
+              isPaid: true,
+            },
+          })
+        : null
+
+      if (desiredLeaveTypeId && !selectedLeaveType) {
+        throw new Error("Leave type is not available for this company.")
+      }
+
+      const remarks = normalizeDtrLeaveTypeToken(baseRemarks, desiredLeaveTypeId)
+
+      const updatedRecord = record
+        ? await tx.dailyTimeRecord.update({
+            where: { id: record.id },
+            data: {
+              actualTimeIn,
+              actualTimeOut,
+              attendanceStatus: payload.attendanceStatus,
+              remarks,
+              hoursWorked,
+              tardinessMins,
+              undertimeMins,
+              overtimeHours,
+              nightDiffHours,
+              approvalStatusCode: "APPROVED",
+              approvedById: context.userId,
+              approvedAt: new Date(),
+              timeInSourceCode: actualTimeIn ? DtrSource.MANUAL : null,
+              timeOutSourceCode: actualTimeOut ? DtrSource.MANUAL : null,
+            },
+            select: {
+              id: true,
+              actualTimeIn: true,
+              actualTimeOut: true,
+              attendanceStatus: true,
+              remarks: true,
+              hoursWorked: true,
+              tardinessMins: true,
+              undertimeMins: true,
+              overtimeHours: true,
+              nightDiffHours: true,
+              approvalStatusCode: true,
+            },
+          })
+        : await tx.dailyTimeRecord.create({
+            data: {
+              employeeId: payload.employeeId,
+              attendanceDate: effectiveAttendanceDate,
+              actualTimeIn,
+              actualTimeOut,
+              attendanceStatus: payload.attendanceStatus,
+              remarks,
+              hoursWorked,
+              tardinessMins,
+              undertimeMins,
+              overtimeHours,
+              nightDiffHours,
+              approvalStatusCode: "APPROVED",
+              approvedById: context.userId,
+              approvedAt: new Date(),
+              timeInSourceCode: actualTimeIn ? DtrSource.MANUAL : null,
+              timeOutSourceCode: actualTimeOut ? DtrSource.MANUAL : null,
+            },
+            select: {
+              id: true,
+              actualTimeIn: true,
+              actualTimeOut: true,
+              attendanceStatus: true,
+              remarks: true,
+              hoursWorked: true,
+              tardinessMins: true,
+              undertimeMins: true,
+              overtimeHours: true,
+              nightDiffHours: true,
+              approvalStatusCode: true,
+            },
+          })
+
+      const sameManualLeaveState =
+        Boolean(selectedLeaveType?.isPaid) &&
+        Boolean(existingManualLeaveState) &&
+        Boolean(desiredLeaveTypeId) &&
+        existingManualLeaveState?.leaveTypeId === desiredLeaveTypeId &&
+        existingManualLeaveState?.year === effectiveAttendanceYear &&
+        Math.abs((existingManualLeaveState?.numberOfDays ?? 0) - expectedLeaveDays) < 0.001
+
+      if (existingManualLeaveState && !sameManualLeaveState) {
+        await reverseManualDtrLeaveUsage({
+          tx,
+          state: existingManualLeaveState,
+          dtrId: updatedRecord.id,
+          processedById: context.userId,
+        })
+      }
+
+      const nextManualLeaveState = desiredLeaveTypeId && selectedLeaveType?.isPaid
+        ? sameManualLeaveState && existingManualLeaveState
+          ? { leaveTypeId: existingManualLeaveState.leaveTypeId, numberOfDays: existingManualLeaveState.numberOfDays }
+          : await applyManualDtrLeaveUsage({
+              tx,
+              employeeId: payload.employeeId,
+              leaveTypeId: desiredLeaveTypeId,
+              year: effectiveAttendanceYear,
+              numberOfDays: expectedLeaveDays,
+              dtrId: updatedRecord.id,
+              processedById: context.userId,
+            })
+        : null
+
+      return {
+        updatedRecord,
+        existingManualLeaveState,
+        nextManualLeaveState,
+      }
+    })
+
+    updated = transactionResult.updatedRecord
+    previousManualLeaveState = transactionResult.existingManualLeaveState
+    finalManualLeaveState = transactionResult.nextManualLeaveState
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { ok: false, error: `Failed to update DTR record: ${message}` }
+  }
 
   const changes = [
     { fieldName: "actualTimeIn", oldValue: record?.actualTimeIn ?? null, newValue: updated.actualTimeIn },
@@ -347,6 +672,16 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
       oldValue: record?.approvalStatusCode ?? null,
       newValue: updated.approvalStatusCode,
     },
+    {
+      fieldName: "manualLeaveTypeId",
+      oldValue: previousManualLeaveState?.leaveTypeId ?? null,
+      newValue: finalManualLeaveState?.leaveTypeId ?? null,
+    },
+    {
+      fieldName: "manualLeaveDays",
+      oldValue: previousManualLeaveState?.numberOfDays ?? 0,
+      newValue: finalManualLeaveState?.numberOfDays ?? 0,
+    },
   ].filter((change) => JSON.stringify(change.oldValue) !== JSON.stringify(change.newValue))
 
   await createAuditLog({
@@ -361,6 +696,9 @@ export async function updateDtrRecordAction(input: UpdateDtrRecordInput): Promis
   revalidatePath(`/${context.companyId}/attendance/dtr`)
   revalidatePath(`/${context.companyId}/attendance/sync-biometrics`)
   revalidatePath(`/${context.companyId}/dashboard`)
+  revalidatePath(`/${context.companyId}/leave/balances`)
+  revalidatePath(`/${context.companyId}/employee-portal`)
+  revalidatePath(`/${context.companyId}/employee-portal/leaves`)
 
   return {
     ok: true,

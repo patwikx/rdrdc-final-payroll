@@ -38,6 +38,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { exportDtrCsvAction } from "@/modules/attendance/dtr/actions/export-dtr-csv-action"
 import { updateDtrRecordAction } from "@/modules/attendance/dtr/actions/update-dtr-record-action"
+import { stripDtrInternalTokens } from "@/modules/attendance/dtr/utils/wall-clock"
 import type { DtrLogRow } from "@/modules/attendance/dtr/utils/get-dtr-logs-view-model"
 
 type DailyTimeRecordPageProps = {
@@ -129,7 +130,7 @@ export function DailyTimeRecordPage({
     setEditStatus(row.attendanceStatus)
     setEditTimeIn(row.timeInValue)
     setEditTimeOut(row.timeOutValue)
-    setEditRemarks(row.remarks)
+    setEditRemarks(stripDtrInternalTokens(row.remarks))
   }
 
   const handleExportCsv = () => {

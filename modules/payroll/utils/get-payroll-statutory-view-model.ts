@@ -1,6 +1,6 @@
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
-import { PayrollRunType, TaxTableType } from "@prisma/client"
+import { PayrollRunType, TaxTableType, type ContributionType } from "@prisma/client"
 
 const toNumber = (value: { toString(): string } | null | undefined): number => {
   if (!value) return 0
@@ -21,6 +21,16 @@ const toDateLabel = (value: Date): string => {
     year: "numeric",
     timeZone: "Asia/Manila",
   }).format(value)
+}
+
+const getAdditionalPagIbigRecurringEmployeeShare = (payslip: StatutorySourcePayslip): number => {
+  return payslip.deductions.reduce((sum, deduction) => {
+    if (deduction.referenceType !== "RECURRING" || deduction.deductionType.reportingContributionType !== "PAGIBIG") {
+      return sum
+    }
+
+    return sum + toNumber(deduction.amount)
+  }, 0)
 }
 
 type StatutoryMonthlyRow = {
@@ -139,6 +149,13 @@ type StatutorySourcePayslip = {
       cutoffEndDate: Date
     }
   }
+  deductions: Array<{
+    referenceType: string | null
+    amount: { toString(): string } | null
+    deductionType: {
+      reportingContributionType: ContributionType | null
+    }
+  }>
 }
 
 type AnnualTaxRow = {
@@ -240,6 +257,8 @@ const buildMonthlyRows = (payslips: StatutorySourcePayslip[]): StatutoryMonthlyR
       payslip.employee.governmentIds.find((item) => item.idTypeId === "SSS")?.idNumberMasked ?? null
     const tinGovId =
       payslip.employee.governmentIds.find((item) => item.idTypeId === "TIN")?.idNumberMasked ?? null
+    const additionalPagIbigRecurring = getAdditionalPagIbigRecurringEmployeeShare(payslip)
+    const totalPagIbigEmployee = toNumber(payslip.pagIbigEmployee) + additionalPagIbigRecurring
 
     return {
       payslipId: payslip.id,
@@ -260,7 +279,7 @@ const buildMonthlyRows = (payslips: StatutorySourcePayslip[]): StatutoryMonthlyR
       sssEmployer: toPhp(toNumber(payslip.sssEmployer)),
       philHealthEmployee: toPhp(toNumber(payslip.philHealthEmployee)),
       philHealthEmployer: toPhp(toNumber(payslip.philHealthEmployer)),
-      pagIbigEmployee: toPhp(toNumber(payslip.pagIbigEmployee)),
+      pagIbigEmployee: toPhp(totalPagIbigEmployee),
       pagIbigEmployer: toPhp(toNumber(payslip.pagIbigEmployer)),
       withholdingTax: toPhp(toNumber(payslip.withholdingTax)),
     }
@@ -460,7 +479,14 @@ const buildPayrollRegisterRuns = (
 
   return Array.from(runMap.values())
     .sort((a, b) => b.createdAtMs - a.createdAtMs)
-    .map(({ createdAtMs: _createdAtMs, ...row }) => row)
+    .map((row) => ({
+      runId: row.runId,
+      runNumber: row.runNumber,
+      runTypeCode: row.runTypeCode,
+      isTrialRun: row.isTrialRun,
+      periodLabel: row.periodLabel,
+      createdAtIso: row.createdAtIso,
+    }))
 }
 
 export async function getPayrollStatutoryViewModel(companyId: string): Promise<PayrollStatutoryViewModel> {
@@ -483,6 +509,20 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
       },
     },
     include: {
+      deductions: {
+        where: {
+          referenceType: "RECURRING",
+        },
+        select: {
+          referenceType: true,
+          amount: true,
+          deductionType: {
+            select: {
+              reportingContributionType: true,
+            },
+          },
+        },
+      },
       employee: {
         select: {
           id: true,
@@ -563,11 +603,13 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
 
   const totalsRaw = regularPayslips.reduce(
     (acc, payslip) => {
+      const additionalPagIbigRecurring = getAdditionalPagIbigRecurringEmployeeShare(payslip)
+
       acc.sssEmployee += toNumber(payslip.sssEmployee)
       acc.sssEmployer += toNumber(payslip.sssEmployer)
       acc.philHealthEmployee += toNumber(payslip.philHealthEmployee)
       acc.philHealthEmployer += toNumber(payslip.philHealthEmployer)
-      acc.pagIbigEmployee += toNumber(payslip.pagIbigEmployee)
+      acc.pagIbigEmployee += toNumber(payslip.pagIbigEmployee) + additionalPagIbigRecurring
       acc.pagIbigEmployer += toNumber(payslip.pagIbigEmployer)
       acc.withholdingTax += toNumber(payslip.withholdingTax)
       return acc

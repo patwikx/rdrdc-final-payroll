@@ -9,6 +9,7 @@ import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
 import {
   createCompanySetupInputSchema,
   type CreateCompanySetupInput,
@@ -460,6 +461,7 @@ const seedCompanyDefaults = async (
         isMandatory: true,
         isPreTax: deductionType.isPreTax,
         payPeriodApplicability: deductionType.payPeriodApplicability,
+        reportingContributionType: inferReportingContributionType(deductionType.code, deductionType.name),
         isActive: true,
         updatedById: params.userId,
       },
@@ -470,6 +472,7 @@ const seedCompanyDefaults = async (
         isMandatory: true,
         isPreTax: deductionType.isPreTax,
         payPeriodApplicability: deductionType.payPeriodApplicability,
+        reportingContributionType: inferReportingContributionType(deductionType.code, deductionType.name),
         isActive: true,
         createdById: params.userId,
         updatedById: params.userId,

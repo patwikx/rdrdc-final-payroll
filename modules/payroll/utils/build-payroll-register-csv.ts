@@ -63,6 +63,7 @@ export type PayslipRegisterRow = {
   periodStart: Date
   periodEnd: Date
   basicPay: number
+  grossPay: number
   sss: number
   philHealth: number
   pagIbig: number
@@ -79,6 +80,7 @@ export type PayslipRegisterRow = {
 
 export type PayrollRegisterTotals = {
   basicPay: number
+  grossPay: number
   sss: number
   philHealth: number
   pagIbig: number
@@ -113,6 +115,7 @@ type RegisterInputRow = {
   periodStart: Date
   periodEnd: Date
   basicPay: DecimalLike
+  grossPay: DecimalLike
   sss: DecimalLike
   philHealth: DecimalLike
   pagIbig: DecimalLike
@@ -198,6 +201,7 @@ const toDynamicColumnHeader = (sign: "+" | "-", column: PayrollRegisterDynamicCo
 
 const createEmptyTotals = (columns: PayrollRegisterDynamicColumn[]): PayrollRegisterTotals => ({
   basicPay: 0,
+  grossPay: 0,
   sss: 0,
   philHealth: 0,
   pagIbig: 0,
@@ -217,6 +221,7 @@ const accumulateRows = (rows: PayslipRegisterRow[], columns: PayrollRegisterDyna
 
   for (const row of rows) {
     totals.basicPay += row.basicPay
+    totals.grossPay += row.grossPay
     totals.sss += row.sss
     totals.philHealth += row.philHealth
     totals.pagIbig += row.pagIbig
@@ -235,6 +240,7 @@ const accumulateRows = (rows: PayslipRegisterRow[], columns: PayrollRegisterDyna
   }
 
   totals.basicPay = roundCurrency(totals.basicPay)
+  totals.grossPay = roundCurrency(totals.grossPay)
   totals.sss = roundCurrency(totals.sss)
   totals.philHealth = roundCurrency(totals.philHealth)
   totals.pagIbig = roundCurrency(totals.pagIbig)
@@ -324,6 +330,7 @@ const buildRowsAndColumns = (rows: RegisterInputRow[]): { columns: PayrollRegist
       periodStart: row.periodStart,
       periodEnd: row.periodEnd,
       basicPay: roundCurrency(toNumber(row.basicPay)),
+      grossPay: roundCurrency(toNumber(row.grossPay)),
       sss: roundCurrency(toNumber(row.sss)),
       philHealth: roundCurrency(toNumber(row.philHealth)),
       pagIbig: roundCurrency(toNumber(row.pagIbig)),
@@ -421,6 +428,7 @@ export const buildPayrollRegisterCsv = (input: RegisterInput): string => {
     "+ EARN TOTAL",
     ...deductionColumns.map((column) => toDynamicColumnHeader("-", column)),
     "- DED TOTAL",
+    "GROSS",
     "NET",
   ]
 
@@ -448,6 +456,7 @@ export const buildPayrollRegisterCsv = (input: RegisterInput): string => {
           toCurrencyText(row.dynamicEarningsTotal),
           ...deductionColumns.map((column) => toCurrencyText(row.dynamicAmountsByKey[column.key] ?? 0)),
           toCurrencyText(row.dynamicDeductionsTotal),
+          toCurrencyText(row.grossPay),
           toCurrencyText(row.netPay),
         ]
           .map(csvEscape)
@@ -473,6 +482,7 @@ export const buildPayrollRegisterCsv = (input: RegisterInput): string => {
         toCurrencyText(group.subtotal.dynamicEarningsTotal),
         ...deductionColumns.map((column) => toCurrencyText(group.subtotal.dynamicAmountsByKey[column.key] ?? 0)),
         toCurrencyText(group.subtotal.dynamicDeductionsTotal),
+        toCurrencyText(group.subtotal.grossPay),
         toCurrencyText(group.subtotal.netPay),
       ]
         .map(csvEscape)
@@ -498,6 +508,7 @@ export const buildPayrollRegisterCsv = (input: RegisterInput): string => {
       toCurrencyText(reportData.grandTotal.dynamicEarningsTotal),
       ...deductionColumns.map((column) => toCurrencyText(reportData.grandTotal.dynamicAmountsByKey[column.key] ?? 0)),
       toCurrencyText(reportData.grandTotal.dynamicDeductionsTotal),
+      toCurrencyText(reportData.grandTotal.grossPay),
       toCurrencyText(reportData.grandTotal.netPay),
     ]
       .map(csvEscape)

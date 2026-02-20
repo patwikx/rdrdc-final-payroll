@@ -66,6 +66,7 @@ export const createDeductionTypeInputSchema = z.object({
   description: z.string().max(180).optional(),
   isPreTax: z.boolean().default(true),
   payPeriodApplicability: z.enum(["EVERY_PAYROLL", "FIRST_HALF", "SECOND_HALF"]).default("EVERY_PAYROLL"),
+  reportingContributionType: z.enum(["SSS", "PHILHEALTH", "PAGIBIG", "TAX"]).optional(),
 })
 
 export type CreateDeductionTypeInput = z.infer<typeof createDeductionTypeInputSchema>

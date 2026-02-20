@@ -138,6 +138,7 @@ const REPORT_OPTIONS: Array<{ key: ReportKey; label: string; frequency: string }
   { key: "dole13th", label: "DOLE 13th Month Pay Report", frequency: "Annual" },
   { key: "bir-alphalist", label: "BIR Alphalist", frequency: "Annual" },
 ]
+const REGISTER_TABLE_PAGE_SIZE = 10
 
 const reportIconByKey: Record<ReportKey, ComponentType<{ className?: string }>> = {
   sss: IconShieldCheck,
@@ -240,6 +241,7 @@ export function PayrollStatutoryPageClient({
   const [expandedBirTraceKey, setExpandedBirTraceKey] = useState<string | null>(null)
   const [showTrialRuns, setShowTrialRuns] = useState(false)
   const [selectedRegisterRunId, setSelectedRegisterRunId] = useState("")
+  const [registerTablePage, setRegisterTablePage] = useState(1)
 
   const sourceRows = showTrialRuns ? trialRows : rows
   const sourceBirRows = showTrialRuns ? trialBirRows : birRows
@@ -302,6 +304,22 @@ export function PayrollStatutoryPageClient({
       showTrialRuns ? run.isTrialRun : !run.isTrialRun
     )
   }, [payrollRegisterRuns, showTrialRuns])
+  const registerTableTotalPages = Math.max(
+    1,
+    Math.ceil(filteredRegisterRuns.length / REGISTER_TABLE_PAGE_SIZE)
+  )
+  const resolvedRegisterTablePage = Math.min(registerTablePage, registerTableTotalPages)
+  const pagedRegisterRuns = useMemo(() => {
+    const start = (resolvedRegisterTablePage - 1) * REGISTER_TABLE_PAGE_SIZE
+    return filteredRegisterRuns.slice(start, start + REGISTER_TABLE_PAGE_SIZE)
+  }, [filteredRegisterRuns, resolvedRegisterTablePage])
+  const registerTableStart = filteredRegisterRuns.length === 0
+    ? 0
+    : (resolvedRegisterTablePage - 1) * REGISTER_TABLE_PAGE_SIZE + 1
+  const registerTableEnd = Math.min(
+    filteredRegisterRuns.length,
+    resolvedRegisterTablePage * REGISTER_TABLE_PAGE_SIZE
+  )
   const resolvedRegisterRunId = filteredRegisterRuns.some((row) => row.runId === selectedRegisterRunId)
     ? selectedRegisterRunId
     : (filteredRegisterRuns[0]?.runId ?? "")
@@ -865,7 +883,13 @@ export function PayrollStatutoryPageClient({
                 <p className="text-xs font-medium">Show Trial Runs</p>
                 <p className="text-[11px] text-muted-foreground">Latest trial run per pay period</p>
               </div>
-              <Switch checked={showTrialRuns} onCheckedChange={setShowTrialRuns} />
+              <Switch
+                checked={showTrialRuns}
+                onCheckedChange={(checked) => {
+                  setShowTrialRuns(checked)
+                  setRegisterTablePage(1)
+                }}
+              />
             </div>
           </div>
 
@@ -1137,7 +1161,7 @@ export function PayrollStatutoryPageClient({
                             </td>
                           </tr>
                         ) : (
-                          filteredRegisterRuns.map((run) => (
+                          pagedRegisterRuns.map((run) => (
                             <tr key={run.runId} className="border-t border-border/50">
                               <td className="px-3 py-2">{run.runNumber}</td>
                               <td className="px-3 py-2">
@@ -1172,6 +1196,40 @@ export function PayrollStatutoryPageClient({
                       </tbody>
                     </table>
                   </div>
+                  {filteredRegisterRuns.length > 0 ? (
+                    <div className="mt-2 flex items-center justify-between border border-border/60 px-3 py-2">
+                      <p className="text-xs text-muted-foreground">
+                        Showing {registerTableStart}-{registerTableEnd} of {filteredRegisterRuns.length} runs
+                        (Page {resolvedRegisterTablePage} of {registerTableTotalPages})
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            setRegisterTablePage((prev) => Math.max(1, Math.min(prev - 1, registerTableTotalPages)))
+                          }
+                          disabled={resolvedRegisterTablePage <= 1}
+                        >
+                          Prev
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            setRegisterTablePage((prev) => Math.max(1, Math.min(prev + 1, registerTableTotalPages)))
+                          }
+                          disabled={resolvedRegisterTablePage >= registerTableTotalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}

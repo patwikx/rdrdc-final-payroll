@@ -11,8 +11,14 @@ import {
   releaseReservedLeaveBalanceForRequest,
 } from "@/modules/leave/utils/leave-balance-ledger"
 import type { LeaveActionDataResult, LeaveActionResult } from "@/modules/leave/types/leave-action-result"
-import type { EmployeePortalLeaveApprovalHistoryPage } from "@/modules/leave/types/employee-portal-leave-types"
-import { getEmployeePortalLeaveApprovalHistoryPageReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
+import type {
+  EmployeePortalLeaveApprovalHistoryPage,
+  EmployeePortalLeaveApprovalQueuePage,
+} from "@/modules/leave/types/employee-portal-leave-types"
+import {
+  getEmployeePortalLeaveApprovalHistoryPageReadModel,
+  getEmployeePortalLeaveApprovalQueuePageReadModel,
+} from "@/modules/leave/utils/employee-portal-leave-read-models"
 
 const pagingSchema = z.object({
   companyId: z.string().uuid(),
@@ -35,6 +41,15 @@ const historyPageSchema = z.object({
   departmentId: z.string().uuid().optional(),
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
+})
+
+const queuePageSchema = z.object({
+  companyId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  search: z.string().trim().max(120).default(""),
+  status: z.enum(["ALL", "PENDING", "SUPERVISOR_APPROVED"]).default("ALL"),
+  departmentId: z.string().uuid().optional(),
 })
 
 const hasHrPrivileges = (role: CompanyRole): boolean => {
@@ -200,6 +215,38 @@ export async function getLeaveApprovalHistoryPageAction(
   return {
     ok: true,
     data: historyPage,
+  }
+}
+
+export async function getLeaveApprovalQueuePageAction(
+  input: z.input<typeof queuePageSchema>
+): Promise<LeaveActionDataResult<EmployeePortalLeaveApprovalQueuePage>> {
+  const parsed = queuePageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: "Invalid approval queue payload." }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const isHR = hasHrPrivileges(context.companyRole as CompanyRole)
+  const actor = await findActorEmployee(context.userId, context.companyId)
+
+  if (!isHR && !actor) {
+    return { ok: false, error: "Employee profile not found." }
+  }
+
+  const queuePage = await getEmployeePortalLeaveApprovalQueuePageReadModel({
+    companyId: context.companyId,
+    isHR,
+    approverEmployeeId: actor?.id,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    search: payload.search,
+    status: payload.status,
+    departmentId: payload.departmentId,
+  })
+
+  return {
+    ok: true,
+    data: queuePage,
   }
 }
 

@@ -21,14 +21,18 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   IconBell,
   IconLayoutDashboard,
   IconLogout,
+  IconMoon,
   IconRosetteDiscountCheck,
   IconSelector,
+  IconSun,
   IconUser,
 } from "@tabler/icons-react"
+import { useTheme } from "next-themes"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { useTransition } from "react"
@@ -45,6 +49,8 @@ export function NavUser({
   inSidebar = true,
   workspaceItems = [],
   accountHref,
+  compactOnMobile = false,
+  squareAvatar = false,
 }: {
   user: {
     name: string
@@ -54,10 +60,14 @@ export function NavUser({
   inSidebar?: boolean
   workspaceItems?: WorkspaceMenuItem[]
   accountHref?: string
+  compactOnMobile?: boolean
+  squareAvatar?: boolean
 }) {
   useSidebar()
   const router = useRouter()
+  const { resolvedTheme, setTheme } = useTheme()
   const [isLoggingOut, startLogoutTransition] = useTransition()
+  const isDarkMode = resolvedTheme === "dark"
 
   const handleLogout = () => {
     startLogoutTransition(async () => {
@@ -74,15 +84,24 @@ export function NavUser({
 
   const triggerContent = (
     <>
-      <Avatar className="h-8 w-8 rounded-lg">
-        <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
-        <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+      <Avatar className={cn("h-8 w-8 rounded-lg", squareAvatar && "rounded-md after:rounded-md")}>
+        <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(squareAvatar && "!rounded-md")} />
+        <AvatarFallback className={cn("rounded-lg", squareAvatar && "rounded-md")}>{initials}</AvatarFallback>
       </Avatar>
-      <div className={inSidebar ? "grid flex-1 text-left text-sm leading-tight" : "grid w-[170px] text-left text-sm leading-tight"}>
-        <span className="truncate font-medium">{user.name}</span>
-        <span className="truncate text-xs">{user.email}</span>
+      <div
+        className={
+          inSidebar
+            ? "grid flex-1 text-left text-sm leading-tight"
+            : cn(
+                "grid w-[170px] text-left text-sm leading-tight",
+                compactOnMobile && "hidden sm:grid"
+              )
+        }
+      >
+        <span className="truncate font-medium text-foreground">{user.name}</span>
+        <span className="truncate text-xs text-muted-foreground">{user.email}</span>
       </div>
-      <IconSelector className="ml-auto size-4" />
+      <IconSelector className={cn("ml-auto size-4", compactOnMobile && "hidden sm:block")} />
     </>
   )
 
@@ -95,13 +114,13 @@ export function NavUser({
     >
       <DropdownMenuLabel className="p-0 font-normal">
         <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-          <Avatar className="h-8 w-8 rounded-lg">
-            <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
-            <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+          <Avatar className={cn("h-8 w-8 rounded-lg", squareAvatar && "rounded-md after:rounded-md")}>
+            <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(squareAvatar && "!rounded-md")} />
+            <AvatarFallback className={cn("rounded-lg", squareAvatar && "rounded-md")}>{initials}</AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-medium">{user.name}</span>
-            <span className="truncate text-xs">{user.email}</span>
+            <span className="truncate font-medium text-foreground">{user.name}</span>
+            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
           </div>
         </div>
       </DropdownMenuLabel>
@@ -120,6 +139,14 @@ export function NavUser({
         <DropdownMenuItem>
           <IconBell />
           Notifications
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => {
+            setTheme(isDarkMode ? "light" : "dark")
+          }}
+        >
+          {isDarkMode ? <IconSun /> : <IconMoon />}
+          {isDarkMode ? "Light mode" : "Dark mode"}
         </DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
@@ -158,7 +185,7 @@ export function NavUser({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="h-10 w-auto min-w-0 px-2">
+          <Button variant="ghost" className={cn("h-10 w-auto min-w-0 px-2", compactOnMobile && "px-1.5 sm:px-2")}>
             {triggerContent}
           </Button>
         </DropdownMenuTrigger>

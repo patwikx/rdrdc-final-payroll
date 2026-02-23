@@ -1,25 +1,33 @@
 "use client"
 
 import Link from "next/link"
-import { signOut } from "next-auth/react"
 import { IconLayoutDashboard } from "@tabler/icons-react"
 
+import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
 type EmployeePortalHeaderProps = {
-  companyName: string
   dashboardHref?: string | null
+  accountHref: string
+  user: {
+    name: string
+    email: string
+    avatar?: string | null
+  }
 }
 
-export function EmployeePortalHeader({ companyName, dashboardHref = null }: EmployeePortalHeaderProps) {
+export function EmployeePortalHeader({
+  dashboardHref = null,
+  accountHref,
+  user,
+}: EmployeePortalHeaderProps) {
   return (
     <header className="flex min-h-14 items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-2 sm:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
         <SidebarTrigger />
-        <div className="min-w-0 max-w-[150px] sm:max-w-none">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Employee Self-Service Portal</p>
-          <p className="truncate text-sm font-semibold text-foreground">{companyName}</p>
         </div>
       </div>
 
@@ -46,13 +54,7 @@ export function EmployeePortalHeader({ companyName, dashboardHref = null }: Empl
             </Link>
           </Button>
         ) : null}
-        <Button
-          variant="ghost"
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-        >
-          Logout
-        </Button>
+        <NavUser user={user} accountHref={accountHref} inSidebar={false} compactOnMobile squareAvatar />
       </div>
     </header>
   )

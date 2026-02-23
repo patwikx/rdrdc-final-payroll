@@ -31,34 +31,16 @@ import type {
   EmployeePortalMaterialRequestApprovalDecisionDetail,
   EmployeePortalMaterialRequestApprovalHistoryDetail,
   EmployeePortalMaterialRequestApprovalHistoryPage,
+  EmployeePortalMaterialRequestApprovalQueuePage,
 } from "@/modules/material-requests/types/employee-portal-material-request-types"
-import { getEmployeePortalMaterialRequestApprovalHistoryPageReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
+import {
+  getEmployeePortalMaterialRequestApprovalHistoryPageReadModel,
+  getEmployeePortalMaterialRequestApprovalQueuePageReadModel,
+} from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import type {
   MaterialRequestActionDataResult,
   MaterialRequestActionResult,
 } from "@/modules/material-requests/types/material-request-action-result"
-
-type MaterialRequestApprovalQueueRow = {
-  id: string
-  requestNumber: string
-  requesterEmployeeId: string
-  requesterName: string
-  requesterEmployeeNumber: string
-  departmentName: string
-  currentStep: number
-  requiredSteps: number
-  datePrepared: Date
-  dateRequired: Date
-  grandTotal: number
-  submittedAt: Date | null
-}
-
-type MaterialRequestApprovalQueueData = {
-  rows: MaterialRequestApprovalQueueRow[]
-  total: number
-  page: number
-  pageSize: number
-}
 
 const createMaterialApprovalRevalidationPaths = (companyId: string): string[] => {
   return [
@@ -176,7 +158,7 @@ const resolveMaterialRequestPurchaserRecipients = async (
 
 export async function getMaterialRequestsForMyApprovalAction(
   input: GetMaterialRequestsForMyApprovalInput
-): Promise<MaterialRequestActionDataResult<MaterialRequestApprovalQueueData>> {
+): Promise<MaterialRequestActionDataResult<EmployeePortalMaterialRequestApprovalQueuePage>> {
   const parsed = getMaterialRequestsForMyApprovalInputSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid approval queue payload." }
@@ -184,73 +166,18 @@ export async function getMaterialRequestsForMyApprovalAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-
-  const actionableQueueWhere = {
+  const queuePage = await getEmployeePortalMaterialRequestApprovalQueuePageReadModel({
     companyId: context.companyId,
-    status: MaterialRequestStatus.PENDING_APPROVAL,
-    OR: [1, 2, 3, 4].map((stepNumber) => ({
-      currentStep: stepNumber,
-      steps: {
-        some: {
-          approverUserId: context.userId,
-          status: MaterialRequestStepStatus.PENDING,
-          stepNumber,
-        },
-      },
-    })),
-  }
-
-  const skip = (payload.page - 1) * payload.pageSize
-  const [total, queueRequests] = await db.$transaction([
-    db.materialRequest.count({
-      where: actionableQueueWhere,
-    }),
-    db.materialRequest.findMany({
-      where: actionableQueueWhere,
-      orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
-      skip,
-      take: payload.pageSize,
-      include: {
-        requesterEmployee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            employeeNumber: true,
-          },
-        },
-        department: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    }),
-  ])
-
-  const rows = queueRequests.map<MaterialRequestApprovalQueueRow>((request) => ({
-      id: request.id,
-      requestNumber: request.requestNumber,
-      requesterEmployeeId: request.requesterEmployee.id,
-      requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
-      requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
-      departmentName: request.department.name,
-      currentStep: request.currentStep ?? 1,
-      requiredSteps: request.requiredSteps,
-      datePrepared: request.datePrepared,
-      dateRequired: request.dateRequired,
-      grandTotal: Number(request.grandTotal),
-      submittedAt: request.submittedAt,
-    }))
+    approverUserId: context.userId,
+    page: payload.page,
+    pageSize: payload.pageSize,
+    search: payload.search,
+    departmentId: payload.departmentId,
+  })
 
   return {
     ok: true,
-    data: {
-      rows,
-      total,
-      page: payload.page,
-      pageSize: payload.pageSize,
-    },
+    data: queuePage,
   }
 }
 
@@ -417,40 +344,12 @@ export async function getMaterialRequestApprovalDecisionDetailsAction(
   }
 }
 
-export async function getMaterialRequestApprovalHistoryDetailsAction(
-  input: GetMaterialRequestApprovalHistoryDetailsInput
-): Promise<MaterialRequestActionDataResult<EmployeePortalMaterialRequestApprovalHistoryDetail>> {
-  const parsed = getMaterialRequestApprovalHistoryDetailsInputSchema.safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid history detail payload." }
-  }
-
-  const payload = parsed.data
-  const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
-  const canViewAnyHistory = isHrRole(companyRole)
-
+const getMaterialRequestApprovalDetailByWhere = async (params: {
+  companyId: string
+  where: Prisma.MaterialRequestWhereInput
+}): Promise<EmployeePortalMaterialRequestApprovalHistoryDetail | null> => {
   const request = await db.materialRequest.findFirst({
-    where: {
-      id: payload.requestId,
-      companyId: context.companyId,
-      ...(canViewAnyHistory
-        ? {
-            status: {
-              in: [MaterialRequestStatus.APPROVED, MaterialRequestStatus.REJECTED],
-            },
-          }
-        : {
-            steps: {
-              some: {
-                actedByUserId: context.userId,
-                actedAt: {
-                  not: null,
-                },
-              },
-            },
-          }),
-    },
+    where: params.where,
     select: {
       id: true,
       requestNumber: true,
@@ -464,6 +363,10 @@ export async function getMaterialRequestApprovalHistoryDetailsAction(
       rejectedAt: true,
       currentStep: true,
       requiredSteps: true,
+      chargeTo: true,
+      bldgCode: true,
+      deliverTo: true,
+      isStoreUse: true,
       subTotal: true,
       freight: true,
       discount: true,
@@ -506,6 +409,7 @@ export async function getMaterialRequestApprovalHistoryDetailsAction(
         },
         select: {
           id: true,
+          approverUserId: true,
           stepNumber: true,
           stepName: true,
           status: true,
@@ -529,59 +433,167 @@ export async function getMaterialRequestApprovalHistoryDetailsAction(
   })
 
   if (!request) {
+    return null
+  }
+
+  const approverUserIds = Array.from(new Set(request.steps.map((step) => step.approverUserId)))
+  const approverEmployees = approverUserIds.length
+    ? await db.employee.findMany({
+        where: {
+          companyId: params.companyId,
+          userId: {
+            in: approverUserIds,
+          },
+        },
+        select: {
+          userId: true,
+          employeeNumber: true,
+        },
+      })
+    : []
+  const approverEmployeeNumberByUserId = new Map(
+    approverEmployees.map((row) => [row.userId ?? "", row.employeeNumber])
+  )
+
+  return {
+    id: request.id,
+    requestNumber: request.requestNumber,
+    series: request.series,
+    requestType: request.requestType,
+    status: request.status,
+    requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
+    requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
+    departmentName: request.department.name,
+    datePreparedLabel: toPhDateInputValue(request.datePrepared),
+    dateRequiredLabel: toPhDateInputValue(request.dateRequired),
+    submittedAtLabel: formatDateTime(request.submittedAt),
+    approvedAtLabel: formatDateTime(request.approvedAt),
+    rejectedAtLabel: formatDateTime(request.rejectedAt),
+    currentStep: request.currentStep,
+    requiredSteps: request.requiredSteps,
+    chargeTo: request.chargeTo,
+    bldgCode: request.bldgCode,
+    deliverTo: request.deliverTo,
+    isStoreUse: request.isStoreUse,
+    subTotal: Number(request.subTotal),
+    freight: Number(request.freight),
+    discount: Number(request.discount),
+    grandTotal: Number(request.grandTotal),
+    purpose: request.purpose,
+    remarks: request.remarks,
+    finalDecisionRemarks: request.finalDecisionRemarks,
+    items: request.items.map((item) => ({
+      id: item.id,
+      lineNumber: item.lineNumber,
+      source: item.source,
+      itemCode: item.itemCode,
+      description: item.description,
+      uom: item.uom,
+      quantity: Number(item.quantity),
+      unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
+      lineTotal: item.lineTotal === null ? null : Number(item.lineTotal),
+      remarks: item.remarks,
+    })),
+    approvalSteps: request.steps.map((step) => ({
+      id: step.id,
+      stepNumber: step.stepNumber,
+      stepName: step.stepName,
+      status: step.status,
+      approverName: `${step.approverUser.firstName} ${step.approverUser.lastName}`,
+      approverEmployeeNumber: approverEmployeeNumberByUserId.get(step.approverUserId) ?? null,
+      actedByName: step.actedByUser
+        ? `${step.actedByUser.firstName} ${step.actedByUser.lastName}`
+        : null,
+      actedAtLabel: formatDateTime(step.actedAt),
+      remarks: step.remarks,
+    })),
+  }
+}
+
+export async function getMaterialRequestApprovalHistoryDetailsAction(
+  input: GetMaterialRequestApprovalHistoryDetailsInput
+): Promise<MaterialRequestActionDataResult<EmployeePortalMaterialRequestApprovalHistoryDetail>> {
+  const parsed = getMaterialRequestApprovalHistoryDetailsInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid history detail payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const companyRole = context.companyRole as CompanyRole
+  const canViewAnyHistory = isHrRole(companyRole)
+
+  const detail = await getMaterialRequestApprovalDetailByWhere({
+    companyId: context.companyId,
+    where: {
+      id: payload.requestId,
+      companyId: context.companyId,
+      ...(canViewAnyHistory
+        ? {
+            status: {
+              in: [MaterialRequestStatus.APPROVED, MaterialRequestStatus.REJECTED],
+            },
+          }
+        : {
+            steps: {
+              some: {
+                actedByUserId: context.userId,
+                actedAt: {
+                  not: null,
+                },
+              },
+            },
+          }),
+    },
+  })
+
+  if (!detail) {
     return { ok: false, error: "History detail not found or you are not allowed to view it." }
   }
 
   return {
     ok: true,
-    data: {
-      id: request.id,
-      requestNumber: request.requestNumber,
-      series: request.series,
-      requestType: request.requestType,
-      status: request.status,
-      requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
-      requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
-      departmentName: request.department.name,
-      datePreparedLabel: toPhDateInputValue(request.datePrepared),
-      dateRequiredLabel: toPhDateInputValue(request.dateRequired),
-      submittedAtLabel: formatDateTime(request.submittedAt),
-      approvedAtLabel: formatDateTime(request.approvedAt),
-      rejectedAtLabel: formatDateTime(request.rejectedAt),
-      currentStep: request.currentStep,
-      requiredSteps: request.requiredSteps,
-      subTotal: Number(request.subTotal),
-      freight: Number(request.freight),
-      discount: Number(request.discount),
-      grandTotal: Number(request.grandTotal),
-      purpose: request.purpose,
-      remarks: request.remarks,
-      finalDecisionRemarks: request.finalDecisionRemarks,
-      items: request.items.map((item) => ({
-        id: item.id,
-        lineNumber: item.lineNumber,
-        source: item.source,
-        itemCode: item.itemCode,
-        description: item.description,
-        uom: item.uom,
-        quantity: Number(item.quantity),
-        unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
-        lineTotal: item.lineTotal === null ? null : Number(item.lineTotal),
-        remarks: item.remarks,
-      })),
-      approvalSteps: request.steps.map((step) => ({
-        id: step.id,
-        stepNumber: step.stepNumber,
-        stepName: step.stepName,
-        status: step.status,
-        approverName: `${step.approverUser.firstName} ${step.approverUser.lastName}`,
-        actedByName: step.actedByUser
-          ? `${step.actedByUser.firstName} ${step.actedByUser.lastName}`
-          : null,
-        actedAtLabel: formatDateTime(step.actedAt),
-        remarks: step.remarks,
+    data: detail,
+  }
+}
+
+export async function getMaterialRequestApprovalQueueDetailsAction(
+  input: GetMaterialRequestApprovalHistoryDetailsInput
+): Promise<MaterialRequestActionDataResult<EmployeePortalMaterialRequestApprovalHistoryDetail>> {
+  const parsed = getMaterialRequestApprovalHistoryDetailsInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid queue detail payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+
+  const detail = await getMaterialRequestApprovalDetailByWhere({
+    companyId: context.companyId,
+    where: {
+      id: payload.requestId,
+      companyId: context.companyId,
+      status: MaterialRequestStatus.PENDING_APPROVAL,
+      OR: [1, 2, 3, 4].map((stepNumber) => ({
+        currentStep: stepNumber,
+        steps: {
+          some: {
+            approverUserId: context.userId,
+            status: MaterialRequestStepStatus.PENDING,
+            stepNumber,
+          },
+        },
       })),
     },
+  })
+
+  if (!detail) {
+    return { ok: false, error: "Queue detail not found or you are not allowed to view it." }
+  }
+
+  return {
+    ok: true,
+    data: detail,
   }
 }
 

@@ -260,9 +260,9 @@ export function MaterialRequestClient({
               ) : null}
             </div>
           ) : (
-            <div className="overflow-hidden border border-border/60 bg-card">
-              <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex-row sm:items-center">
-                <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
+              <div className="grid grid-cols-3 gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex sm:flex-wrap sm:items-center">
+                <div className="relative col-span-3 sm:w-[360px] sm:flex-none">
                   <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={logSearch}
@@ -275,29 +275,32 @@ export function MaterialRequestClient({
                     className="rounded-lg pl-8"
                   />
                 </div>
-                <Select
-                  value={logStatus}
-                  onValueChange={(value) => {
-                    setLogStatus(value)
-                    setCurrentPage(1)
-                    setExpandedRequestId(null)
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-[220px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Statuses</SelectItem>
-                    <SelectItem value="DRAFT">Draft</SelectItem>
-                    <SelectItem value="PENDING_APPROVAL">Pending Approval</SelectItem>
-                    <SelectItem value="APPROVED">Approved</SelectItem>
-                    <SelectItem value="REJECTED">Rejected</SelectItem>
-                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="col-span-2">
+                  <Select
+                    value={logStatus}
+                    onValueChange={(value) => {
+                      setLogStatus(value)
+                      setCurrentPage(1)
+                      setExpandedRequestId(null)
+                    }}
+                  >
+                    <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All statuses</SelectItem>
+                      <SelectItem value="DRAFT">Draft</SelectItem>
+                      <SelectItem value="PENDING_APPROVAL">Pending Approval</SelectItem>
+                      <SelectItem value="APPROVED">Approved</SelectItem>
+                      <SelectItem value="REJECTED">Rejected</SelectItem>
+                      <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
+                  className="col-span-1 w-full rounded-lg text-xs sm:w-auto sm:text-sm"
                   onClick={() => {
                     setLogSearch("")
                     setLogStatus("ALL")
@@ -305,8 +308,9 @@ export function MaterialRequestClient({
                     setExpandedRequestId(null)
                   }}
                 >
-                  <IconFilterOff className="mr-2 h-4 w-4" />
-                  Reset
+                  <IconFilterOff className="h-4 w-4" />
+                  <span className="sm:hidden">Clear</span>
+                  <span className="hidden sm:inline">Clear Filters</span>
                 </Button>
               </div>
 
@@ -317,7 +321,7 @@ export function MaterialRequestClient({
               ) : null}
 
               {filteredRequests.length > 0 ? (
-                <div className="space-y-2 p-3 lg:hidden">
+                <div className="space-y-2 lg:hidden">
                   {paginatedRows.map((request) => {
                     const isExpanded = expandedRequestId === request.id
                     const hasApprovalHistory = request.approvalSteps.some(
@@ -360,43 +364,41 @@ export function MaterialRequestClient({
                           className="w-full p-3 text-left"
                           onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[11px] text-muted-foreground">Request #</p>
-                              <p className="truncate text-sm font-medium text-foreground">{request.requestNumber}</p>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
+                              <p className="truncate text-sm font-semibold text-foreground">{request.requestNumber}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1">
-                              <Badge variant={statusVariant(request.status)} className="shrink-0 text-xs font-normal">
+                              <Badge variant={statusVariant(request.status)} className="shrink-0 rounded-full text-[10px] font-normal">
                                 {statusLabel(request.status)}
                               </Badge>
                               {canAcknowledgeReceipt ? (
-                                <Badge variant="destructive" className="shrink-0 text-[10px] font-normal">
+                                <Badge variant="destructive" className="shrink-0 rounded-full text-[10px] font-normal">
                                   Awaiting Acknowledgment
                                 </Badge>
                               ) : null}
                             </div>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Type</p>
-                              <p className="text-foreground">{request.series}/{request.requestType}</p>
+                          <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Type</p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">{request.series}/{request.requestType}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{request.items.length} item(s)</p>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{request.datePreparedLabel}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Items</p>
-                              <p className="text-foreground">{request.items.length}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{request.dateRequiredLabel}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Prepared</p>
-                              <p className="text-foreground">{request.datePreparedLabel}</p>
-                            </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Required</p>
-                              <p className="text-foreground">{request.dateRequiredLabel}</p>
-                            </div>
-                            <div className="col-span-2">
-                              <p className="text-[11px] text-muted-foreground">Amount</p>
-                              <p className="text-foreground">PHP {currency.format(request.grandTotal)}</p>
+                            <div className="col-span-2 rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">PHP {currency.format(request.grandTotal)}</p>
                             </div>
                           </div>
                         </button>

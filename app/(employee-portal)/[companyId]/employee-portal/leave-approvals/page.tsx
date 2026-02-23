@@ -56,10 +56,14 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
       isHR={isHR}
       departmentOptions={departmentOptions}
       rows={leaveApprovalData.rows}
+      initialQueueTotal={leaveApprovalData.queueTotal}
+      initialQueuePage={leaveApprovalData.queuePage}
+      initialQueuePageSize={leaveApprovalData.queuePageSize}
       historyRows={leaveApprovalData.historyRows}
       initialHistoryTotal={leaveApprovalData.historyTotal}
       initialHistoryPage={leaveApprovalData.historyPage}
       initialHistoryPageSize={leaveApprovalData.historyPageSize}
+      view="queue"
     />
   )
 }

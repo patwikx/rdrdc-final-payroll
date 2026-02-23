@@ -80,11 +80,44 @@ export type EmployeePortalLeaveApprovalHistoryRow = EmployeePortalLeaveApprovalR
   decidedAtLabel: string
 }
 
+export type EmployeePortalLeaveApprovalQueuePage = {
+  rows: EmployeePortalLeaveApprovalRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type EmployeePortalLeaveApprovalHistoryPage = {
   rows: EmployeePortalLeaveApprovalHistoryRow[]
   total: number
   page: number
   pageSize: number
+}
+
+export type EmployeePortalLeaveApprovalTrailStep = {
+  id: string
+  stageLabel: string
+  approverName: string | null
+  statusCode: "APPROVED" | "REJECTED" | "PENDING" | "NOT_REACHED"
+  actedAtLabel: string | null
+  remarks: string | null
+}
+
+export type EmployeePortalLeaveApprovalHistoryDetail = {
+  id: string
+  requestNumber: string
+  statusCode: string
+  leaveTypeName: string
+  startDateLabel: string
+  endDateLabel: string
+  numberOfDays: number
+  reason: string | null
+  employeeName: string
+  employeeNumber: string
+  employeePhotoUrl: string | null
+  departmentName: string
+  decidedAtLabel: string
+  approvalTrail: EmployeePortalLeaveApprovalTrailStep[]
 }
 
 export type EmployeePortalLeaveApprovalDepartmentOption = {

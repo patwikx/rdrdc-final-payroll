@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
+  IconExternalLink,
   IconFileCheck,
   IconFilterOff,
   IconSearch,
@@ -22,13 +24,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 import {
   approveMaterialRequestStepAction,
   getMaterialRequestApprovalDecisionDetailsAction,
   getMaterialRequestApprovalHistoryDetailsAction,
   getMaterialRequestApprovalHistoryPageAction,
+  getMaterialRequestsForMyApprovalAction,
   rejectMaterialRequestStepAction,
 } from "@/modules/material-requests/actions/material-request-approval-actions"
 import type {
@@ -44,10 +46,14 @@ type MaterialRequestApprovalClientProps = {
   isHR: boolean
   departmentOptions: EmployeePortalMaterialRequestDepartmentOption[]
   rows: EmployeePortalMaterialRequestApprovalQueueRow[]
+  initialQueueTotal: number
+  initialQueuePage: number
+  initialQueuePageSize: number
   historyRows: EmployeePortalMaterialRequestApprovalHistoryRow[]
   initialHistoryTotal: number
   initialHistoryPage: number
   initialHistoryPageSize: number
+  view?: "queue" | "history" | "both"
 }
 
 type HistoryStatusFilter = "ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED"
@@ -84,12 +90,18 @@ export function MaterialRequestApprovalClient({
   isHR,
   departmentOptions,
   rows,
+  initialQueueTotal,
+  initialQueuePage,
+  initialQueuePageSize,
   historyRows,
   initialHistoryTotal,
   initialHistoryPage,
   initialHistoryPageSize,
+  view = "both",
 }: MaterialRequestApprovalClientProps) {
   const router = useRouter()
+  const queueRequestTokenRef = useRef(0)
+  const queueSearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
   const historySearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
@@ -102,10 +114,14 @@ export function MaterialRequestApprovalClient({
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
   const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [isPending, startTransition] = useTransition()
+  const [isQueuePending, startQueueTransition] = useTransition()
   const [isDetailPending, startDetailTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
   const [isHistoryDetailPending, startHistoryDetailTransition] = useTransition()
-  const [queuePage, setQueuePage] = useState(1)
+  const [queuePage, setQueuePage] = useState(initialQueuePage)
+  const [queueRowsState, setQueueRowsState] = useState(rows)
+  const [queueTotal, setQueueTotal] = useState(initialQueueTotal)
+  const [queueLoadError, setQueueLoadError] = useState<string | null>(null)
   const [historyRowsState, setHistoryRowsState] = useState(historyRows)
   const [historyTotal, setHistoryTotal] = useState(initialHistoryTotal)
   const [historyPage, setHistoryPage] = useState(initialHistoryPage)
@@ -118,41 +134,13 @@ export function MaterialRequestApprovalClient({
   const [historyDetailErrorById, setHistoryDetailErrorById] = useState<Record<string, string>>({})
   const [historyDetailLoadingId, setHistoryDetailLoadingId] = useState<string | null>(null)
 
-  const ITEMS_PER_PAGE = 10
+  const queueItemsPerPage = initialQueuePageSize
   const historyItemsPerPage = Number(historyPageSize)
-  const DECISION_ITEMS_PAGE_SIZE = 12
-  const debouncedQueueSearch = useDebouncedValue(queueSearch, 180)
-
-  const selectedRequest = useMemo(() => rows.find((row) => row.id === selectedRequestId) ?? null, [rows, selectedRequestId])
-  const filteredQueueRows = useMemo(() => {
-    const query = debouncedQueueSearch.trim().toLowerCase()
-    if (!query && queueDepartmentId === "ALL") {
-      return rows
-    }
-
-    return rows.filter((row) => {
-      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
-        return false
-      }
-
-      const haystack = [
-        row.requestNumber,
-        row.requesterName,
-        row.requesterEmployeeNumber,
-        row.departmentName,
-        row.datePreparedLabel,
-        row.dateRequiredLabel,
-        row.submittedAtLabel ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [debouncedQueueSearch, queueDepartmentId, rows])
+  const DECISION_ITEMS_PAGE_SIZE = 8
+  const selectedRequest = useMemo(() => queueRowsState.find((row) => row.id === selectedRequestId) ?? null, [queueRowsState, selectedRequestId])
 
   const queueStats = useMemo(() => {
-    return rows.reduce(
+    const summary = queueRowsState.reduce(
       (accumulator, row) => {
         accumulator.requests += 1
         accumulator.totalAmount += row.grandTotal
@@ -165,11 +153,19 @@ export function MaterialRequestApprovalClient({
         requesters: new Set<string>(),
       }
     )
-  }, [rows])
+    return {
+      ...summary,
+      requests: queueTotal,
+    }
+  }, [queueRowsState, queueTotal])
 
+  const queueTotalPages = Math.max(1, Math.ceil(queueTotal / queueItemsPerPage))
+  const activeQueuePage = Math.min(queuePage, queueTotalPages)
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
   const hasQueueFilters = queueSearch.trim().length > 0 || queueDepartmentId !== "ALL"
+  const showQueueSection = view !== "history"
+  const showHistorySection = view !== "queue"
 
   const clearHistorySearchDebounceTimeout = () => {
     if (!historySearchDebounceTimeoutRef.current) {
@@ -180,13 +176,58 @@ export function MaterialRequestApprovalClient({
     historySearchDebounceTimeoutRef.current = null
   }
 
+  const clearQueueSearchDebounceTimeout = () => {
+    if (!queueSearchDebounceTimeoutRef.current) {
+      return
+    }
+
+    clearTimeout(queueSearchDebounceTimeoutRef.current)
+    queueSearchDebounceTimeoutRef.current = null
+  }
+
   useEffect(() => {
     return () => {
+      if (queueSearchDebounceTimeoutRef.current) {
+        clearTimeout(queueSearchDebounceTimeoutRef.current)
+      }
       if (historySearchDebounceTimeoutRef.current) {
         clearTimeout(historySearchDebounceTimeoutRef.current)
       }
     }
   }, [])
+
+  const loadQueuePage = (params: {
+    page: number
+    search: string
+    departmentId: string
+  }) => {
+    const token = queueRequestTokenRef.current + 1
+    queueRequestTokenRef.current = token
+    setQueueLoadError(null)
+
+    startQueueTransition(async () => {
+      const response = await getMaterialRequestsForMyApprovalAction({
+        companyId,
+        page: params.page,
+        pageSize: queueItemsPerPage,
+        search: params.search,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
+      })
+
+      if (queueRequestTokenRef.current !== token) {
+        return
+      }
+
+      if (!response.ok) {
+        setQueueLoadError(response.error)
+        return
+      }
+
+      setQueueRowsState(response.data.rows)
+      setQueueTotal(response.data.total)
+      setQueuePage(response.data.page)
+    })
+  }
 
   const loadHistoryPage = (params: {
     page: number
@@ -223,6 +264,18 @@ export function MaterialRequestApprovalClient({
       setHistoryPage(response.data.page)
       setHistoryPageSize(String(response.data.pageSize))
     })
+  }
+
+  const scheduleQueueSearch = (nextSearch: string) => {
+    setQueueSearch(nextSearch)
+    clearQueueSearchDebounceTimeout()
+    queueSearchDebounceTimeoutRef.current = setTimeout(() => {
+      loadQueuePage({
+        page: 1,
+        search: nextSearch,
+        departmentId: queueDepartmentId,
+      })
+    }, 250)
   }
 
   const loadDecisionDetail = (requestId: string, page: number) => {
@@ -377,69 +430,98 @@ export function MaterialRequestApprovalClient({
           )
         })()}
 
+        {showQueueSection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
-            <span className="text-xs text-muted-foreground">{filteredQueueRows.length} records</span>
+            <span className="text-xs text-muted-foreground">
+              {queueTotal} records{isQueuePending ? " • Loading..." : ""}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-[280px] sm:w-[360px]">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="relative col-span-3 sm:w-[360px]">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search request #, requester, department..."
                 value={queueSearch}
                 onChange={(event) => {
-                  setQueueSearch(event.target.value)
-                  setQueuePage(1)
+                  scheduleQueueSearch(event.target.value)
                 }}
                 className="rounded-lg pl-8"
               />
             </div>
-            <Select
-              value={queueDepartmentId}
-              onValueChange={(value) => {
-                setQueueDepartmentId(value)
-                setQueuePage(1)
-              }}
-            >
-              <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
-                <SelectValue placeholder="Department" />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg">
-                <SelectItem value="ALL">All departments</SelectItem>
-                {departmentOptions.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>
-                    {department.name}
-                    {!department.isActive ? " (Inactive)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="col-span-2">
+              <Select
+                value={queueDepartmentId}
+                onValueChange={(value) => {
+                  setQueueDepartmentId(value)
+                  clearQueueSearchDebounceTimeout()
+                  loadQueuePage({
+                    page: 1,
+                    search: queueSearch,
+                    departmentId: value,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All departments</SelectItem>
+                  {departmentOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                      {!department.isActive ? " (Inactive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               variant="outline"
-              className="rounded-lg"
+              className="col-span-1 w-full rounded-lg text-xs sm:w-auto sm:text-sm"
               onClick={() => {
                 setQueueSearch("")
                 setQueueDepartmentId("ALL")
-                setQueuePage(1)
+                clearQueueSearchDebounceTimeout()
+                loadQueuePage({
+                  page: 1,
+                  search: "",
+                  departmentId: "ALL",
+                })
               }}
               disabled={!hasQueueFilters}
             >
               <IconFilterOff className="h-4 w-4" />
+              <span className="sm:hidden">Clear</span>
+              <span className="hidden sm:inline">Clear Filters</span>
             </Button>
+            {view === "queue" ? (
+              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg sm:ml-auto sm:w-auto">
+                <Link href={`/${companyId}/employee-portal/approval-history`}>
+                  View Approval History
+                </Link>
+              </Button>
+            ) : null}
           </div>
 
-          {rows.length === 0 ? (
+          {queueLoadError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {queueLoadError}
+            </div>
+          ) : null}
+
+          {queueTotal === 0 && !hasQueueFilters ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
               No material requests pending your current approval step.
             </div>
-          ) : filteredQueueRows.length === 0 ? (
+          ) : queueRowsState.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
               No requests match the current filters.
             </div>
           ) : (
-            <div className="overflow-hidden border border-border/60 bg-card">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
@@ -451,16 +533,9 @@ export function MaterialRequestApprovalClient({
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
 
-              {(() => {
-                const totalPages = Math.max(1, Math.ceil(filteredQueueRows.length / ITEMS_PER_PAGE))
-                const safeQueuePage = Math.min(queuePage, totalPages)
-                const startIndex = (safeQueuePage - 1) * ITEMS_PER_PAGE
-                const paginatedRows = filteredQueueRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-
-                return (
-                  <>
-                    <div className="space-y-2 p-3 lg:hidden">
-                      {paginatedRows.map((row) => (
+              <>
+                <div className="space-y-2 lg:hidden">
+                  {queueRowsState.map((row) => (
                         <motion.div
                           key={`queue-mobile-${row.id}`}
                           layout
@@ -469,50 +544,55 @@ export function MaterialRequestApprovalClient({
                           transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
                           className="rounded-xl border border-border/60 bg-background p-3"
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[11px] text-muted-foreground">Request #</p>
-                              <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
+                              <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
                             </div>
-                            <Badge variant="secondary" className="shrink-0 text-xs">
+                            <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
                               Step {row.currentStep}/{row.requiredSteps}
                             </Badge>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Requester</p>
-                              <div className="mt-1 flex items-center gap-2">
-                                <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                                  <AvatarImage
-                                    src={row.requesterPhotoUrl ?? undefined}
-                                    alt={row.requesterName}
-                                    className="!rounded-md object-cover"
-                                  />
-                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                                    {getNameInitials(row.requesterName)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <p className="truncate text-foreground">{row.requesterName}</p>
+                          <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Requester</p>
+                            <div className="mt-1.5 flex items-center gap-2.5">
+                              <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage
+                                  src={row.requesterPhotoUrl ?? undefined}
+                                  alt={row.requesterName}
+                                  className="!rounded-md object-cover"
+                                />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.requesterName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">{row.requesterName}</p>
+                                <p className="truncate text-[11px] text-muted-foreground">
+                                  {row.requesterEmployeeNumber} • {row.departmentName}
+                                </p>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Department</p>
-                              <p className="text-foreground">{row.departmentName}</p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.datePreparedLabel}</p>
                             </div>
-                            <div className="col-span-2">
-                              <p className="text-[11px] text-muted-foreground">Date Range</p>
-                              <p className="text-foreground">{row.datePreparedLabel} to {row.dateRequiredLabel}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.dateRequiredLabel}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Amount</p>
-                              <p className="text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">PHP {currency.format(row.grandTotal)}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Submitted</p>
-                              <p className="text-foreground">{row.submittedAtLabel ?? "-"}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Submitted</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.submittedAtLabel ?? "-"}</p>
                             </div>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="mt-3 grid grid-cols-3 gap-2">
                             <Button
                               type="button"
                               variant="destructive"
@@ -534,13 +614,19 @@ export function MaterialRequestApprovalClient({
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
+                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg text-xs">
+                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                                <IconExternalLink className="mr-1 h-3.5 w-3.5" />
+                                View
+                              </Link>
+                            </Button>
                           </div>
                         </motion.div>
                       ))}
-                    </div>
+                </div>
 
-                    <div className="hidden lg:block">
-                      {paginatedRows.map((row) => (
+                <div className="hidden lg:block">
+                  {queueRowsState.map((row) => (
                         <motion.div
                           key={row.id}
                           layout
@@ -599,45 +685,63 @@ export function MaterialRequestApprovalClient({
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
+                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg">
+                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                                <IconExternalLink className="h-3.5 w-3.5" />
+                                <span className="sr-only">View Details</span>
+                              </Link>
+                            </Button>
                           </div>
                         </motion.div>
                       ))}
-                    </div>
+                </div>
 
-                    {totalPages > 1 ? (
-                      <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Page {safeQueuePage} of {totalPages} • {filteredQueueRows.length} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeQueuePage <= 1}
-                            onClick={() => setQueuePage(safeQueuePage - 1)}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeQueuePage >= totalPages}
-                            onClick={() => setQueuePage(safeQueuePage + 1)}
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                )
-              })()}
+                {queueTotalPages > 1 ? (
+                  <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Page {activeQueuePage} of {queueTotalPages} • {queueTotal} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeQueuePage <= 1 || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeQueuePage - 1,
+                            search: queueSearch,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeQueuePage >= queueTotalPages || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeQueuePage + 1,
+                            search: queueSearch,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             </div>
           )}
         </div>
+        ) : null}
 
+        {showHistorySection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval History</h2>
@@ -646,8 +750,8 @@ export function MaterialRequestApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="relative min-w-0">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+            <div className="relative col-span-3 sm:col-span-3">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search request #, requester, department..."
@@ -685,7 +789,7 @@ export function MaterialRequestApprovalClient({
                 }}
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="col-span-1 sm:col-span-1">
               <Select
                 value={historyStatus}
                 onValueChange={(value) => {
@@ -702,7 +806,7 @@ export function MaterialRequestApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="rounded-lg">
+                <SelectTrigger className="w-full rounded-lg">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -713,6 +817,8 @@ export function MaterialRequestApprovalClient({
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="col-span-1 sm:col-span-1">
               <Select
                 value={historyDepartmentId}
                 onValueChange={(value) => {
@@ -728,7 +834,7 @@ export function MaterialRequestApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                <SelectTrigger className="w-full rounded-lg">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -741,28 +847,30 @@ export function MaterialRequestApprovalClient({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                variant="outline"
-                className="rounded-lg"
-                onClick={() => {
-                  setHistorySearch("")
-                  setHistoryStatus("ALL")
-                  setHistoryDepartmentId("ALL")
-                  setExpandedHistoryRequestId(null)
-                  clearHistorySearchDebounceTimeout()
-                  loadHistoryPage({
-                    page: 1,
-                    pageSize: historyItemsPerPage,
-                    search: "",
-                    status: "ALL",
-                    departmentId: "ALL",
-                  })
-                }}
-                disabled={!hasHistoryFilters}
-              >
-                <IconFilterOff className="h-4 w-4" />
-              </Button>
             </div>
+            <Button
+              variant="outline"
+              className="col-span-1 w-full rounded-lg text-xs sm:text-sm"
+              onClick={() => {
+                setHistorySearch("")
+                setHistoryStatus("ALL")
+                setHistoryDepartmentId("ALL")
+                setExpandedHistoryRequestId(null)
+                clearHistorySearchDebounceTimeout()
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: "",
+                  status: "ALL",
+                  departmentId: "ALL",
+                })
+              }}
+              disabled={!hasHistoryFilters}
+            >
+              <IconFilterOff className="h-4 w-4" />
+              <span className="sm:hidden">Clear</span>
+              <span className="hidden sm:inline">Clear Filters</span>
+            </Button>
           </div>
 
           {historyLoadError ? (
@@ -1097,27 +1205,69 @@ export function MaterialRequestApprovalClient({
             </div>
           )}
         </div>
+        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] w-[96vw] max-w-[96vw] overflow-hidden rounded-2xl border-border/60 shadow-none sm:max-w-2xl lg:max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-none sm:max-w-2xl">
+          <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
             <DialogTitle className="text-base font-semibold">
               {decisionType === "approve" ? "Approve Material Request" : "Reject Material Request"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="break-words text-sm text-muted-foreground">
               {(decisionDetail ?? selectedRequest)
                 ? `${(decisionDetail ?? selectedRequest)?.requestNumber} • ${(decisionDetail ?? selectedRequest)?.requesterName} • Step ${(decisionDetail ?? selectedRequest)?.currentStep}/${(decisionDetail ?? selectedRequest)?.requiredSteps}`
                 : "Confirm your decision."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground">
-              <p>Amount: PHP {currency.format(decisionDetail?.grandTotal ?? selectedRequest?.grandTotal ?? 0)}</p>
-              <p className="text-xs text-muted-foreground">
-                Prepared {(decisionDetail ?? selectedRequest)?.datePreparedLabel ?? "-"} • Required {(decisionDetail ?? selectedRequest)?.dateRequiredLabel ?? "-"}
-              </p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                    <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                      <AvatarImage
+                        src={selectedRequest?.requesterPhotoUrl ?? undefined}
+                        alt={(decisionDetail ?? selectedRequest)?.requesterName ?? "Requester"}
+                        className="!rounded-md object-cover"
+                      />
+                      <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                        {getNameInitials((decisionDetail ?? selectedRequest)?.requesterName ?? "")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{(decisionDetail ?? selectedRequest)?.requesterName ?? "-"}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {(decisionDetail ?? selectedRequest)?.requesterEmployeeNumber ?? "-"} • {(decisionDetail ?? selectedRequest)?.departmentName ?? "-"}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                        Request {(decisionDetail ?? selectedRequest)?.requestNumber ?? "-"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
+                    Step {(decisionDetail ?? selectedRequest)?.currentStep ?? "-"}/{(decisionDetail ?? selectedRequest)?.requiredSteps ?? "-"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:grid-cols-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">
+                    PHP {currency.format(decisionDetail?.grandTotal ?? selectedRequest?.grandTotal ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.datePreparedLabel ?? "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.dateRequiredLabel ?? "-"}</p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1142,51 +1292,33 @@ export function MaterialRequestApprovalClient({
 
               {decisionDetail ? (
                 <div className="space-y-2">
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-2 lg:hidden">
+                  <div className="max-h-[28vh] overflow-y-auto rounded-lg border border-border/60 sm:max-h-56">
+                    <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <p>#</p>
+                      <p>Description</p>
+                      <p>UoM</p>
+                      <p>Qty</p>
+                      <p>Price</p>
+                    </div>
                     {decisionDetail.items.map((item) => (
-                      <div key={item.id} className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="font-medium text-foreground">Line {item.lineNumber}</p>
-                          <p className="text-muted-foreground">{item.uom}</p>
+                      <div key={item.id} className="border-b border-border/60 px-2 py-2 text-[11px] last:border-b-0">
+                        <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2">
+                          <p className="text-foreground">{item.lineNumber}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-foreground">{item.description}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">Code: {item.itemCode ?? "-"}</p>
+                          </div>
+                          <p className="truncate text-foreground">{item.uom}</p>
+                          <p className="truncate text-foreground">{item.quantity.toFixed(3)}</p>
+                          <p className="truncate text-foreground">PHP {currency.format(item.unitPrice ?? 0)}</p>
                         </div>
-                        <p className="text-foreground">{item.description}</p>
-                        <p className="text-muted-foreground">Code: {item.itemCode ?? "-"}</p>
-                        <p className="text-muted-foreground">Qty: {item.quantity.toFixed(3)}</p>
-                        <p className="text-muted-foreground">
-                          Unit: PHP {currency.format(item.unitPrice ?? 0)} • Total: PHP {currency.format(item.lineTotal ?? 0)}
-                        </p>
-                        <p className="text-muted-foreground">Remarks: {item.remarks ?? "-"}</p>
+                        {item.remarks?.trim() ? (
+                          <p className="mt-1 truncate pl-[42px] text-[10px] text-muted-foreground">
+                            Remarks: {item.remarks}
+                          </p>
+                        ) : null}
                       </div>
                     ))}
-                  </div>
-
-                  <div className="hidden overflow-hidden rounded-lg border border-border/60 lg:block">
-                    <div className="overflow-x-auto">
-                      <div className="min-w-[720px]">
-                        <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">#</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Code</p>
-                          <p className="col-span-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Description</p>
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">UOM</p>
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Qty</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line Total</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
-                        </div>
-                        <div className="max-h-56 overflow-y-auto">
-                          {decisionDetail.items.map((item) => (
-                            <div key={item.id} className="grid grid-cols-12 items-start gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                              <div className="col-span-1 text-foreground">{item.lineNumber}</div>
-                              <div className="col-span-2 text-muted-foreground">{item.itemCode ?? "-"}</div>
-                              <div className="col-span-3 text-foreground">{item.description}</div>
-                              <div className="col-span-1 text-foreground">{item.uom}</div>
-                              <div className="col-span-1 text-foreground">{item.quantity.toFixed(3)}</div>
-                              <div className="col-span-2 text-foreground">PHP {currency.format(item.lineTotal ?? 0)}</div>
-                              <div className="col-span-2 text-muted-foreground">{item.remarks ?? "-"}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {decisionDetail.totalItems > decisionDetail.pageSize ? (
@@ -1237,22 +1369,24 @@ export function MaterialRequestApprovalClient({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs text-foreground">Remarks</Label>
+              <Label className="text-xs text-foreground">
+                {decisionType === "approve" ? "Approval Remarks (Optional)" : "Rejection Reason"}
+              </Label>
               <Textarea
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
-                placeholder={decisionType === "approve" ? "Approval notes (optional)" : "Reason for rejection"}
-                className="min-h-[110px] resize-none rounded-lg text-sm"
+                placeholder={decisionType === "approve" ? "Add remarks..." : "Provide rejection reason..."}
+                className="min-h-[84px] rounded-lg text-sm"
               />
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-border/60 pt-3">
-              <Button type="button" variant="outline" className="rounded-lg" onClick={() => setOpen(false)}>
+            <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-3 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="rounded-lg sm:min-w-[96px]" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <Button
                 type="button"
-                className={cn("rounded-lg", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+                className={cn("rounded-lg sm:min-w-[96px]", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
                 onClick={submitDecision}
                 disabled={isPending || isDetailPending || Boolean(decisionDetailError)}
               >

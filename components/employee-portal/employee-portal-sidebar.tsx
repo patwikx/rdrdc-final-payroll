@@ -10,13 +10,10 @@ import {
   IconClockHour4,
   IconFileText,
   IconHome2,
-  IconLayoutRows,
   IconPackage,
   IconReceipt2,
   IconUser,
   IconUserCheck,
-  IconCommand,
-  IconWaveSine,
 } from "@tabler/icons-react"
 
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -42,6 +39,7 @@ type EmployeePortalCompany = {
   companyId: string
   companyCode: string
   companyName: string
+  logoUrl?: string | null
   role: string
 }
 
@@ -60,8 +58,6 @@ type EmployeePortalSidebarProps = {
     materialRequestPostingPending: number
   }
 }
-
-const companyLogos = [IconLayoutRows, IconWaveSine, IconCommand]
 
 const menuItems = [
   {
@@ -133,6 +129,12 @@ const approverMenuItems = [
     icon: IconChecklist,
     roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
   },
+  {
+    title: "Approval History",
+    href: "/employee-portal/approval-history",
+    icon: IconChecklist,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
 ] as const
 
 const processingMenuItems = [
@@ -176,16 +178,13 @@ export function EmployeePortalSidebar({
 
   const teams = useMemo(
     () =>
-      companies.map((company, index) => {
-        const CompanyLogo = companyLogos[index % companyLogos.length]
-        return {
-          id: company.companyId,
-          name: company.companyName,
-          code: company.companyCode,
-          logo: <CompanyLogo className="size-4" />,
-          plan: company.role,
-        }
-      }),
+      companies.map((company) => ({
+        id: company.companyId,
+        name: company.companyName,
+        code: company.companyCode,
+        logoUrl: company.logoUrl ?? null,
+        plan: company.role,
+      })),
     [companies]
   )
 
@@ -222,7 +221,10 @@ export function EmployeePortalSidebar({
 
   const renderItem = (item: { title: string; href: string; icon: (typeof menuItems)[number]["icon"] }) => {
     const href = `/${activeCompanyId}${item.href}`
-    const isActive = pathname === href
+    const isActive =
+      item.href === "/employee-portal"
+        ? pathname === href
+        : pathname === href || pathname.startsWith(`${href}/`)
     const taskCount = taskCountByHref[item.href] ?? 0
 
     return (

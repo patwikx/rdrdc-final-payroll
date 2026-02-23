@@ -20,6 +20,7 @@ export type EmployeePortalContext = {
   employee: {
     id: string
     employeeNumber: string
+    photoUrl: string | null
     firstName: string
     lastName: string
     hireDate: Date
@@ -65,6 +66,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     select: {
       id: true,
       employeeNumber: true,
+      photoUrl: true,
       firstName: true,
       lastName: true,
       hireDate: true,

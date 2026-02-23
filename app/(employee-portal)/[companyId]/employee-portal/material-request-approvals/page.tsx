@@ -46,10 +46,14 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
       isHR={isHR}
       departmentOptions={departmentOptions}
       rows={approvalData.rows}
+      initialQueueTotal={approvalData.queueTotal}
+      initialQueuePage={approvalData.queuePage}
+      initialQueuePageSize={approvalData.queuePageSize}
       historyRows={approvalData.historyRows}
       initialHistoryTotal={approvalData.historyTotal}
       initialHistoryPage={approvalData.historyPage}
       initialHistoryPageSize={approvalData.historyPageSize}
+      view="queue"
     />
   )
 }

@@ -13,6 +13,7 @@ import type {
   EmployeePortalMaterialRequestDepartmentFlowPreview,
   EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestApprovalReadModel,
+  EmployeePortalMaterialRequestApprovalQueuePage,
   EmployeePortalMaterialRequestApprovalHistoryPage,
   EmployeePortalMaterialRequestApprovalHistoryRow,
   EmployeePortalMaterialRequestApprovalQueueRow,
@@ -569,6 +570,143 @@ const toQueueRow = (request: {
   }
 }
 
+const buildMaterialRequestApprovalQueueWhere = (params: {
+  companyId: string
+  approverUserId: string
+  search: string
+  departmentId?: string
+}): Prisma.MaterialRequestWhereInput => {
+  const where: Prisma.MaterialRequestWhereInput = {
+    companyId: params.companyId,
+    status: MaterialRequestStatus.PENDING_APPROVAL,
+    OR: [1, 2, 3, 4].map((stepNumber) => ({
+      currentStep: stepNumber,
+      steps: {
+        some: {
+          approverUserId: params.approverUserId,
+          status: MaterialRequestStepStatus.PENDING,
+          stepNumber,
+        },
+      },
+    })),
+  }
+
+  const andFilters: Prisma.MaterialRequestWhereInput[] = []
+
+  if (params.departmentId) {
+    andFilters.push({
+      departmentId: params.departmentId,
+    })
+  }
+
+  const query = params.search.trim()
+  if (query.length > 0) {
+    andFilters.push({
+      OR: [
+        {
+          requestNumber: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          requesterEmployee: {
+            firstName: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          requesterEmployee: {
+            lastName: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          requesterEmployee: {
+            employeeNumber: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          department: {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+      ],
+    })
+  }
+
+  if (andFilters.length > 0) {
+    where.AND = andFilters
+  }
+
+  return where
+}
+
+export async function getEmployeePortalMaterialRequestApprovalQueuePageReadModel(params: {
+  companyId: string
+  approverUserId: string
+  page: number
+  pageSize: number
+  search: string
+  departmentId?: string
+}): Promise<EmployeePortalMaterialRequestApprovalQueuePage> {
+  const where = buildMaterialRequestApprovalQueueWhere(params)
+  const skip = (params.page - 1) * params.pageSize
+
+  const [total, queueRequests] = await db.$transaction([
+    db.materialRequest.count({
+      where,
+    }),
+    db.materialRequest.findMany({
+      where,
+      orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
+      skip,
+      take: params.pageSize,
+      select: {
+        id: true,
+        requestNumber: true,
+        departmentId: true,
+        datePrepared: true,
+        dateRequired: true,
+        currentStep: true,
+        requiredSteps: true,
+        grandTotal: true,
+        submittedAt: true,
+        requesterEmployee: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeNumber: true,
+            photoUrl: true,
+          },
+        },
+        department: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ])
+
+  return {
+    rows: queueRequests.map((request) => toQueueRow(request)),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+  }
+}
+
 type MaterialRequestApprovalHistoryStatusFilter = "ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED"
 
 const buildMaterialRequestApprovalHistoryWhere = (params: {
@@ -821,48 +959,13 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
   approverUserId: string
   isHR: boolean
 }): Promise<EmployeePortalMaterialRequestApprovalReadModel> {
-  const actionableQueueWhere: Prisma.MaterialRequestWhereInput = {
+  const queuePromise = getEmployeePortalMaterialRequestApprovalQueuePageReadModel({
     companyId: params.companyId,
-    status: MaterialRequestStatus.PENDING_APPROVAL,
-    OR: [1, 2, 3, 4].map((stepNumber) => ({
-      currentStep: stepNumber,
-      steps: {
-        some: {
-          approverUserId: params.approverUserId,
-          status: MaterialRequestStepStatus.PENDING,
-          stepNumber,
-        },
-      },
-    })),
-  }
-
-  const queuePromise = db.materialRequest.findMany({
-    where: actionableQueueWhere,
-    orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      requestNumber: true,
-      departmentId: true,
-      datePrepared: true,
-      dateRequired: true,
-      currentStep: true,
-      requiredSteps: true,
-      grandTotal: true,
-      submittedAt: true,
-      requesterEmployee: {
-        select: {
-          firstName: true,
-          lastName: true,
-          employeeNumber: true,
-          photoUrl: true,
-        },
-      },
-      department: {
-        select: {
-          name: true,
-        },
-      },
-    },
+    approverUserId: params.approverUserId,
+    page: 1,
+    pageSize: 10,
+    search: "",
+    departmentId: undefined,
   })
 
   const historyPromise = getEmployeePortalMaterialRequestApprovalHistoryPageReadModel({
@@ -875,12 +978,13 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
     status: "ALL",
   })
 
-  const [queueRequests, historyPage] = await Promise.all([queuePromise, historyPromise])
-
-  const rows = queueRequests.map((request) => toQueueRow(request))
+  const [queuePage, historyPage] = await Promise.all([queuePromise, historyPromise])
 
   return {
-    rows,
+    rows: queuePage.rows,
+    queueTotal: queuePage.total,
+    queuePage: queuePage.page,
+    queuePageSize: queuePage.pageSize,
     historyRows: historyPage.rows,
     historyTotal: historyPage.total,
     historyPage: historyPage.page,

@@ -111,13 +111,6 @@ const buildMaterialRequestPrintHtml = (payload: MaterialRequestPrintPayload): st
     })
     .join("")
 
-  const notes: string[] = []
-  if (payload.purpose) notes.push(`<div><strong>Purpose:</strong> ${escapeHtml(payload.purpose)}</div>`)
-  if (payload.remarks) notes.push(`<div><strong>Remarks:</strong> ${escapeHtml(payload.remarks)}</div>`)
-  if (payload.processingRemarks) notes.push(`<div><strong>Processing Notes:</strong> ${escapeHtml(payload.processingRemarks)}</div>`)
-  if (payload.finalDecisionRemarks) notes.push(`<div><strong>Decision Remarks:</strong> ${escapeHtml(payload.finalDecisionRemarks)}</div>`)
-  if (payload.cancellationReason) notes.push(`<div><strong>Cancellation Reason:</strong> ${escapeHtml(payload.cancellationReason)}</div>`)
-
   const approvals = payload.approvalSteps
     .map((step) => {
       const remarks = escapeHtml(step.remarks ?? "-")
@@ -125,13 +118,13 @@ const buildMaterialRequestPrintHtml = (payload: MaterialRequestPrintPayload): st
       const status = escapeHtml(step.status.replaceAll("_", " "))
       const stepLabel = escapeHtml(step.stepName?.trim() || `Step ${step.stepNumber}`)
       return `
-        <div class="approval-card">
-          <div class="approval-card-top">
-            <span><strong>Stage:</strong> ${stepLabel}</span>
-            <span><strong>Status:</strong> ${status}</span>
+        <div class="approval-item">
+          <div class="approval-stage">${stepLabel}</div>
+          <div class="approval-card">
+            <div><strong>Assigned To:</strong> ${approverName}</div>
+            <div><strong>Status:</strong> ${status}</div>
+            <div><strong>Remarks:</strong> ${remarks}</div>
           </div>
-          <div><strong>Assigned To:</strong> ${approverName}</div>
-          <div><strong>Remarks:</strong> ${remarks}</div>
         </div>
       `
     })
@@ -253,28 +246,29 @@ const buildMaterialRequestPrintHtml = (payload: MaterialRequestPrintPayload): st
           }
           .approval-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
             gap: 5px;
             font-size: 9px;
             line-height: 1.2;
             align-content: start;
           }
+          .approval-item {
+            break-inside: avoid;
+          }
+          .approval-stage {
+            margin-bottom: 2px;
+            font-weight: 700;
+          }
           .approval-card {
             border: 1px solid #000;
             padding: 4px 5px;
-            break-inside: avoid;
-          }
-          .approval-card-top {
-            display: flex;
-            justify-content: space-between;
-            gap: 6px;
           }
           .approval-card > div + div {
             margin-top: 1px;
           }
           @media print {
             .approval-grid {
-              grid-template-columns: 1fr 1fr;
+              grid-template-columns: 1fr 1fr 1fr 1fr;
             }
           }
         </style>
@@ -326,17 +320,6 @@ const buildMaterialRequestPrintHtml = (payload: MaterialRequestPrintPayload): st
           <tr><td>Discount</td><td>PHP ${formatMoney(payload.discount)}</td></tr>
           <tr><td>Grand Total</td><td>PHP ${formatMoney(payload.grandTotal)}</td></tr>
         </table>
-
-        ${
-          notes.length > 0
-            ? `
-              <div class="section-title">Notes</div>
-              <div class="notes">
-                ${notes.join("")}
-              </div>
-            `
-            : ""
-        }
 
         ${
           approvals.length > 0

@@ -65,9 +65,11 @@ model User {
   materialRequestsFinalDecision                 MaterialRequest[]                           @relation("MaterialRequestFinalDecisionByUser")
   materialRequestsCancelled                     MaterialRequest[]                           @relation("MaterialRequestCancelledByUser")
   materialRequestsProcessed                     MaterialRequest[]                           @relation("MaterialRequestProcessedByUser")
+  materialRequestsRequesterAcknowledged         MaterialRequest[]                           @relation("MaterialRequestRequesterAcknowledgedByUser")
   materialRequestsPosted                        MaterialRequest[]                           @relation("MaterialRequestPostedByUser")
   materialRequestServeBatchesServed             MaterialRequestServeBatch[]                 @relation("MaterialRequestServeBatchServedByUser")
   materialRequestPostingsPosted                 MaterialRequestPosting[]                    @relation("MaterialRequestPostingPostedByUser")
+  materialRequestReceivingReportsReceived       MaterialRequestReceivingReport[]            @relation("MaterialRequestReceivingReportReceivedByUser")
   materialRequestApprovalStepsAssigned          MaterialRequestApprovalStep[]               @relation("MaterialRequestApprovalStepApprover")
   materialRequestApprovalStepsActed             MaterialRequestApprovalStep[]               @relation("MaterialRequestApprovalStepActor")
 

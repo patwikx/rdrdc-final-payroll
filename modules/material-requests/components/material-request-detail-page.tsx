@@ -1,9 +1,10 @@
-import { IconArrowLeft, IconChecklist, IconPackage, IconTimeline, IconUserCircle } from "@tabler/icons-react"
+import { IconArrowLeft, IconChartBar, IconChecklist, IconPackage, IconTimeline, IconUserCircle } from "@tabler/icons-react"
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { MaterialRequestAcknowledgeReceiptButton } from "@/modules/material-requests/components/material-request-acknowledge-receipt-button"
 import { MaterialRequestPrintButton } from "@/modules/material-requests/components/material-request-print-button"
 import type { EmployeePortalMaterialRequestRow } from "@/modules/material-requests/types/employee-portal-material-request-types"
 
@@ -30,6 +31,12 @@ const statusLabel = (status: string): string => status.replace(/_/g, " ")
 
 export function MaterialRequestDetailPage({ companyId, companyName, request }: MaterialRequestDetailPageProps) {
   const requestStatusLabel = statusLabel(request.status)
+  const canAcknowledgeReceipt =
+    request.status === "APPROVED" &&
+    request.processingStatus === "COMPLETED" &&
+    request.requiresReceiptAcknowledgment &&
+    request.requesterAcknowledgedAtLabel === null
+  const hasReceivingReport = Boolean(request.receivingReportId)
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
@@ -47,6 +54,20 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
           </div>
 
           <div className="flex items-center gap-2">
+            {canAcknowledgeReceipt ? (
+              <MaterialRequestAcknowledgeReceiptButton
+                companyId={companyId}
+                requestId={request.id}
+                requestNumber={request.requestNumber}
+              />
+            ) : null}
+            {hasReceivingReport && request.receivingReportId ? (
+              <Button type="button" variant="outline" className="rounded-lg" asChild>
+                <Link href={`/${companyId}/employee-portal/material-request-receiving-reports/${request.receivingReportId}`}>
+                  View Receiving Report
+                </Link>
+              </Button>
+            ) : null}
             <MaterialRequestPrintButton
               payload={{
                 companyName,
@@ -185,6 +206,18 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
               <p className="font-medium text-foreground">Discount</p>
               <p>PHP {currency.format(request.discount)}</p>
             </div>
+            <div>
+              <p className="font-medium text-foreground">Processing Completed</p>
+              <p>{request.processingCompletedAtLabel ?? "-"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-foreground">Receipt Acknowledged</p>
+              <p>{request.requesterAcknowledgedAtLabel ?? "-"}</p>
+            </div>
+            <div>
+              <p className="font-medium text-foreground">Receiving Report</p>
+              <p>{request.receivingReportNumber ?? "-"}</p>
+            </div>
           </div>
 
           {request.purpose || request.remarks || request.finalDecisionRemarks || request.cancellationReason ? (
@@ -215,6 +248,44 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
               ) : null}
             </div>
           ) : null}
+        </div>
+
+        <div className="border-t border-border/60 pt-4 sm:pt-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">KPI Tracking</h2>
+            <IconChartBar className="h-4 w-4 text-primary" />
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Approval Lead Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.approvalLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Submitted to final approval</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Queue Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserQueueTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Approved to processing start</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Processing Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserProcessingTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Processing start to completed serve</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fulfillment Lead Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.fulfillmentLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Submitted to processing completed</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Acknowledgment Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.acknowledgmentLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Processing completed to requester confirmation</p>
+            </div>
+          </div>
         </div>
 
         <div className="border-t border-border/60 pt-4 sm:pt-5">
@@ -299,6 +370,7 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
                   </div>
                   <p className="text-muted-foreground">Acted by: {step.actedByName ?? "-"}</p>
                   <p className="text-muted-foreground">Acted at: {step.actedAtLabel ?? "-"}</p>
+                  <p className="text-muted-foreground">Turnaround: {step.turnaroundTimeLabel ?? "-"}</p>
                   {step.remarks ? <p className="mt-1 text-muted-foreground">Remarks: {step.remarks}</p> : null}
                 </div>
               ))}

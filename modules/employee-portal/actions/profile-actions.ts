@@ -17,6 +17,11 @@ export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfS
   }
 
   const payload = parsed.data
+  const trimmedProfilePhoto = payload.profilePhotoDataUrl?.trim()
+  if (trimmedProfilePhoto && !trimmedProfilePhoto.startsWith("data:image/")) {
+    return { ok: false, error: "Invalid profile image format." }
+  }
+
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
 
   const employee = await db.employee.findFirst({
@@ -35,6 +40,26 @@ export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfS
 
   await db.$transaction(async (tx) => {
     const auditChanges: Array<{ fieldName: string; oldValue?: unknown; newValue?: unknown }> = []
+
+    if (trimmedProfilePhoto) {
+      const currentEmployee = await tx.employee.findUnique({
+        where: { id: employee.id },
+        select: { photoUrl: true },
+      })
+
+      await tx.employee.update({
+        where: { id: employee.id },
+        data: {
+          photoUrl: trimmedProfilePhoto,
+        },
+      })
+
+      auditChanges.push({
+        fieldName: "profilePhoto",
+        oldValue: currentEmployee?.photoUrl ? "SET" : null,
+        newValue: "SET",
+      })
+    }
 
     if (payload.email) {
       const existingPrimaryEmail = await tx.employeeEmail.findFirst({

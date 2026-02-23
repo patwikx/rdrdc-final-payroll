@@ -7,6 +7,7 @@ import {
   IconCircleMinus,
   IconChecklist,
   IconEdit,
+  IconExternalLink,
   IconFilePlus,
   IconFilterOff,
   IconPackage,
@@ -40,6 +41,7 @@ import {
   cancelMaterialRequestAction,
   submitMaterialRequestAction,
 } from "@/modules/material-requests/actions/material-request-actions"
+import { MaterialRequestAcknowledgeReceiptButton } from "@/modules/material-requests/components/material-request-acknowledge-receipt-button"
 import type { EmployeePortalMaterialRequestRow } from "@/modules/material-requests/types/employee-portal-material-request-types"
 
 type MaterialRequestClientProps = {
@@ -332,6 +334,14 @@ export function MaterialRequestClient({
                     const requestHref = canEdit
                       ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
                       : `/${companyId}/employee-portal/material-requests/${request.id}`
+                    const canAcknowledgeReceipt =
+                      request.status === "APPROVED" &&
+                      request.processingStatus === "COMPLETED" &&
+                      request.requiresReceiptAcknowledgment &&
+                      request.requesterAcknowledgedAtLabel === null
+                    const receivingReportHref = request.receivingReportId
+                      ? `/${companyId}/employee-portal/material-request-receiving-reports/${request.receivingReportId}`
+                      : null
 
                     return (
                       <motion.div
@@ -355,9 +365,16 @@ export function MaterialRequestClient({
                               <p className="text-[11px] text-muted-foreground">Request #</p>
                               <p className="truncate text-sm font-medium text-foreground">{request.requestNumber}</p>
                             </div>
-                            <Badge variant={statusVariant(request.status)} className="shrink-0 text-xs font-normal">
-                              {statusLabel(request.status)}
-                            </Badge>
+                            <div className="flex flex-col items-end gap-1">
+                              <Badge variant={statusVariant(request.status)} className="shrink-0 text-xs font-normal">
+                                {statusLabel(request.status)}
+                              </Badge>
+                              {canAcknowledgeReceipt ? (
+                                <Badge variant="destructive" className="shrink-0 text-[10px] font-normal">
+                                  Awaiting Acknowledgment
+                                </Badge>
+                              ) : null}
+                            </div>
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -384,8 +401,32 @@ export function MaterialRequestClient({
                           </div>
                         </button>
 
-                        {(canEdit || canSubmit || canCancel) ? (
-                          <div className="flex items-center gap-2 border-t border-border/60 px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                          <Button type="button" size="sm" className="h-8 rounded-lg text-xs bg-primary hover:bg-primary/90" asChild>
+                            <Link href={requestHref}>
+                              <IconExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                              View Details
+                            </Link>
+                          </Button>
+
+                          {canAcknowledgeReceipt ? (
+                            <MaterialRequestAcknowledgeReceiptButton
+                              companyId={companyId}
+                              requestId={request.id}
+                              requestNumber={request.requestNumber}
+                              requestDetailsHref={requestHref}
+                              disabled={isPending}
+                            />
+                          ) : null}
+
+                          {receivingReportHref ? (
+                            <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" asChild>
+                              <Link href={receivingReportHref}>
+                                View Receiving Report
+                              </Link>
+                            </Button>
+                          ) : null}
+
                             {canEdit ? (
                               <Button type="button" variant="outline" size="sm" className="h-8 flex-1 rounded-lg text-xs" asChild>
                                 <Link href={`/${companyId}/employee-portal/material-requests/${request.id}/edit`}>
@@ -453,15 +494,7 @@ export function MaterialRequestClient({
                               </AlertDialog>
                             ) : null}
 
-                            {!canEdit ? (
-                              <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" asChild>
-                                <Link href={requestHref}>
-                                  View
-                                </Link>
-                              </Button>
-                            ) : null}
-                          </div>
-                        ) : null}
+                        </div>
 
                         <AnimatePresence initial={false}>
                           {isExpanded ? (
@@ -538,11 +571,19 @@ export function MaterialRequestClient({
                       const canEdit =
                         request.status === "DRAFT" ||
                         (request.status === "PENDING_APPROVAL" && !hasApprovalHistory)
-                      const canSubmit = request.status === "DRAFT" && request.items.length > 0
-                      const canCancel = request.status === "DRAFT" || request.status === "PENDING_APPROVAL"
-                      const requestHref = canEdit
-                        ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
-                        : `/${companyId}/employee-portal/material-requests/${request.id}`
+                    const canSubmit = request.status === "DRAFT" && request.items.length > 0
+                    const canCancel = request.status === "DRAFT" || request.status === "PENDING_APPROVAL"
+                    const requestHref = canEdit
+                      ? `/${companyId}/employee-portal/material-requests/${request.id}/edit`
+                      : `/${companyId}/employee-portal/material-requests/${request.id}`
+                    const canAcknowledgeReceipt =
+                      request.status === "APPROVED" &&
+                      request.processingStatus === "COMPLETED" &&
+                      request.requiresReceiptAcknowledgment &&
+                      request.requesterAcknowledgedAtLabel === null
+                    const receivingReportHref = request.receivingReportId
+                      ? `/${companyId}/employee-portal/material-request-receiving-reports/${request.receivingReportId}`
+                      : null
 
                       return (
                         <motion.div
@@ -575,9 +616,16 @@ export function MaterialRequestClient({
                             <div className="col-span-1 text-xs text-foreground">{request.items.length}</div>
                             <div className="col-span-1 text-xs text-foreground">PHP {currency.format(request.grandTotal)}</div>
                             <div className="col-span-2">
-                              <Badge variant={statusVariant(request.status)} className="w-full justify-center text-xs font-normal">
-                                {statusLabel(request.status)}
-                              </Badge>
+                              <div className="flex flex-col gap-1">
+                                <Badge variant={statusVariant(request.status)} className="w-full justify-center text-xs font-normal">
+                                  {statusLabel(request.status)}
+                                </Badge>
+                                {canAcknowledgeReceipt ? (
+                                  <Badge variant="destructive" className="w-full justify-center text-[10px] font-normal">
+                                    Awaiting Acknowledgment
+                                  </Badge>
+                                ) : null}
+                              </div>
                             </div>
                             <div className="col-span-1 flex justify-end" onClick={(event) => event.stopPropagation()}>
                               <div className="flex items-center gap-1">
@@ -658,12 +706,52 @@ export function MaterialRequestClient({
                                     </AlertDialogContent>
                                   </AlertDialog>
                                 ) : null}
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button type="button" size="sm" className="h-8 rounded-lg px-2 text-xs bg-primary hover:bg-primary/90" asChild>
+                                      <Link href={requestHref}>
+                                        <IconExternalLink className="h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" sideOffset={6}>
+                                    View Details
+                                  </TooltipContent>
+                                </Tooltip>
                               </div>
                             </div>
                           </div>
 
                           {isExpanded ? (
                             <div className="space-y-3 border-t border-border/60 bg-muted/30 px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" size="sm" className="bg-primary hover:bg-primary/90" asChild>
+                                  <Link href={requestHref}>
+                                    <IconExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                    View Details
+                                  </Link>
+                                </Button>
+
+                                {canAcknowledgeReceipt ? (
+                                  <MaterialRequestAcknowledgeReceiptButton
+                                    companyId={companyId}
+                                    requestId={request.id}
+                                    requestNumber={request.requestNumber}
+                                    requestDetailsHref={requestHref}
+                                    disabled={isPending}
+                                  />
+                                ) : null}
+
+                                {receivingReportHref ? (
+                                  <Button type="button" variant="outline" size="sm" asChild>
+                                    <Link href={receivingReportHref}>
+                                      View Receiving Report
+                                    </Link>
+                                  </Button>
+                                ) : null}
+                              </div>
+
                               <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-2 lg:grid-cols-4">
                                 <div>
                                   <p className="font-medium text-foreground">Department</p>
@@ -712,6 +800,29 @@ export function MaterialRequestClient({
                                 </div>
                               ) : null}
 
+                              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+                                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Approval Lead Time</p>
+                                  <p className="text-sm font-semibold text-foreground">{request.approvalLeadTimeLabel ?? "-"}</p>
+                                </div>
+                                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Purchaser Queue Time</p>
+                                  <p className="text-sm font-semibold text-foreground">{request.purchaserQueueTimeLabel ?? "-"}</p>
+                                </div>
+                                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Processing Time</p>
+                                  <p className="text-sm font-semibold text-foreground">{request.purchaserProcessingTimeLabel ?? "-"}</p>
+                                </div>
+                                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fulfillment Lead Time</p>
+                                  <p className="text-sm font-semibold text-foreground">{request.fulfillmentLeadTimeLabel ?? "-"}</p>
+                                </div>
+                                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Acknowledgment Time</p>
+                                  <p className="text-sm font-semibold text-foreground">{request.acknowledgmentLeadTimeLabel ?? "-"}</p>
+                                </div>
+                              </div>
+
                               <div className="overflow-hidden border border-border/60 bg-card">
                                 <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
                                   <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line</p>
@@ -754,6 +865,7 @@ export function MaterialRequestClient({
                                         </div>
                                         <p className="text-muted-foreground">Acted by: {step.actedByName ?? "-"}</p>
                                         <p className="text-muted-foreground">Acted at: {step.actedAtLabel ?? "-"}</p>
+                                        <p className="text-muted-foreground">Turnaround: {step.turnaroundTimeLabel ?? "-"}</p>
                                         {step.remarks ? <p className="mt-1 text-muted-foreground">Remarks: {step.remarks}</p> : null}
                                       </div>
                                     ))}

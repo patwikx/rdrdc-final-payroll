@@ -352,7 +352,7 @@ export async function initializeSystemAction(
           }
 
           return {
-            companyId: holiday.applicability === "COMPANY" ? company.id : null,
+            companyId: company.id,
             holidayDate,
             name: holiday.name,
             holidayTypeCode: holiday.holidayTypeCode,

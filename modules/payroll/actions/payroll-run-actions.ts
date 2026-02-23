@@ -1044,8 +1044,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
         isActive: true,
-        OR: [{ companyId: null }, { companyId: run.companyId }],
+        companyId: run.companyId,
       },
+      orderBy: [{ holidayDate: "asc" }],
       select: { holidayDate: true, holidayTypeCode: true, payMultiplier: true },
     }),
     db.dailyTimeRecord.findMany({

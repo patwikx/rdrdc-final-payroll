@@ -134,6 +134,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "settings-employment", label: "Employment Setup", path: "/settings/employment" },
       { id: "settings-legacy-employee-sync", label: "Legacy Employee Sync", path: "/settings/employment/legacy-sync" },
       { id: "settings-payroll", label: "Payroll Policies", path: "/settings/payroll" },
+      { id: "settings-holidays", label: "Holiday Calendar", path: "/settings/holidays" },
       { id: "settings-attendance", label: "Work Schedules", path: "/settings/attendance" },
       { id: "settings-leave-ot", label: "Leave / OT Policies", path: "/settings/leave-overtime" },
       { id: "settings-material-requests", label: "Material Request Approvals", path: "/settings/material-requests" },

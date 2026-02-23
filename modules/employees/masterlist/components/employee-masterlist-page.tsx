@@ -449,9 +449,9 @@ export function EmployeeMasterlistPage({
                 paginatedEmployees.map((employee) => (
                   <div key={employee.id} className={cn("group grid items-center gap-5 px-6 py-3.5 transition-colors hover:bg-muted/10", MASTERLIST_GRID_COLUMNS)}>
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 shrink-0 border border-border/60">
-                        <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="object-cover" />
-                        <AvatarFallback className="bg-primary/5 text-[13px] font-semibold text-primary">
+                      <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                        <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.firstName} className="!rounded-md object-cover" />
+                        <AvatarFallback className="!rounded-md bg-primary/5 text-[13px] font-semibold text-primary">
                           {employee.firstName[0]}
                           {employee.lastName[0]}
                         </AvatarFallback>

@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import type { ComponentType } from "react"
+import { MaterialRequestProcessingStatus, MaterialRequestStatus } from "@prisma/client"
 import {
   IconAlertCircle,
   IconArrowRight,
@@ -17,6 +18,7 @@ import {
 import { db } from "@/lib/db"
 import { getPhYear, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { Card, CardContent } from "@/components/ui/card"
+import { MaterialRequestAcknowledgmentNotificationDialog } from "@/modules/employee-portal/components/material-request-acknowledgment-notification-dialog"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import { getEmployeePortalLeaveDashboardReadModel } from "@/modules/leave/utils/employee-portal-leave-dashboard-read-model"
 
@@ -97,7 +99,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     )
   }
 
-  const [leaveDashboard, pendingOvertimeRequests, recentPayslips, upcomingHolidays] = await Promise.all([
+  const [leaveDashboard, pendingOvertimeRequests, recentPayslips, upcomingHolidays, pendingMaterialAcknowledgmentsRaw] = await Promise.all([
     getEmployeePortalLeaveDashboardReadModel({
       companyId: context.companyId,
       employeeId: context.employee.id,
@@ -140,7 +142,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
       where: {
         isActive: true,
         holidayDate: { gte: toPhDateOnlyUtc() },
-        OR: [{ companyId: context.companyId }, { companyId: null }],
+        companyId: context.companyId,
       },
       orderBy: { holidayDate: "asc" },
       take: 5,
@@ -152,10 +154,37 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
         holidayTypeCode: true,
       },
     }),
+    db.materialRequest.findMany({
+      where: {
+        companyId: context.companyId,
+        requesterUserId: context.userId,
+        status: MaterialRequestStatus.APPROVED,
+        processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+        requiresReceiptAcknowledgment: true,
+        requesterAcknowledgedAt: null,
+      },
+      orderBy: [{ processingCompletedAt: "desc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        requestNumber: true,
+        processingCompletedAt: true,
+      },
+    }),
   ])
+
+  const pendingMaterialAcknowledgments = pendingMaterialAcknowledgmentsRaw.map((request) => ({
+    id: request.id,
+    requestNumber: request.requestNumber,
+    processingCompletedAtLabel: request.processingCompletedAt ? dateLabel.format(request.processingCompletedAt) : null,
+  }))
 
   return (
     <div className="min-h-screen w-full animate-in fade-in bg-background pb-8 duration-500">
+      <MaterialRequestAcknowledgmentNotificationDialog
+        companyId={context.companyId}
+        requests={pendingMaterialAcknowledgments}
+      />
+
       <div className="flex flex-col justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6 md:flex-row md:items-end">
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Employee Self-Service</p>
@@ -244,6 +273,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
                 ) : null}
               </div>
             </div>
+
           </div>
         </div>
 

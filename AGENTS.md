@@ -243,3 +243,7 @@ Use this section as the single running log for implementation lessons/progress n
   - selected unpaid leave types are treated as unpaid absences.
 - Added internal DTR remarks token persistence for selected leave type so manual DTR leave behavior remains stable across correction, validation, and payroll calculation steps.
 - Updated manual DTR leave balance mutation policy so only paid leave types deduct employee leave balances; unpaid leave types do not consume leave balance.
+
+### Cross-Module Progress Notes (2026-02-23)
+
+- Standardized holiday management and reads to company-scoped behavior only (no shared/global holiday fallback in settings, employee portal, DTR range checks, payroll validation, payroll run holiday computations, and setup holiday seeding).

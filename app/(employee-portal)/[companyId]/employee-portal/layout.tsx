@@ -54,6 +54,7 @@ export default async function EmployeePortalLayout({ children, params }: Employe
           canApproveRequests={Boolean(context.employee?.user?.isRequestApprover)}
           canProcessMaterialRequests={Boolean(context.employee?.user?.isMaterialRequestPurchaser)}
           canPostMaterialRequests={Boolean(context.employee?.user?.isMaterialRequestPoster)}
+          taskCounts={context.taskCounts}
         />
         <SidebarInset>
           <EmployeePortalHeader

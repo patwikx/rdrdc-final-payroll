@@ -217,7 +217,7 @@ export async function validatePayrollRun(
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
         isActive: true,
-        OR: [{ companyId: null }, { companyId: run.companyId }],
+        companyId: run.companyId,
       },
       select: { holidayDate: true },
     }),

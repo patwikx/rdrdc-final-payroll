@@ -99,18 +99,18 @@ model MaterialRequest {
   requestType   MaterialRequestType
   status        MaterialRequestStatus @default(DRAFT)
 
-  requesterEmployeeId String
-  requesterEmployee   Employee @relation("MaterialRequestRequesterEmployee", fields: [requesterEmployeeId], references: [id], onDelete: Restrict)
-  requesterUserId     String
-  requesterUser       User     @relation("MaterialRequestRequesterUser", fields: [requesterUserId], references: [id], onDelete: Restrict)
-  selectedInitialApproverUserId String?
-  selectedInitialApproverUser   User?   @relation("MaterialRequestSelectedInitialApproverUser", fields: [selectedInitialApproverUserId], references: [id], onDelete: SetNull)
-  selectedStepTwoApproverUserId String?
-  selectedStepTwoApproverUser   User?   @relation("MaterialRequestSelectedStepTwoApproverUser", fields: [selectedStepTwoApproverUserId], references: [id], onDelete: SetNull)
+  requesterEmployeeId             String
+  requesterEmployee               Employee @relation("MaterialRequestRequesterEmployee", fields: [requesterEmployeeId], references: [id], onDelete: Restrict)
+  requesterUserId                 String
+  requesterUser                   User     @relation("MaterialRequestRequesterUser", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  selectedInitialApproverUserId   String?
+  selectedInitialApproverUser     User?    @relation("MaterialRequestSelectedInitialApproverUser", fields: [selectedInitialApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepTwoApproverUserId   String?
+  selectedStepTwoApproverUser     User?    @relation("MaterialRequestSelectedStepTwoApproverUser", fields: [selectedStepTwoApproverUserId], references: [id], onDelete: SetNull)
   selectedStepThreeApproverUserId String?
-  selectedStepThreeApproverUser   User?   @relation("MaterialRequestSelectedStepThreeApproverUser", fields: [selectedStepThreeApproverUserId], references: [id], onDelete: SetNull)
-  selectedStepFourApproverUserId String?
-  selectedStepFourApproverUser   User?   @relation("MaterialRequestSelectedStepFourApproverUser", fields: [selectedStepFourApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepThreeApproverUser   User?    @relation("MaterialRequestSelectedStepThreeApproverUser", fields: [selectedStepThreeApproverUserId], references: [id], onDelete: SetNull)
+  selectedStepFourApproverUserId  String?
+  selectedStepFourApproverUser    User?    @relation("MaterialRequestSelectedStepFourApproverUser", fields: [selectedStepFourApproverUserId], references: [id], onDelete: SetNull)
 
   departmentId String
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
@@ -133,22 +133,26 @@ model MaterialRequest {
   requiredSteps Int
   currentStep   Int?
 
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  rejectedAt  DateTime?
-  cancelledAt DateTime?
-  processingStatus      MaterialRequestProcessingStatus?
-  processingStartedAt   DateTime?
-  processingCompletedAt DateTime?
-  processingRemarks     String? @db.Text
-  processedByUserId     String?
-  processedByUser       User?   @relation("MaterialRequestProcessedByUser", fields: [processedByUserId], references: [id], onDelete: SetNull)
-  postingStatus         MaterialRequestPostingStatus?
-  postingReference      String?
-  postingRemarks        String? @db.Text
-  postedAt              DateTime?
-  postedByUserId        String?
-  postedByUser          User?   @relation("MaterialRequestPostedByUser", fields: [postedByUserId], references: [id], onDelete: SetNull)
+  submittedAt                   DateTime?
+  approvedAt                    DateTime?
+  rejectedAt                    DateTime?
+  cancelledAt                   DateTime?
+  processingStatus              MaterialRequestProcessingStatus?
+  processingStartedAt           DateTime?
+  processingCompletedAt         DateTime?
+  processingRemarks             String?                          @db.Text
+  processedByUserId             String?
+  processedByUser               User?                            @relation("MaterialRequestProcessedByUser", fields: [processedByUserId], references: [id], onDelete: SetNull)
+  requesterAcknowledgedAt       DateTime?
+  requesterAcknowledgedByUserId String?
+  requesterAcknowledgedByUser   User?                            @relation("MaterialRequestRequesterAcknowledgedByUser", fields: [requesterAcknowledgedByUserId], references: [id], onDelete: SetNull)
+  requiresReceiptAcknowledgment Boolean                          @default(true)
+  postingStatus                 MaterialRequestPostingStatus?
+  postingReference              String?
+  postingRemarks                String?                          @db.Text
+  postedAt                      DateTime?
+  postedByUserId                String?
+  postedByUser                  User?                            @relation("MaterialRequestPostedByUser", fields: [postedByUserId], references: [id], onDelete: SetNull)
 
   finalDecisionByUserId String?
   finalDecisionByUser   User?   @relation("MaterialRequestFinalDecisionByUser", fields: [finalDecisionByUserId], references: [id], onDelete: SetNull)
@@ -166,10 +170,11 @@ model MaterialRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  steps MaterialRequestApprovalStep[]
-  items MaterialRequestItem[]
-  serveBatches MaterialRequestServeBatch[]
-  postings MaterialRequestPosting[]
+  steps            MaterialRequestApprovalStep[]
+  items            MaterialRequestItem[]
+  serveBatches     MaterialRequestServeBatch[]
+  postings         MaterialRequestPosting[]
+  receivingReports MaterialRequestReceivingReport[]
 
   @@unique([companyId, requestNumber])
   @@unique([companyId, legacySourceSystem, legacyRecordId])
@@ -181,10 +186,13 @@ model MaterialRequest {
   @@index([selectedStepThreeApproverUserId])
   @@index([selectedStepFourApproverUserId])
   @@index([processedByUserId])
+  @@index([requesterAcknowledgedByUserId])
+  @@index([requesterAcknowledgedAt])
   @@index([postedByUserId])
   @@index([processingStatus])
   @@index([postingStatus])
   @@index([companyId, status, processingStatus])
+  @@index([companyId, status, processingStatus, requesterAcknowledgedAt])
   @@index([companyId, status, postingStatus])
   @@index([submittedAt])
 }
@@ -235,9 +243,10 @@ model MaterialRequestItem {
 
   legacyItemId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  serveBatchItems MaterialRequestServeBatchItem[]
+  createdAt            DateTime                             @default(now())
+  updatedAt            DateTime                             @updatedAt
+  serveBatchItems      MaterialRequestServeBatchItem[]
+  receivingReportItems MaterialRequestReceivingReportItem[]
 
   @@unique([materialRequestId, lineNumber])
   @@index([materialRequestId])
@@ -250,13 +259,13 @@ model MaterialRequestServeBatch {
   materialRequestId String
   materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
 
-  poNumber      String
-  supplierName  String
-  notes         String? @db.Text
-  isFinalServe  Boolean @default(false)
-  servedAt      DateTime @default(now())
+  poNumber       String
+  supplierName   String
+  notes          String?  @db.Text
+  isFinalServe   Boolean  @default(false)
+  servedAt       DateTime @default(now())
   servedByUserId String
-  servedByUser   User    @relation("MaterialRequestServeBatchServedByUser", fields: [servedByUserId], references: [id], onDelete: Restrict)
+  servedByUser   User     @relation("MaterialRequestServeBatchServedByUser", fields: [servedByUserId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -302,4 +311,57 @@ model MaterialRequestPosting {
 
   @@index([materialRequestId, postedAt])
   @@index([postedByUserId])
+}
+
+model MaterialRequestReceivingReport {
+  id String @id @default(uuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  materialRequestId String          @unique
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  reportNumber     String
+  remarks          String?  @db.Text
+  receivedAt       DateTime @default(now())
+  receivedByUserId String
+  receivedByUser   User     @relation("MaterialRequestReceivingReportReceivedByUser", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MaterialRequestReceivingReportItem[]
+
+  @@unique([companyId, reportNumber])
+  @@index([companyId, receivedAt])
+  @@index([materialRequestId, receivedAt])
+  @@index([receivedByUserId])
+}
+
+model MaterialRequestReceivingReportItem {
+  id String @id @default(uuid())
+
+  receivingReportId String
+  receivingReport   MaterialRequestReceivingReport @relation(fields: [receivingReportId], references: [id], onDelete: Cascade)
+
+  materialRequestItemId String
+  materialRequestItem   MaterialRequestItem @relation(fields: [materialRequestItemId], references: [id], onDelete: Restrict)
+
+  lineNumber        Int
+  itemCode          String?
+  description       String
+  uom               String
+  requestedQuantity Decimal  @db.Decimal(12, 3)
+  receivedQuantity  Decimal  @db.Decimal(12, 3)
+  unitPrice         Decimal? @db.Decimal(12, 2)
+  lineTotal         Decimal? @db.Decimal(14, 2)
+  remarks           String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([receivingReportId, materialRequestItemId])
+  @@index([receivingReportId, lineNumber])
+  @@index([materialRequestItemId])
 }

@@ -38,6 +38,7 @@ const QUANTITY_TOLERANCE = 0.0005
 const createMaterialPostingRevalidationPaths = (companyId: string): string[] => {
   return [
     `/${companyId}/employee-portal/material-request-posting`,
+    `/${companyId}/employee-portal/material-request-receiving-reports`,
     `/${companyId}/employee-portal/material-request-processing`,
     `/${companyId}/employee-portal/material-requests`,
     `/${companyId}/dashboard`,
@@ -184,90 +185,135 @@ export async function postMaterialRequestAction(
     return { ok: false, error: "You are not allowed to post material requests." }
   }
 
-  const request = await db.materialRequest.findFirst({
-    where: {
-      id: payload.requestId,
-      companyId: context.companyId,
-      status: MaterialRequestStatus.APPROVED,
-      processingStatus: MaterialRequestProcessingStatus.COMPLETED,
-    },
-    select: {
-      id: true,
-      requestNumber: true,
-      postingStatus: true,
-      postingReference: true,
-      postingRemarks: true,
-      postedAt: true,
-      postedByUserId: true,
-      items: {
-        select: {
-          id: true,
-          quantity: true,
-          serveBatchItems: {
-            select: {
-              quantityServed: true,
-            },
-          },
-        },
-      },
-    },
-  })
-
-  if (!request) {
-    return { ok: false, error: "Completed material request not found." }
-  }
-
-  if (request.postingStatus === MaterialRequestPostingStatus.POSTED) {
-    return {
-      ok: true,
-      message: `Material request ${request.requestNumber} is already posted.`,
-    }
-  }
-
-  const hasRemainingQuantity = request.items.some((item) => {
-    const requestedQuantity = Number(item.quantity)
-    const servedQuantity = item.serveBatchItems.reduce((accumulator, servedItem) => {
-      return accumulator + Number(servedItem.quantityServed)
-    }, 0)
-
-    return requestedQuantity - servedQuantity > QUANTITY_TOLERANCE
-  })
-
-  if (hasRemainingQuantity) {
-    return { ok: false, error: "Cannot post request while item quantities are not fully served." }
-  }
-
   const actedAt = new Date()
   const postingReference = asNullableText(payload.postingReference)
   const postingRemarks = asNullableText(payload.remarks)
 
-  await db.$transaction(async (tx) => {
-    await tx.materialRequest.update({
+  const outcome = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${payload.requestId} FOR UPDATE`
+
+    const request = await tx.materialRequest.findFirst({
+      where: {
+        id: payload.requestId,
+        companyId: context.companyId,
+        status: MaterialRequestStatus.APPROVED,
+        processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+        OR: [
+          {
+            requiresReceiptAcknowledgment: false,
+          },
+          {
+            requiresReceiptAcknowledgment: true,
+            requesterAcknowledgedAt: {
+              not: null,
+            },
+            receivingReports: {
+              some: {},
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        requestNumber: true,
+        postingStatus: true,
+        postingReference: true,
+        postingRemarks: true,
+        postedAt: true,
+        postedByUserId: true,
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            serveBatchItems: {
+              select: {
+                quantityServed: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!request) {
+      return { kind: "error" as const, message: "Completed material request not found." }
+    }
+
+    if (request.postingStatus === MaterialRequestPostingStatus.POSTED) {
+      return { kind: "already_posted" as const, requestNumber: request.requestNumber }
+    }
+
+    const hasRemainingQuantity = request.items.some((item) => {
+      const requestedQuantity = Number(item.quantity)
+      const servedQuantity = item.serveBatchItems.reduce((accumulator, servedItem) => {
+        return accumulator + Number(servedItem.quantityServed)
+      }, 0)
+
+      return requestedQuantity - servedQuantity > QUANTITY_TOLERANCE
+    })
+
+    if (hasRemainingQuantity) {
+      return { kind: "error" as const, message: "Cannot post request while item quantities are not fully served." }
+    }
+
+    const postingUpdate = await tx.materialRequest.updateMany({
       where: {
         id: request.id,
+        OR: [
+          {
+            postingStatus: null,
+          },
+          {
+            postingStatus: MaterialRequestPostingStatus.PENDING_POSTING,
+          },
+        ],
       },
       data: {
         postingStatus: MaterialRequestPostingStatus.POSTED,
         postingReference,
         postingRemarks,
         postedAt: actedAt,
-        postedByUser: {
-          connect: {
-            id: context.userId,
-          },
-        },
-      },
-    })
-
-    await tx.materialRequestPosting.create({
-      data: {
-        materialRequestId: request.id,
-        postingReference: postingReference ?? "",
-        remarks: postingRemarks,
-        postedAt: actedAt,
         postedByUserId: context.userId,
       },
     })
+
+    if (postingUpdate.count !== 1) {
+      return { kind: "already_posted" as const, requestNumber: request.requestNumber }
+    }
+
+    const existingPosting = await tx.materialRequestPosting.findFirst({
+      where: {
+        materialRequestId: request.id,
+      },
+      orderBy: [{ postedAt: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+      },
+    })
+
+    if (existingPosting) {
+      await tx.materialRequestPosting.update({
+        where: {
+          id: existingPosting.id,
+        },
+        data: {
+          postingReference: postingReference ?? "",
+          remarks: postingRemarks,
+          postedAt: actedAt,
+          postedByUserId: context.userId,
+        },
+      })
+    } else {
+      await tx.materialRequestPosting.create({
+        data: {
+          materialRequestId: request.id,
+          postingReference: postingReference ?? "",
+          remarks: postingRemarks,
+          postedAt: actedAt,
+          postedByUserId: context.userId,
+        },
+      })
+    }
 
     await createAuditLog(
       {
@@ -306,12 +352,25 @@ export async function postMaterialRequestAction(
       },
       tx
     )
+
+    return { kind: "posted" as const, requestNumber: request.requestNumber }
   })
+
+  if (outcome.kind === "error") {
+    return { ok: false, error: outcome.message }
+  }
+
+  if (outcome.kind === "already_posted") {
+    return {
+      ok: true,
+      message: `Material request ${outcome.requestNumber} is already posted.`,
+    }
+  }
 
   revalidateMaterialPostingPaths(context.companyId)
 
   return {
     ok: true,
-    message: `Material request ${request.requestNumber} posted successfully.`,
+    message: `Material request ${outcome.requestNumber} posted successfully.`,
   }
 }

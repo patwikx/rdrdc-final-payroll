@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import {
+  IconCalendarEvent,
   IconBuilding,
   IconCalendarTime,
   IconChecklist,
@@ -131,6 +132,7 @@ const subItemIconMap: Record<string, ReactNode> = {
   "settings-organization": <IconUsersGroup className="size-3.5" />,
   "settings-employment": <IconFolderOpen className="size-3.5" />,
   "settings-payroll": <IconCreditCardPay className="size-3.5" />,
+  "settings-holidays": <IconCalendarEvent className="size-3.5" />,
   "settings-attendance": <IconClock className="size-3.5" />,
   "settings-leave-ot": <IconCalendarTime className="size-3.5" />,
   "settings-statutory": <IconScale className="size-3.5" />,

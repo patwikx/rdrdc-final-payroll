@@ -448,10 +448,7 @@ export async function getDtrPageData(companyId: string, range?: DateRangeInput):
       where: {
         holidayDate: { gte: startDate, lte: endDate },
         isActive: true,
-        OR: [
-          { companyId: null },
-          { companyId: context.companyId },
-        ],
+        companyId: context.companyId,
       },
       select: {
         id: true,

@@ -71,6 +71,7 @@ export async function syncLegacyMaterialRequestsAction(
       revalidatePath(`/${context.companyId}/employee-portal/material-request-approvals`)
       revalidatePath(`/${context.companyId}/employee-portal/material-request-processing`)
       revalidatePath(`/${context.companyId}/employee-portal/material-request-posting`)
+      revalidatePath(`/${context.companyId}/employee-portal/material-request-receiving-reports`)
       revalidatePath(`/${context.companyId}/employee-portal/approvers`)
       revalidatePath(`/${context.companyId}/dashboard`)
     }

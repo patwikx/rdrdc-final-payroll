@@ -42,6 +42,10 @@ export default async function EmployeePortalLayout({ children, params }: Employe
   const canSwitchToDashboard =
     (context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN") &&
     Boolean(context.employee?.id)
+  const userName =
+    (`${context.employee?.firstName ?? ""} ${context.employee?.lastName ?? ""}`.trim() || "User")
+  const userEmail = context.employee?.user?.email ?? ""
+  const userAvatar = context.employee?.photoUrl ?? null
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -59,6 +63,12 @@ export default async function EmployeePortalLayout({ children, params }: Employe
         <SidebarInset>
           <EmployeePortalHeader
             dashboardHref={canSwitchToDashboard ? `/${context.companyId}/dashboard` : null}
+            accountHref={`/${context.companyId}/account`}
+            user={{
+              name: userName,
+              email: userEmail,
+              avatar: userAvatar,
+            }}
           />
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </SidebarInset>

@@ -1,17 +1,27 @@
 "use client"
 
 import Link from "next/link"
-import { signOut } from "next-auth/react"
 import { IconLayoutDashboard } from "@tabler/icons-react"
 
+import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
 type EmployeePortalHeaderProps = {
   dashboardHref?: string | null
+  accountHref: string
+  user: {
+    name: string
+    email: string
+    avatar?: string | null
+  }
 }
 
-export function EmployeePortalHeader({ dashboardHref = null }: EmployeePortalHeaderProps) {
+export function EmployeePortalHeader({
+  dashboardHref = null,
+  accountHref,
+  user,
+}: EmployeePortalHeaderProps) {
   return (
     <header className="flex min-h-14 items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-2 sm:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -44,13 +54,7 @@ export function EmployeePortalHeader({ dashboardHref = null }: EmployeePortalHea
             </Link>
           </Button>
         ) : null}
-        <Button
-          variant="ghost"
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-        >
-          Logout
-        </Button>
+        <NavUser user={user} accountHref={accountHref} inSidebar={false} compactOnMobile squareAvatar />
       </div>
     </header>
   )

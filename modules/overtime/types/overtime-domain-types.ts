@@ -38,11 +38,43 @@ export type EmployeePortalOvertimeApprovalHistoryRow = EmployeePortalOvertimeApp
   decidedAtLabel: string
 }
 
+export type EmployeePortalOvertimeApprovalQueuePage = {
+  rows: EmployeePortalOvertimeApprovalRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type EmployeePortalOvertimeApprovalHistoryPage = {
   rows: EmployeePortalOvertimeApprovalHistoryRow[]
   total: number
   page: number
   pageSize: number
+}
+
+export type EmployeePortalOvertimeApprovalTrailStep = {
+  id: string
+  stageLabel: string
+  approverName: string | null
+  statusCode: "APPROVED" | "REJECTED" | "PENDING" | "NOT_REACHED"
+  actedAtLabel: string | null
+  remarks: string | null
+}
+
+export type EmployeePortalOvertimeApprovalHistoryDetail = {
+  id: string
+  requestNumber: string
+  statusCode: string
+  overtimeDateLabel: string
+  hours: number
+  reason: string | null
+  employeeName: string
+  employeeNumber: string
+  employeePhotoUrl: string | null
+  departmentName: string
+  ctoConversionPreview: boolean
+  decidedAtLabel: string
+  approvalTrail: EmployeePortalOvertimeApprovalTrailStep[]
 }
 
 export type EmployeePortalOvertimeApprovalDepartmentOption = {

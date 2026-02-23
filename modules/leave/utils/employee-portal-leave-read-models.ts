@@ -4,9 +4,12 @@ import { db } from "@/lib/db"
 import { toPhDayEndUtcInstant, toPhDayStartUtcInstant } from "@/lib/ph-time"
 import type {
   EmployeePortalLeaveApprovalDepartmentOption,
+  EmployeePortalLeaveApprovalHistoryDetail,
   EmployeePortalLeaveApprovalHistoryPage,
   EmployeePortalLeaveApprovalHistoryRow,
+  EmployeePortalLeaveApprovalQueuePage,
   EmployeePortalLeaveApprovalRow,
+  EmployeePortalLeaveApprovalTrailStep,
   EmployeePortalLeaveRequestsReadModel,
 } from "@/modules/leave/types/employee-portal-leave-types"
 
@@ -155,6 +158,7 @@ export async function getEmployeePortalLeaveRequestsReadModel(params: {
 }
 
 type LeaveApprovalHistoryStatusFilter = "ALL" | "APPROVED" | "REJECTED" | "SUPERVISOR_APPROVED"
+type LeaveApprovalQueueStatusFilter = "ALL" | "PENDING" | "SUPERVISOR_APPROVED"
 
 const toLeaveApprovalRow = (item: {
   id: string
@@ -246,6 +250,160 @@ const toLeaveApprovalHistoryRow = (
     leaveTypeName: item.leaveType.name,
     decidedAtIso: decidedAt.toISOString(),
     decidedAtLabel: dateTimeLabel.format(decidedAt),
+  }
+}
+
+const buildLeaveApprovalQueueWhere = (params: {
+  companyId: string
+  isHR: boolean
+  approverEmployeeId?: string
+  search: string
+  status: LeaveApprovalQueueStatusFilter
+  departmentId?: string
+}): Prisma.LeaveRequestWhereInput => {
+  const where: Prisma.LeaveRequestWhereInput = params.isHR
+    ? {
+        employee: { companyId: params.companyId },
+        statusCode: RequestStatus.SUPERVISOR_APPROVED,
+      }
+    : {
+        employee: { companyId: params.companyId },
+        supervisorApproverId: params.approverEmployeeId,
+        statusCode: RequestStatus.PENDING,
+      }
+
+  if (params.status !== "ALL") {
+    where.statusCode = params.status
+  }
+
+  const andFilters: Prisma.LeaveRequestWhereInput[] = []
+
+  if (params.departmentId) {
+    andFilters.push({
+      employee: {
+        departmentId: params.departmentId,
+      },
+    })
+  }
+
+  const query = params.search.trim()
+  if (query.length > 0) {
+    andFilters.push({
+      OR: [
+        {
+          requestNumber: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+        {
+          employee: {
+            firstName: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          employee: {
+            lastName: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          employee: {
+            employeeNumber: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          leaveType: {
+            name: {
+              contains: query,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          employee: {
+            department: {
+              name: {
+                contains: query,
+                mode: "insensitive",
+              },
+            },
+          },
+        },
+        {
+          reason: {
+            contains: query,
+            mode: "insensitive",
+          },
+        },
+      ],
+    })
+  }
+
+  if (andFilters.length > 0) {
+    where.AND = andFilters
+  }
+
+  return where
+}
+
+export async function getEmployeePortalLeaveApprovalQueuePageReadModel(params: {
+  companyId: string
+  isHR: boolean
+  approverEmployeeId?: string
+  page: number
+  pageSize: number
+  search: string
+  status: LeaveApprovalQueueStatusFilter
+  departmentId?: string
+}): Promise<EmployeePortalLeaveApprovalQueuePage> {
+  const where = buildLeaveApprovalQueueWhere(params)
+  const skip = (params.page - 1) * params.pageSize
+
+  const [total, requests] = await db.$transaction([
+    db.leaveRequest.count({ where }),
+    db.leaveRequest.findMany({
+      where,
+      orderBy: params.isHR ? [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }] : [{ submittedAt: "asc" }, { createdAt: "asc" }],
+      skip,
+      take: params.pageSize,
+      include: {
+        employee: {
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeNumber: true,
+            photoUrl: true,
+            departmentId: true,
+            department: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        leaveType: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ])
+
+  return {
+    rows: requests.map((item) => toLeaveApprovalRow(item)),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
   }
 }
 
@@ -434,46 +592,184 @@ export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params:
   }
 }
 
+export async function getEmployeePortalLeaveApprovalHistoryDetailReadModel(params: {
+  companyId: string
+  isHR: boolean
+  approverEmployeeId?: string
+  requestId: string
+}): Promise<EmployeePortalLeaveApprovalHistoryDetail | null> {
+  const where: Prisma.LeaveRequestWhereInput = params.isHR
+    ? {
+        id: params.requestId,
+        employee: { companyId: params.companyId },
+        statusCode: { in: [RequestStatus.APPROVED, RequestStatus.REJECTED] },
+        ...(params.approverEmployeeId ? { hrApproverId: params.approverEmployeeId } : {}),
+      }
+    : {
+        id: params.requestId,
+        employee: { companyId: params.companyId },
+        supervisorApproverId: params.approverEmployeeId,
+        statusCode: {
+          in: [RequestStatus.SUPERVISOR_APPROVED, RequestStatus.APPROVED, RequestStatus.REJECTED],
+        },
+      }
+
+  const request = await db.leaveRequest.findFirst({
+    where,
+    select: {
+      id: true,
+      requestNumber: true,
+      startDate: true,
+      endDate: true,
+      numberOfDays: true,
+      reason: true,
+      statusCode: true,
+      updatedAt: true,
+      approvedAt: true,
+      rejectedAt: true,
+      rejectionReason: true,
+      supervisorApprovedAt: true,
+      supervisorApprovalRemarks: true,
+      hrApprovedAt: true,
+      hrApprovalRemarks: true,
+      hrRejectedAt: true,
+      hrRejectionReason: true,
+      employee: {
+        select: {
+          firstName: true,
+          lastName: true,
+          employeeNumber: true,
+          photoUrl: true,
+          department: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      leaveType: {
+        select: {
+          name: true,
+        },
+      },
+      supervisorApprover: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+      hrApprover: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  })
+
+  if (!request) {
+    return null
+  }
+
+  const decidedAt = params.isHR
+    ? request.hrApprovedAt ?? request.hrRejectedAt ?? request.approvedAt ?? request.rejectedAt ?? request.updatedAt
+    : request.supervisorApprovedAt ?? request.rejectedAt ?? request.updatedAt
+
+  const wasRejectedBeforeHr = Boolean(request.rejectedAt && !request.hrRejectedAt && !request.supervisorApprovedAt)
+
+  const supervisorStageStatus: EmployeePortalLeaveApprovalTrailStep["statusCode"] = request.supervisorApprovedAt
+    ? "APPROVED"
+    : wasRejectedBeforeHr
+      ? "REJECTED"
+      : request.statusCode === RequestStatus.SUPERVISOR_APPROVED || request.statusCode === RequestStatus.APPROVED
+        ? "APPROVED"
+        : "PENDING"
+
+  const hrStageStatus: EmployeePortalLeaveApprovalTrailStep["statusCode"] = request.hrApprovedAt
+    ? "APPROVED"
+    : request.hrRejectedAt
+      ? "REJECTED"
+      : wasRejectedBeforeHr
+        ? "NOT_REACHED"
+        : request.statusCode === RequestStatus.SUPERVISOR_APPROVED
+          ? "PENDING"
+          : request.statusCode === RequestStatus.APPROVED
+            ? "APPROVED"
+            : "PENDING"
+
+  const supervisorApproverName = request.supervisorApprover
+    ? `${request.supervisorApprover.firstName} ${request.supervisorApprover.lastName}`
+    : null
+  const hrApproverName = request.hrApprover
+    ? `${request.hrApprover.firstName} ${request.hrApprover.lastName}`
+    : null
+
+  return {
+    id: request.id,
+    requestNumber: request.requestNumber,
+    statusCode: request.statusCode,
+    leaveTypeName: request.leaveType.name,
+    startDateLabel: dateLabel.format(request.startDate),
+    endDateLabel: dateLabel.format(request.endDate),
+    numberOfDays: Number(request.numberOfDays),
+    reason: request.reason,
+    employeeName: `${request.employee.firstName} ${request.employee.lastName}`,
+    employeeNumber: request.employee.employeeNumber,
+    employeePhotoUrl: request.employee.photoUrl,
+    departmentName: request.employee.department?.name ?? "Unassigned",
+    decidedAtLabel: dateTimeLabel.format(decidedAt),
+    approvalTrail: [
+      {
+        id: `${request.id}-supervisor`,
+        stageLabel: "Supervisor Review",
+        approverName: supervisorApproverName,
+        statusCode: supervisorStageStatus,
+        actedAtLabel: request.supervisorApprovedAt
+          ? dateTimeLabel.format(request.supervisorApprovedAt)
+          : wasRejectedBeforeHr && request.rejectedAt
+            ? dateTimeLabel.format(request.rejectedAt)
+            : null,
+        remarks: request.supervisorApprovedAt
+          ? request.supervisorApprovalRemarks
+          : wasRejectedBeforeHr
+            ? request.rejectionReason
+            : null,
+      },
+      {
+        id: `${request.id}-hr`,
+        stageLabel: "HR Final Review",
+        approverName: hrApproverName,
+        statusCode: hrStageStatus,
+        actedAtLabel: request.hrApprovedAt
+          ? dateTimeLabel.format(request.hrApprovedAt)
+          : request.hrRejectedAt
+            ? dateTimeLabel.format(request.hrRejectedAt)
+            : null,
+        remarks: request.hrApprovedAt
+          ? request.hrApprovalRemarks
+          : request.hrRejectedAt
+            ? request.hrRejectionReason ?? request.rejectionReason
+            : null,
+      },
+    ],
+  }
+}
+
 export async function getEmployeePortalLeaveApprovalReadModel(params: {
   companyId: string
   isHR: boolean
   approverEmployeeId?: string
 }) {
-  const [requests, historyPage] = await Promise.all([
-    db.leaveRequest.findMany({
-      where: params.isHR
-        ? {
-            statusCode: RequestStatus.SUPERVISOR_APPROVED,
-            employee: { companyId: params.companyId },
-          }
-        : {
-            statusCode: RequestStatus.PENDING,
-            supervisorApproverId: params.approverEmployeeId,
-            employee: { companyId: params.companyId },
-          },
-      orderBy: params.isHR ? [{ supervisorApprovedAt: "asc" }, { submittedAt: "asc" }] : [{ submittedAt: "asc" }, { createdAt: "asc" }],
-      include: {
-        employee: {
-          select: {
-            firstName: true,
-            lastName: true,
-            employeeNumber: true,
-            photoUrl: true,
-            departmentId: true,
-            department: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-        leaveType: {
-          select: {
-            name: true,
-          },
-        },
-      },
-      take: 100,
+  const [queuePage, historyPage] = await Promise.all([
+    getEmployeePortalLeaveApprovalQueuePageReadModel({
+      companyId: params.companyId,
+      isHR: params.isHR,
+      approverEmployeeId: params.approverEmployeeId,
+      page: 1,
+      pageSize: 10,
+      search: "",
+      status: "ALL",
+      departmentId: undefined,
     }),
     getEmployeePortalLeaveApprovalHistoryPageReadModel({
       companyId: params.companyId,
@@ -490,7 +786,10 @@ export async function getEmployeePortalLeaveApprovalReadModel(params: {
   ])
 
   return {
-    rows: requests.map((item) => toLeaveApprovalRow(item)),
+    rows: queuePage.rows,
+    queueTotal: queuePage.total,
+    queuePage: queuePage.page,
+    queuePageSize: queuePage.pageSize,
     historyRows: historyPage.rows,
     historyTotal: historyPage.total,
     historyPage: historyPage.page,

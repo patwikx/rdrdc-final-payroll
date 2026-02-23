@@ -1,7 +1,8 @@
 "use client"
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { format } from "date-fns"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
@@ -23,6 +24,7 @@ import {
   approveLeaveByHrAction,
   approveLeaveBySupervisorAction,
   getLeaveApprovalHistoryPageAction,
+  getLeaveApprovalQueuePageAction,
   rejectLeaveBySupervisorAction,
   rejectLeaveByHrAction,
 } from "@/modules/leave/actions/leave-approval-actions"
@@ -48,10 +50,14 @@ type LeaveApprovalClientProps = {
   isHR: boolean
   departmentOptions: EmployeePortalLeaveApprovalDepartmentOption[]
   rows: EmployeePortalLeaveApprovalRow[]
+  initialQueueTotal: number
+  initialQueuePage: number
+  initialQueuePageSize: number
   historyRows: EmployeePortalLeaveApprovalHistoryRow[]
   initialHistoryTotal: number
   initialHistoryPage: number
   initialHistoryPageSize: number
+  view?: "queue" | "history" | "both"
 }
 
 type QueueStatusFilter = "ALL" | "PENDING" | "SUPERVISOR_APPROVED"
@@ -80,12 +86,18 @@ export function LeaveApprovalClient({
   isHR,
   departmentOptions,
   rows,
+  initialQueueTotal,
+  initialQueuePage,
+  initialQueuePageSize,
   historyRows,
   initialHistoryTotal,
   initialHistoryPage,
   initialHistoryPageSize,
+  view = "both",
 }: LeaveApprovalClientProps) {
   const router = useRouter()
+  const queueRequestTokenRef = useRef(0)
+  const queueSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
   const historySearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
@@ -101,62 +113,32 @@ export function LeaveApprovalClient({
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
   const [isPending, startTransition] = useTransition()
+  const [isQueuePending, startQueueTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
-  const [rowsPage, setRowsPage] = useState(1)
+  const [rowsPage, setRowsPage] = useState(initialQueuePage)
+  const [queueRowsState, setQueueRowsState] = useState(rows)
+  const [queueTotal, setQueueTotal] = useState(initialQueueTotal)
+  const [queueLoadError, setQueueLoadError] = useState<string | null>(null)
   const [historyRowsState, setHistoryRowsState] = useState(historyRows)
   const [historyTotal, setHistoryTotal] = useState(initialHistoryTotal)
   const [historyPage, setHistoryPage] = useState(initialHistoryPage)
   const [historyPageSize, setHistoryPageSize] = useState(String(initialHistoryPageSize))
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
   const [expandedHistoryRequestId, setExpandedHistoryRequestId] = useState<string | null>(null)
-  const ITEMS_PER_PAGE = 10
+  const queueItemsPerPage = initialQueuePageSize
   const historyItemsPerPage = Number(historyPageSize)
-  const deferredQueueSearch = useDeferredValue(queueSearch.trim().toLowerCase())
-
-  const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId])
+  const selected = useMemo(() => queueRowsState.find((row) => row.id === selectedId) ?? null, [queueRowsState, selectedId])
   const stats = useMemo(() => {
-    const totalDays = rows.reduce((sum, row) => sum + row.numberOfDays, 0)
-    const employeeCount = new Set(rows.map((row) => row.employeeNumber)).size
+    const totalDays = queueRowsState.reduce((sum, row) => sum + row.numberOfDays, 0)
+    const employeeCount = new Set(queueRowsState.map((row) => row.employeeNumber)).size
     return {
-      totalRequests: rows.length,
+      totalRequests: queueTotal,
       totalDays,
       employeeCount,
     }
-  }, [rows])
-  const filteredRows = useMemo(() => {
-    const query = deferredQueueSearch
-
-    return rows.filter((row) => {
-      if (queueStatus !== "ALL" && row.statusCode !== queueStatus) {
-        return false
-      }
-
-      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
-        return false
-      }
-
-      if (!query) {
-        return true
-      }
-
-      const haystack = [
-        row.requestNumber,
-        row.employeeName,
-        row.employeeNumber,
-        row.departmentName,
-        row.leaveTypeName,
-        row.startDate,
-        row.endDate,
-        row.reason ?? "",
-        row.statusCode,
-        toLabel(row.statusCode),
-      ]
-        .join(" ")
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [deferredQueueSearch, queueDepartmentId, queueStatus, rows])
+  }, [queueRowsState, queueTotal])
+  const queueTotalPages = Math.max(1, Math.ceil(queueTotal / queueItemsPerPage))
+  const activeRowsPage = Math.min(rowsPage, queueTotalPages)
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
   const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL" || queueDepartmentId !== "ALL"
@@ -166,11 +148,67 @@ export function LeaveApprovalClient({
     historyDepartmentId !== "ALL" ||
     Boolean(historyFromDate) ||
     Boolean(historyToDate)
+  const showQueueSection = view !== "history"
+  const showHistorySection = view !== "queue"
 
   const clearHistorySearchTimer = () => {
     if (!historySearchTimerRef.current) return
     clearTimeout(historySearchTimerRef.current)
     historySearchTimerRef.current = null
+  }
+
+  const clearQueueSearchTimer = () => {
+    if (!queueSearchTimerRef.current) return
+    clearTimeout(queueSearchTimerRef.current)
+    queueSearchTimerRef.current = null
+  }
+
+  const loadQueuePage = (params: {
+    page: number
+    search: string
+    status: QueueStatusFilter
+    departmentId: string
+  }) => {
+    const token = queueRequestTokenRef.current + 1
+    queueRequestTokenRef.current = token
+    setQueueLoadError(null)
+
+    startQueueTransition(async () => {
+      const response = await getLeaveApprovalQueuePageAction({
+        companyId,
+        page: params.page,
+        pageSize: queueItemsPerPage,
+        search: params.search,
+        status: params.status,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
+      })
+
+      if (queueRequestTokenRef.current !== token) {
+        return
+      }
+
+      if (!response.ok) {
+        setQueueLoadError(response.error)
+        return
+      }
+
+      setQueueRowsState(response.data.rows)
+      setQueueTotal(response.data.total)
+      setRowsPage(response.data.page)
+    })
+  }
+
+  const scheduleQueueSearch = (nextSearch: string) => {
+    setQueueSearch(nextSearch)
+    clearQueueSearchTimer()
+    queueSearchTimerRef.current = setTimeout(() => {
+      loadQueuePage({
+        page: 1,
+        search: nextSearch,
+        status: queueStatus,
+        departmentId: queueDepartmentId,
+      })
+    }, 250)
   }
 
   const loadHistoryPage = (params: {
@@ -233,6 +271,10 @@ export function LeaveApprovalClient({
 
   useEffect(() => {
     return () => {
+      if (queueSearchTimerRef.current) {
+        clearTimeout(queueSearchTimerRef.current)
+        queueSearchTimerRef.current = null
+      }
       if (!historySearchTimerRef.current) return
       clearTimeout(historySearchTimerRef.current)
       historySearchTimerRef.current = null
@@ -319,10 +361,13 @@ export function LeaveApprovalClient({
           )
         })()}
 
+        {showQueueSection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
-            <span className="text-xs text-foreground/70">{filteredRows.length} records</span>
+            <span className="text-xs text-foreground/70">
+              {queueTotal} records{isQueuePending ? " • Loading..." : ""}
+            </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -332,8 +377,7 @@ export function LeaveApprovalClient({
                 placeholder="Search employee/request..."
                 value={queueSearch}
                 onChange={(event) => {
-                  setQueueSearch(event.target.value)
-                  setRowsPage(1)
+                  scheduleQueueSearch(event.target.value)
                 }}
                 className="rounded-lg pl-8"
               />
@@ -341,8 +385,15 @@ export function LeaveApprovalClient({
             <Select
               value={queueStatus}
               onValueChange={(value) => {
-                setQueueStatus(value as QueueStatusFilter)
-                setRowsPage(1)
+                const nextStatus = value as QueueStatusFilter
+                setQueueStatus(nextStatus)
+                clearQueueSearchTimer()
+                loadQueuePage({
+                  page: 1,
+                  search: queueSearch,
+                  status: nextStatus,
+                  departmentId: queueDepartmentId,
+                })
               }}
             >
               <SelectTrigger className="w-full rounded-lg sm:w-[180px]">
@@ -358,7 +409,13 @@ export function LeaveApprovalClient({
               value={queueDepartmentId}
               onValueChange={(value) => {
                 setQueueDepartmentId(value)
-                setRowsPage(1)
+                clearQueueSearchTimer()
+                loadQueuePage({
+                  page: 1,
+                  search: queueSearch,
+                  status: queueStatus,
+                  departmentId: value,
+                })
               }}
             >
               <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
@@ -382,18 +439,37 @@ export function LeaveApprovalClient({
                 setQueueSearch("")
                 setQueueStatus("ALL")
                 setQueueDepartmentId("ALL")
-                setRowsPage(1)
+                clearQueueSearchTimer()
+                loadQueuePage({
+                  page: 1,
+                  search: "",
+                  status: "ALL",
+                  departmentId: "ALL",
+                })
               }}
               disabled={!hasActiveQueueFilters}
             >
               <IconFilterOff className="h-4 w-4" />
               <span>Clear</span>
             </Button>
+            {view === "queue" ? (
+              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg sm:ml-auto sm:w-auto">
+                <Link href={`/${companyId}/employee-portal/approval-history`}>
+                  View Approval History
+                </Link>
+              </Button>
+            ) : null}
           </div>
 
-          {rows.length === 0 ? (
+          {queueLoadError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {queueLoadError}
+            </div>
+          ) : null}
+
+          {queueTotal === 0 && !hasActiveQueueFilters ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">No requests pending your approval.</div>
-          ) : filteredRows.length === 0 ? (
+          ) : queueRowsState.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-foreground/70">
               No requests match the current filters.
             </div>
@@ -409,15 +485,9 @@ export function LeaveApprovalClient({
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Status</p>
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-foreground/70">Action</p>
               </div>
-              {(() => {
-                const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE))
-                const safeRowsPage = Math.min(rowsPage, totalPages)
-                const startIndex = (safeRowsPage - 1) * ITEMS_PER_PAGE
-                const paginatedRows = filteredRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-                return (
-                  <>
-                    <div className="space-y-2 lg:hidden">
-                      {paginatedRows.map((row) => (
+              <>
+                <div className="space-y-2 lg:hidden">
+                  {queueRowsState.map((row) => (
                         <div key={row.id} className="rounded-xl border border-border/60 bg-background p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -482,10 +552,10 @@ export function LeaveApprovalClient({
                           </div>
                         </div>
                       ))}
-                    </div>
+                </div>
 
-                    <div className="hidden lg:block">
-                      {paginatedRows.map((row) => (
+                <div className="hidden lg:block">
+                  {queueRowsState.map((row) => (
                         <div key={row.id} className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-4 last:border-b-0 hover:bg-muted/20 lg:grid">
                           <div className="col-span-1 min-w-0">
                             <p className="truncate whitespace-nowrap text-xs text-foreground/70" title={row.requestNumber}>{row.requestNumber}</p>
@@ -528,41 +598,55 @@ export function LeaveApprovalClient({
                           </div>
                         </div>
                       ))}
+                </div>
+                {queueTotalPages > 1 ? (
+                  <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Page {activeRowsPage} of {queueTotalPages} • {queueTotal} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeRowsPage <= 1 || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeRowsPage - 1,
+                            search: queueSearch,
+                            status: queueStatus,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeRowsPage >= queueTotalPages || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeRowsPage + 1,
+                            search: queueSearch,
+                            status: queueStatus,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Next
+                      </Button>
                     </div>
-                    {totalPages > 1 ? (
-                      <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Page {safeRowsPage} of {totalPages} • {filteredRows.length} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeRowsPage <= 1}
-                            onClick={() => setRowsPage(safeRowsPage - 1)}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeRowsPage >= totalPages}
-                            onClick={() => setRowsPage(safeRowsPage + 1)}
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                )
-              })()}
+                  </div>
+                ) : null}
+              </>
             </div>
           )}
         </div>
+        ) : null}
 
+        {showHistorySection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval History</h2>
@@ -1006,6 +1090,7 @@ export function LeaveApprovalClient({
             </div>
           )}
         </div>
+        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

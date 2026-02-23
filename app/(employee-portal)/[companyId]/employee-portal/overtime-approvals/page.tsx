@@ -56,10 +56,14 @@ export default async function OvertimeApprovalsPage({ params }: OvertimeApproval
       isHR={isHR}
       departmentOptions={departmentOptions}
       rows={overtimeApprovalData.rows}
+      initialQueueTotal={overtimeApprovalData.queueTotal}
+      initialQueuePage={overtimeApprovalData.queuePage}
+      initialQueuePageSize={overtimeApprovalData.queuePageSize}
       historyRows={overtimeApprovalData.historyRows}
       initialHistoryTotal={overtimeApprovalData.historyTotal}
       initialHistoryPage={overtimeApprovalData.historyPage}
       initialHistoryPageSize={overtimeApprovalData.historyPageSize}
+      view="queue"
     />
   )
 }

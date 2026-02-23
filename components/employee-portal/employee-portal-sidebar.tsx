@@ -129,6 +129,12 @@ const approverMenuItems = [
     icon: IconChecklist,
     roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
   },
+  {
+    title: "Approval History",
+    href: "/employee-portal/approval-history",
+    icon: IconChecklist,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
 ] as const
 
 const processingMenuItems = [
@@ -215,7 +221,10 @@ export function EmployeePortalSidebar({
 
   const renderItem = (item: { title: string; href: string; icon: (typeof menuItems)[number]["icon"] }) => {
     const href = `/${activeCompanyId}${item.href}`
-    const isActive = pathname === href
+    const isActive =
+      item.href === "/employee-portal"
+        ? pathname === href
+        : pathname === href || pathname.startsWith(`${href}/`)
     const taskCount = taskCountByHref[item.href] ?? 0
 
     return (

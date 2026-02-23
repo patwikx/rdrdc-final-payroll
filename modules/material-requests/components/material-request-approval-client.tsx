@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
+  IconExternalLink,
   IconFileCheck,
   IconFilterOff,
   IconSearch,
@@ -22,13 +24,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { cn } from "@/lib/utils"
 import {
   approveMaterialRequestStepAction,
   getMaterialRequestApprovalDecisionDetailsAction,
   getMaterialRequestApprovalHistoryDetailsAction,
   getMaterialRequestApprovalHistoryPageAction,
+  getMaterialRequestsForMyApprovalAction,
   rejectMaterialRequestStepAction,
 } from "@/modules/material-requests/actions/material-request-approval-actions"
 import type {
@@ -44,10 +46,14 @@ type MaterialRequestApprovalClientProps = {
   isHR: boolean
   departmentOptions: EmployeePortalMaterialRequestDepartmentOption[]
   rows: EmployeePortalMaterialRequestApprovalQueueRow[]
+  initialQueueTotal: number
+  initialQueuePage: number
+  initialQueuePageSize: number
   historyRows: EmployeePortalMaterialRequestApprovalHistoryRow[]
   initialHistoryTotal: number
   initialHistoryPage: number
   initialHistoryPageSize: number
+  view?: "queue" | "history" | "both"
 }
 
 type HistoryStatusFilter = "ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED"
@@ -84,12 +90,18 @@ export function MaterialRequestApprovalClient({
   isHR,
   departmentOptions,
   rows,
+  initialQueueTotal,
+  initialQueuePage,
+  initialQueuePageSize,
   historyRows,
   initialHistoryTotal,
   initialHistoryPage,
   initialHistoryPageSize,
+  view = "both",
 }: MaterialRequestApprovalClientProps) {
   const router = useRouter()
+  const queueRequestTokenRef = useRef(0)
+  const queueSearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
   const historySearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
@@ -102,10 +114,14 @@ export function MaterialRequestApprovalClient({
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
   const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [isPending, startTransition] = useTransition()
+  const [isQueuePending, startQueueTransition] = useTransition()
   const [isDetailPending, startDetailTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
   const [isHistoryDetailPending, startHistoryDetailTransition] = useTransition()
-  const [queuePage, setQueuePage] = useState(1)
+  const [queuePage, setQueuePage] = useState(initialQueuePage)
+  const [queueRowsState, setQueueRowsState] = useState(rows)
+  const [queueTotal, setQueueTotal] = useState(initialQueueTotal)
+  const [queueLoadError, setQueueLoadError] = useState<string | null>(null)
   const [historyRowsState, setHistoryRowsState] = useState(historyRows)
   const [historyTotal, setHistoryTotal] = useState(initialHistoryTotal)
   const [historyPage, setHistoryPage] = useState(initialHistoryPage)
@@ -118,41 +134,13 @@ export function MaterialRequestApprovalClient({
   const [historyDetailErrorById, setHistoryDetailErrorById] = useState<Record<string, string>>({})
   const [historyDetailLoadingId, setHistoryDetailLoadingId] = useState<string | null>(null)
 
-  const ITEMS_PER_PAGE = 10
+  const queueItemsPerPage = initialQueuePageSize
   const historyItemsPerPage = Number(historyPageSize)
-  const DECISION_ITEMS_PAGE_SIZE = 12
-  const debouncedQueueSearch = useDebouncedValue(queueSearch, 180)
-
-  const selectedRequest = useMemo(() => rows.find((row) => row.id === selectedRequestId) ?? null, [rows, selectedRequestId])
-  const filteredQueueRows = useMemo(() => {
-    const query = debouncedQueueSearch.trim().toLowerCase()
-    if (!query && queueDepartmentId === "ALL") {
-      return rows
-    }
-
-    return rows.filter((row) => {
-      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
-        return false
-      }
-
-      const haystack = [
-        row.requestNumber,
-        row.requesterName,
-        row.requesterEmployeeNumber,
-        row.departmentName,
-        row.datePreparedLabel,
-        row.dateRequiredLabel,
-        row.submittedAtLabel ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-
-      return haystack.includes(query)
-    })
-  }, [debouncedQueueSearch, queueDepartmentId, rows])
+  const DECISION_ITEMS_PAGE_SIZE = 8
+  const selectedRequest = useMemo(() => queueRowsState.find((row) => row.id === selectedRequestId) ?? null, [queueRowsState, selectedRequestId])
 
   const queueStats = useMemo(() => {
-    return rows.reduce(
+    const summary = queueRowsState.reduce(
       (accumulator, row) => {
         accumulator.requests += 1
         accumulator.totalAmount += row.grandTotal
@@ -165,11 +153,19 @@ export function MaterialRequestApprovalClient({
         requesters: new Set<string>(),
       }
     )
-  }, [rows])
+    return {
+      ...summary,
+      requests: queueTotal,
+    }
+  }, [queueRowsState, queueTotal])
 
+  const queueTotalPages = Math.max(1, Math.ceil(queueTotal / queueItemsPerPage))
+  const activeQueuePage = Math.min(queuePage, queueTotalPages)
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
   const hasQueueFilters = queueSearch.trim().length > 0 || queueDepartmentId !== "ALL"
+  const showQueueSection = view !== "history"
+  const showHistorySection = view !== "queue"
 
   const clearHistorySearchDebounceTimeout = () => {
     if (!historySearchDebounceTimeoutRef.current) {
@@ -180,13 +176,58 @@ export function MaterialRequestApprovalClient({
     historySearchDebounceTimeoutRef.current = null
   }
 
+  const clearQueueSearchDebounceTimeout = () => {
+    if (!queueSearchDebounceTimeoutRef.current) {
+      return
+    }
+
+    clearTimeout(queueSearchDebounceTimeoutRef.current)
+    queueSearchDebounceTimeoutRef.current = null
+  }
+
   useEffect(() => {
     return () => {
+      if (queueSearchDebounceTimeoutRef.current) {
+        clearTimeout(queueSearchDebounceTimeoutRef.current)
+      }
       if (historySearchDebounceTimeoutRef.current) {
         clearTimeout(historySearchDebounceTimeoutRef.current)
       }
     }
   }, [])
+
+  const loadQueuePage = (params: {
+    page: number
+    search: string
+    departmentId: string
+  }) => {
+    const token = queueRequestTokenRef.current + 1
+    queueRequestTokenRef.current = token
+    setQueueLoadError(null)
+
+    startQueueTransition(async () => {
+      const response = await getMaterialRequestsForMyApprovalAction({
+        companyId,
+        page: params.page,
+        pageSize: queueItemsPerPage,
+        search: params.search,
+        departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
+      })
+
+      if (queueRequestTokenRef.current !== token) {
+        return
+      }
+
+      if (!response.ok) {
+        setQueueLoadError(response.error)
+        return
+      }
+
+      setQueueRowsState(response.data.rows)
+      setQueueTotal(response.data.total)
+      setQueuePage(response.data.page)
+    })
+  }
 
   const loadHistoryPage = (params: {
     page: number
@@ -223,6 +264,18 @@ export function MaterialRequestApprovalClient({
       setHistoryPage(response.data.page)
       setHistoryPageSize(String(response.data.pageSize))
     })
+  }
+
+  const scheduleQueueSearch = (nextSearch: string) => {
+    setQueueSearch(nextSearch)
+    clearQueueSearchDebounceTimeout()
+    queueSearchDebounceTimeoutRef.current = setTimeout(() => {
+      loadQueuePage({
+        page: 1,
+        search: nextSearch,
+        departmentId: queueDepartmentId,
+      })
+    }, 250)
   }
 
   const loadDecisionDetail = (requestId: string, page: number) => {
@@ -377,10 +430,13 @@ export function MaterialRequestApprovalClient({
           )
         })()}
 
+        {showQueueSection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
-            <span className="text-xs text-muted-foreground">{filteredQueueRows.length} records</span>
+            <span className="text-xs text-muted-foreground">
+              {queueTotal} records{isQueuePending ? " • Loading..." : ""}
+            </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -390,8 +446,7 @@ export function MaterialRequestApprovalClient({
                 placeholder="Search request #, requester, department..."
                 value={queueSearch}
                 onChange={(event) => {
-                  setQueueSearch(event.target.value)
-                  setQueuePage(1)
+                  scheduleQueueSearch(event.target.value)
                 }}
                 className="rounded-lg pl-8"
               />
@@ -401,7 +456,12 @@ export function MaterialRequestApprovalClient({
                 value={queueDepartmentId}
                 onValueChange={(value) => {
                   setQueueDepartmentId(value)
-                  setQueuePage(1)
+                  clearQueueSearchDebounceTimeout()
+                  loadQueuePage({
+                    page: 1,
+                    search: queueSearch,
+                    departmentId: value,
+                  })
                 }}
               >
                 <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
@@ -424,7 +484,12 @@ export function MaterialRequestApprovalClient({
               onClick={() => {
                 setQueueSearch("")
                 setQueueDepartmentId("ALL")
-                setQueuePage(1)
+                clearQueueSearchDebounceTimeout()
+                loadQueuePage({
+                  page: 1,
+                  search: "",
+                  departmentId: "ALL",
+                })
               }}
               disabled={!hasQueueFilters}
             >
@@ -432,13 +497,26 @@ export function MaterialRequestApprovalClient({
               <span className="sm:hidden">Clear</span>
               <span className="hidden sm:inline">Clear Filters</span>
             </Button>
+            {view === "queue" ? (
+              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg sm:ml-auto sm:w-auto">
+                <Link href={`/${companyId}/employee-portal/approval-history`}>
+                  View Approval History
+                </Link>
+              </Button>
+            ) : null}
           </div>
 
-          {rows.length === 0 ? (
+          {queueLoadError ? (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {queueLoadError}
+            </div>
+          ) : null}
+
+          {queueTotal === 0 && !hasQueueFilters ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
               No material requests pending your current approval step.
             </div>
-          ) : filteredQueueRows.length === 0 ? (
+          ) : queueRowsState.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
               No requests match the current filters.
             </div>
@@ -455,16 +533,9 @@ export function MaterialRequestApprovalClient({
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
               </div>
 
-              {(() => {
-                const totalPages = Math.max(1, Math.ceil(filteredQueueRows.length / ITEMS_PER_PAGE))
-                const safeQueuePage = Math.min(queuePage, totalPages)
-                const startIndex = (safeQueuePage - 1) * ITEMS_PER_PAGE
-                const paginatedRows = filteredQueueRows.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-
-                return (
-                  <>
-                    <div className="space-y-2 lg:hidden">
-                      {paginatedRows.map((row) => (
+              <>
+                <div className="space-y-2 lg:hidden">
+                  {queueRowsState.map((row) => (
                         <motion.div
                           key={`queue-mobile-${row.id}`}
                           layout
@@ -521,7 +592,7 @@ export function MaterialRequestApprovalClient({
                               <p className="mt-0.5 text-xs font-medium text-foreground">{row.submittedAtLabel ?? "-"}</p>
                             </div>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="mt-3 grid grid-cols-3 gap-2">
                             <Button
                               type="button"
                               variant="destructive"
@@ -543,13 +614,19 @@ export function MaterialRequestApprovalClient({
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
+                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg text-xs">
+                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                                <IconExternalLink className="mr-1 h-3.5 w-3.5" />
+                                View
+                              </Link>
+                            </Button>
                           </div>
                         </motion.div>
                       ))}
-                    </div>
+                </div>
 
-                    <div className="hidden lg:block">
-                      {paginatedRows.map((row) => (
+                <div className="hidden lg:block">
+                  {queueRowsState.map((row) => (
                         <motion.div
                           key={row.id}
                           layout
@@ -608,45 +685,63 @@ export function MaterialRequestApprovalClient({
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
+                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg">
+                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                                <IconExternalLink className="h-3.5 w-3.5" />
+                                <span className="sr-only">View Details</span>
+                              </Link>
+                            </Button>
                           </div>
                         </motion.div>
                       ))}
-                    </div>
+                </div>
 
-                    {totalPages > 1 ? (
-                      <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs text-muted-foreground">
-                          Page {safeQueuePage} of {totalPages} • {filteredQueueRows.length} records
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeQueuePage <= 1}
-                            onClick={() => setQueuePage(safeQueuePage - 1)}
-                          >
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg text-xs"
-                            disabled={safeQueuePage >= totalPages}
-                            onClick={() => setQueuePage(safeQueuePage + 1)}
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                )
-              })()}
+                {queueTotalPages > 1 ? (
+                  <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Page {activeQueuePage} of {queueTotalPages} • {queueTotal} records
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeQueuePage <= 1 || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeQueuePage - 1,
+                            search: queueSearch,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-lg text-xs"
+                        disabled={activeQueuePage >= queueTotalPages || isQueuePending}
+                        onClick={() =>
+                          loadQueuePage({
+                            page: activeQueuePage + 1,
+                            search: queueSearch,
+                            departmentId: queueDepartmentId,
+                          })
+                        }
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             </div>
           )}
         </div>
+        ) : null}
 
+        {showHistorySection ? (
         <div className="space-y-3 border-t border-border/60 pt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval History</h2>
@@ -1110,6 +1205,7 @@ export function MaterialRequestApprovalClient({
             </div>
           )}
         </div>
+        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -1118,7 +1214,7 @@ export function MaterialRequestApprovalClient({
             <DialogTitle className="text-base font-semibold">
               {decisionType === "approve" ? "Approve Material Request" : "Reject Material Request"}
             </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
+            <DialogDescription className="break-words text-sm text-muted-foreground">
               {(decisionDetail ?? selectedRequest)
                 ? `${(decisionDetail ?? selectedRequest)?.requestNumber} • ${(decisionDetail ?? selectedRequest)?.requesterName} • Step ${(decisionDetail ?? selectedRequest)?.currentStep}/${(decisionDetail ?? selectedRequest)?.requiredSteps}`
                 : "Confirm your decision."}
@@ -1196,51 +1292,33 @@ export function MaterialRequestApprovalClient({
 
               {decisionDetail ? (
                 <div className="space-y-2">
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/60 p-2 lg:hidden">
+                  <div className="max-h-[28vh] overflow-y-auto rounded-lg border border-border/60 sm:max-h-56">
+                    <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <p>#</p>
+                      <p>Description</p>
+                      <p>UoM</p>
+                      <p>Qty</p>
+                      <p>Price</p>
+                    </div>
                     {decisionDetail.items.map((item) => (
-                      <div key={item.id} className="rounded-md border border-border/60 bg-muted/20 p-2 text-xs">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="font-medium text-foreground">Line {item.lineNumber}</p>
-                          <p className="text-muted-foreground">{item.uom}</p>
+                      <div key={item.id} className="border-b border-border/60 px-2 py-2 text-[11px] last:border-b-0">
+                        <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2">
+                          <p className="text-foreground">{item.lineNumber}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-foreground">{item.description}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">Code: {item.itemCode ?? "-"}</p>
+                          </div>
+                          <p className="truncate text-foreground">{item.uom}</p>
+                          <p className="truncate text-foreground">{item.quantity.toFixed(3)}</p>
+                          <p className="truncate text-foreground">PHP {currency.format(item.unitPrice ?? 0)}</p>
                         </div>
-                        <p className="text-foreground">{item.description}</p>
-                        <p className="text-muted-foreground">Code: {item.itemCode ?? "-"}</p>
-                        <p className="text-muted-foreground">Qty: {item.quantity.toFixed(3)}</p>
-                        <p className="text-muted-foreground">
-                          Unit: PHP {currency.format(item.unitPrice ?? 0)} • Total: PHP {currency.format(item.lineTotal ?? 0)}
-                        </p>
-                        <p className="text-muted-foreground">Remarks: {item.remarks ?? "-"}</p>
+                        {item.remarks?.trim() ? (
+                          <p className="mt-1 truncate pl-[42px] text-[10px] text-muted-foreground">
+                            Remarks: {item.remarks}
+                          </p>
+                        ) : null}
                       </div>
                     ))}
-                  </div>
-
-                  <div className="hidden overflow-hidden rounded-lg border border-border/60 lg:block">
-                    <div className="overflow-x-auto">
-                      <div className="min-w-[720px]">
-                        <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2">
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">#</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Code</p>
-                          <p className="col-span-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Description</p>
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">UOM</p>
-                          <p className="col-span-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Qty</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Line Total</p>
-                          <p className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Remarks</p>
-                        </div>
-                        <div className="max-h-56 overflow-y-auto">
-                          {decisionDetail.items.map((item) => (
-                            <div key={item.id} className="grid grid-cols-12 items-start gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                              <div className="col-span-1 text-foreground">{item.lineNumber}</div>
-                              <div className="col-span-2 text-muted-foreground">{item.itemCode ?? "-"}</div>
-                              <div className="col-span-3 text-foreground">{item.description}</div>
-                              <div className="col-span-1 text-foreground">{item.uom}</div>
-                              <div className="col-span-1 text-foreground">{item.quantity.toFixed(3)}</div>
-                              <div className="col-span-2 text-foreground">PHP {currency.format(item.lineTotal ?? 0)}</div>
-                              <div className="col-span-2 text-muted-foreground">{item.remarks ?? "-"}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {decisionDetail.totalItems > decisionDetail.pageSize ? (

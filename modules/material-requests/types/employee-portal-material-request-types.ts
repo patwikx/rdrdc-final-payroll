@@ -27,6 +27,7 @@ export type EmployeePortalMaterialRequestApprovalStepRow = {
   stepName: string | null
   status: MaterialRequestStepStatus
   approverName: string
+  approverEmployeeNumber?: string | null
   actedByName: string | null
   actedAtLabel: string | null
   remarks: string | null
@@ -157,8 +158,18 @@ export type EmployeePortalMaterialRequestApprovalHistoryPage = {
   pageSize: number
 }
 
+export type EmployeePortalMaterialRequestApprovalQueuePage = {
+  rows: EmployeePortalMaterialRequestApprovalQueueRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type EmployeePortalMaterialRequestApprovalReadModel = {
   rows: EmployeePortalMaterialRequestApprovalQueueRow[]
+  queueTotal: number
+  queuePage: number
+  queuePageSize: number
   historyRows: EmployeePortalMaterialRequestApprovalHistoryRow[]
   historyTotal: number
   historyPage: number
@@ -210,6 +221,10 @@ export type EmployeePortalMaterialRequestApprovalHistoryDetail = {
   rejectedAtLabel: string | null
   currentStep: number | null
   requiredSteps: number
+  chargeTo: string | null
+  bldgCode: string | null
+  deliverTo: string | null
+  isStoreUse: boolean
   subTotal: number
   freight: number
   discount: number

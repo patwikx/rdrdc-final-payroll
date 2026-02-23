@@ -1605,6 +1605,7 @@ export async function executeLegacyMaterialRequestSync(
               processingCompletedAt,
               processingRemarks: asNullableText(pickPath(row, ["servedNotes"])),
               processedByUserId: processedByUser?.userId ?? servedByUser?.userId ?? null,
+              requiresReceiptAcknowledgment: false,
               postingStatus,
               postingReference: asNullableText(pickPath(row, ["confirmationNo", "purchaseOrderNumber"])),
               postingRemarks: asNullableText(pickPath(row, ["remarks"])),

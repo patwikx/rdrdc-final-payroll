@@ -5,12 +5,14 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
   IconCalendarEvent,
+  IconChartBar,
   IconChecklist,
   IconClockHour4,
   IconFileText,
   IconHome2,
   IconLayoutRows,
   IconPackage,
+  IconReceipt2,
   IconUser,
   IconUserCheck,
   IconCommand,
@@ -50,6 +52,13 @@ type EmployeePortalSidebarProps = {
   canApproveRequests: boolean
   canProcessMaterialRequests: boolean
   canPostMaterialRequests: boolean
+  taskCounts: {
+    leaveApprovalPending: number
+    overtimeApprovalPending: number
+    materialRequestApprovalPending: number
+    materialRequestProcessingPending: number
+    materialRequestPostingPending: number
+  }
 }
 
 const companyLogos = [IconLayoutRows, IconWaveSine, IconCommand]
@@ -83,6 +92,18 @@ const menuItems = [
     title: "Material Requests",
     href: "/employee-portal/material-requests",
     icon: IconPackage,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
+  {
+    title: "Material Request KPI",
+    href: "/employee-portal/material-request-kpis",
+    icon: IconChartBar,
+    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+  },
+  {
+    title: "Receiving Reports",
+    href: "/employee-portal/material-request-receiving-reports",
+    icon: IconReceipt2,
     roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
   },
   {
@@ -148,6 +169,7 @@ export function EmployeePortalSidebar({
   canApproveRequests,
   canProcessMaterialRequests,
   canPostMaterialRequests,
+  taskCounts,
 }: EmployeePortalSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -190,9 +212,18 @@ export function EmployeePortalSidebar({
     ? adminMenuItems.filter((item) => item.roles.includes(companyRole))
     : []
 
+  const taskCountByHref: Record<string, number> = {
+    "/employee-portal/leave-approvals": taskCounts.leaveApprovalPending,
+    "/employee-portal/overtime-approvals": taskCounts.overtimeApprovalPending,
+    "/employee-portal/material-request-approvals": taskCounts.materialRequestApprovalPending,
+    "/employee-portal/material-request-processing": taskCounts.materialRequestProcessingPending,
+    "/employee-portal/material-request-posting": taskCounts.materialRequestPostingPending,
+  }
+
   const renderItem = (item: { title: string; href: string; icon: (typeof menuItems)[number]["icon"] }) => {
     const href = `/${activeCompanyId}${item.href}`
     const isActive = pathname === href
+    const taskCount = taskCountByHref[item.href] ?? 0
 
     return (
       <SidebarMenuItem key={item.href}>
@@ -207,9 +238,16 @@ export function EmployeePortalSidebar({
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium"
           )}
         >
-          <Link href={href} className="flex items-center gap-3">
+          <Link href={href} className="flex w-full items-center gap-3">
             <item.icon className={cn("h-4 w-4 shrink-0 opacity-80", isActive && "opacity-100")} />
             <span>{item.title}</span>
+            {taskCount > 0 ? (
+              <span
+                className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+              >
+                {taskCount > 99 ? "99+" : String(taskCount)}
+              </span>
+            ) : null}
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>

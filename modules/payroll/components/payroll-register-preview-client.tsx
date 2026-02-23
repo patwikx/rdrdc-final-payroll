@@ -61,6 +61,7 @@ const fixedLegendItems = [
   "UT - Undertime",
   "+ EARN TOTAL - Total Dynamic Earnings",
   "- DED TOTAL - Total Dynamic Deductions",
+  "GROSS - Gross Pay",
   "NET - Net Pay",
 ]
 
@@ -98,6 +99,7 @@ const buildHeaderCells = (columns: PayrollRegisterDynamicColumn[]): string[] => 
     "+ EARN TOTAL",
     ...deductionColumns.map((column) => toDynamicColumnHeader("-", column)),
     "- DED TOTAL",
+    "GROSS",
     "NET",
   ]
 }
@@ -160,6 +162,7 @@ export function PayrollRegisterPreviewClient({
               toAmount(row.dynamicEarningsTotal),
               ...deductionColumns.map((column) => toAmount(getDynamicAmount(row, column))),
               toAmount(row.dynamicDeductionsTotal),
+              toAmount(row.grossPay),
               toAmount(row.netPay),
             ]
 
@@ -191,6 +194,7 @@ export function PayrollRegisterPreviewClient({
           toAmount(subtotal.dynamicEarningsTotal),
           ...deductionColumns.map((column) => toAmount(getDynamicTotal(subtotal, column))),
           toAmount(subtotal.dynamicDeductionsTotal),
+          toAmount(subtotal.grossPay),
           toAmount(subtotal.netPay),
         ]
 
@@ -221,6 +225,7 @@ export function PayrollRegisterPreviewClient({
       toAmount(grand.dynamicEarningsTotal),
       ...deductionColumns.map((column) => toAmount(getDynamicTotal(grand, column))),
       toAmount(grand.dynamicDeductionsTotal),
+      toAmount(grand.grossPay),
       toAmount(grand.netPay),
     ]
 
@@ -372,6 +377,7 @@ export function PayrollRegisterPreviewClient({
                         </td>
                       ))}
                       <td className="border border-border px-2 py-1 text-right">{toAmount(row.dynamicDeductionsTotal)}</td>
+                      <td className="border border-border px-2 py-1 text-right">{toAmount(row.grossPay)}</td>
                       <td className="border border-border px-2 py-1 text-right font-semibold">{toAmount(row.netPay)}</td>
                     </tr>
                   ))}
@@ -399,6 +405,7 @@ export function PayrollRegisterPreviewClient({
                       </td>
                     ))}
                     <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.dynamicDeductionsTotal)}</td>
+                    <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.grossPay)}</td>
                     <td className="border border-border px-2 py-1 text-right">{toAmount(department.subtotal.netPay)}</td>
                   </tr>
                 </Fragment>
@@ -428,6 +435,7 @@ export function PayrollRegisterPreviewClient({
                   </td>
                 ))}
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.dynamicDeductionsTotal)}</td>
+                <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.grossPay)}</td>
                 <td className="border border-border px-2 py-1 text-right">{toAmount(report.grandTotal.netPay)}</td>
               </tr>
             </tbody>

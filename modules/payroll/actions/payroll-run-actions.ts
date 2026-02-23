@@ -38,6 +38,7 @@ import {
   computeThirteenthMonthPay,
   parseThirteenthMonthFormula,
 } from "@/modules/payroll/utils/thirteenth-month-policy"
+import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
 
 type ActionResult = { ok: true; message: string; runId?: string } | { ok: false; error: string }
 
@@ -1043,8 +1044,9 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
       where: {
         holidayDate: { gte: run.payPeriod.cutoffStartDate, lte: run.payPeriod.cutoffEndDate },
         isActive: true,
-        OR: [{ companyId: null }, { companyId: run.companyId }],
+        companyId: run.companyId,
       },
+      orderBy: [{ holidayDate: "asc" }],
       select: { holidayDate: true, holidayTypeCode: true, payMultiplier: true },
     }),
     db.dailyTimeRecord.findMany({
@@ -1548,7 +1550,14 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
 
         try {
           const created = await tx.deductionType.create({
-            data: { companyId: run.companyId, code, name, isMandatory: true, isPreTax: code !== "WTAX" },
+            data: {
+              companyId: run.companyId,
+              code,
+              name,
+              isMandatory: true,
+              isPreTax: code !== "WTAX",
+              reportingContributionType: inferReportingContributionType(code, name),
+            },
             select: { id: true },
           })
           deductionTypeByCode.set(code, created.id)

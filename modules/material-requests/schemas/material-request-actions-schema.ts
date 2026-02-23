@@ -75,7 +75,14 @@ export const cancelMaterialRequestInputSchema = z.object({
   reason: optionalText(1000),
 })
 
+export const acknowledgeMaterialRequestReceiptInputSchema = z.object({
+  companyId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  remarks: optionalText(1000),
+})
+
 export type CreateMaterialRequestDraftInput = z.infer<typeof createMaterialRequestDraftInputSchema>
 export type UpdateMaterialRequestDraftInput = z.infer<typeof updateMaterialRequestDraftInputSchema>
 export type SubmitMaterialRequestInput = z.infer<typeof submitMaterialRequestInputSchema>
 export type CancelMaterialRequestInput = z.infer<typeof cancelMaterialRequestInputSchema>
+export type AcknowledgeMaterialRequestReceiptInput = z.infer<typeof acknowledgeMaterialRequestReceiptInputSchema>

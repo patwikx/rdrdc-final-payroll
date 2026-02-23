@@ -8,6 +8,7 @@ import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess } from "@/modules/auth/utils/authorization-policy"
+import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
 import {
   createDeductionTypeInputSchema,
   createRecurringDeductionInputSchema,
@@ -291,6 +292,8 @@ export async function createDeductionTypeAction(input: CreateDeductionTypeInput)
         isMandatory: false,
         isPreTax: payload.isPreTax,
         payPeriodApplicability: payload.payPeriodApplicability,
+        reportingContributionType:
+          payload.reportingContributionType ?? inferReportingContributionType(payload.code, payload.name),
         percentageBase: "GROSS",
       },
       select: { id: true },

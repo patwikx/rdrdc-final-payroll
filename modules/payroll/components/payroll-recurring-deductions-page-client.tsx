@@ -10,6 +10,7 @@ import {
   IconChevronsDown,
   IconDots,
   IconFilter,
+  IconInfoCircle,
   IconPlus,
   IconPlayerPause,
   IconSearch,
@@ -50,6 +51,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import {
@@ -119,6 +121,7 @@ type DeductionTypeForm = {
   description: string
   isPreTax: boolean
   payPeriodApplicability: "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF"
+  reportingContributionType: "NONE" | "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX"
 }
 type MutableRecurringDeductionStatus = "ACTIVE" | "SUSPENDED" | "CANCELLED"
 
@@ -181,6 +184,7 @@ export function PayrollRecurringDeductionsPageClient({
     description: "",
     isPreTax: true,
     payPeriodApplicability: "EVERY_PAYROLL",
+    reportingContributionType: "NONE",
   })
 
   useEffect(() => {
@@ -306,6 +310,10 @@ export function PayrollRecurringDeductionsPageClient({
         description: deductionTypeForm.description || undefined,
         isPreTax: deductionTypeForm.isPreTax,
         payPeriodApplicability: deductionTypeForm.payPeriodApplicability,
+        reportingContributionType:
+          deductionTypeForm.reportingContributionType === "NONE"
+            ? undefined
+            : deductionTypeForm.reportingContributionType,
       })
 
       if (!result.ok) {
@@ -321,6 +329,7 @@ export function PayrollRecurringDeductionsPageClient({
         description: "",
         isPreTax: true,
         payPeriodApplicability: "EVERY_PAYROLL",
+        reportingContributionType: "NONE",
       })
       setDeductionTypeOptions((prev) => {
         if (prev.some((entry) => entry.id === result.deductionTypeId)) return prev
@@ -740,7 +749,7 @@ export function PayrollRecurringDeductionsPageClient({
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="Select frequency" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="PER_PAYROLL">Per Payroll</SelectItem>
@@ -892,31 +901,72 @@ export function PayrollRecurringDeductionsPageClient({
                 placeholder="Optional"
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Payroll Timing</Label>
-                <Select
-                  value={deductionTypeForm.payPeriodApplicability}
-                  onValueChange={(value) =>
-                    setDeductionTypeForm((prev) => ({
-                      ...prev,
-                      payPeriodApplicability: value as "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF",
-                    }))
-                  }
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EVERY_PAYROLL">Every Payroll</SelectItem>
-                    <SelectItem value="FIRST_HALF">First Half</SelectItem>
-                    <SelectItem value="SECOND_HALF">Second Half</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="space-y-3 border border-border/60 bg-muted/10 px-3 py-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <div className="flex h-5 items-center">
+                    <Label>Payroll Timing</Label>
+                  </div>
+                  <Select
+                    value={deductionTypeForm.payPeriodApplicability}
+                    onValueChange={(value) =>
+                      setDeductionTypeForm((prev) => ({
+                        ...prev,
+                        payPeriodApplicability: value as "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF",
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue placeholder="Select payroll timing" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="EVERY_PAYROLL">Every Payroll</SelectItem>
+                      <SelectItem value="FIRST_HALF">First Half</SelectItem>
+                      <SelectItem value="SECOND_HALF">Second Half</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex h-5 items-center gap-1.5">
+                    <Label>Report Mapping</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex text-muted-foreground hover:text-foreground">
+                          <IconInfoCircle className="size-3.5" aria-hidden />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" sideOffset={6} className="max-w-xs text-xs leading-relaxed">
+                        Controls which statutory report totals include this deduction type. For additional Pag-IBIG
+                        recurring deductions, choose Pag-IBIG Employee Share.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Select
+                    value={deductionTypeForm.reportingContributionType}
+                    onValueChange={(value) =>
+                      setDeductionTypeForm((prev) => ({
+                        ...prev,
+                        reportingContributionType: value as "NONE" | "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX",
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue placeholder="Select report mapping" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None (Not included in statutory reports)</SelectItem>
+                      <SelectItem value="SSS">SSS Employee Share</SelectItem>
+                      <SelectItem value="PHILHEALTH">PhilHealth Employee Share</SelectItem>
+                      <SelectItem value="PAGIBIG">Pag-IBIG Employee Share</SelectItem>
+                      <SelectItem value="TAX">Withholding Tax (BIR)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="deduction-type-pretax">Pre-tax Deduction</Label>
-                <div className="flex h-9 items-center gap-2 px-3">
+                <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
+                  <span className="text-sm text-muted-foreground">Enabled</span>
                   <Checkbox
                     id="deduction-type-pretax"
                     checked={deductionTypeForm.isPreTax}
@@ -924,7 +974,6 @@ export function PayrollRecurringDeductionsPageClient({
                       setDeductionTypeForm((prev) => ({ ...prev, isPreTax: checked === true }))
                     }
                   />
-                  <span className="text-sm">Enabled</span>
                 </div>
               </div>
             </div>

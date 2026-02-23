@@ -1,5 +1,6 @@
 import type {
   MaterialRequestProcessingStatus,
+  MaterialRequestPostingStatus,
   MaterialRequestItemSource,
   MaterialRequestSeries,
   MaterialRequestStatus,
@@ -29,6 +30,7 @@ export type EmployeePortalMaterialRequestApprovalStepRow = {
   actedByName: string | null
   actedAtLabel: string | null
   remarks: string | null
+  turnaroundTimeLabel?: string | null
 }
 
 export type EmployeePortalMaterialRequestRow = {
@@ -71,6 +73,17 @@ export type EmployeePortalMaterialRequestRow = {
   processingRemarks: string | null
   processingPoNumber: string | null
   processingSupplierName: string | null
+  requesterAcknowledgedAtLabel: string | null
+  requesterAcknowledgedByName: string | null
+  requiresReceiptAcknowledgment: boolean
+  approvalLeadTimeLabel?: string | null
+  purchaserQueueTimeLabel?: string | null
+  purchaserProcessingTimeLabel?: string | null
+  fulfillmentLeadTimeLabel?: string | null
+  acknowledgmentLeadTimeLabel?: string | null
+  receivingReportId: string | null
+  receivingReportNumber: string | null
+  receivingReportReceivedAtLabel: string | null
   finalDecisionRemarks: string | null
   cancellationReason: string | null
   items: EmployeePortalMaterialRequestItemRow[]
@@ -216,6 +229,10 @@ export type EmployeePortalMaterialRequestProcessingStatusFilter =
   | "COMPLETED"
 
 export type EmployeePortalMaterialRequestPostingStatusFilter = "ALL" | "PENDING_POSTING" | "POSTED"
+export type EmployeePortalMaterialRequestReceivingReportStatusFilter =
+  | "ALL"
+  | "PENDING_POSTING"
+  | "POSTED"
 
 export type EmployeePortalMaterialRequestProcessingRow = {
   id: string
@@ -295,6 +312,154 @@ export type EmployeePortalMaterialRequestPostingDetail = {
     remainingQuantity: number
   }>
   approvalSteps: EmployeePortalMaterialRequestApprovalStepRow[]
+}
+
+export type EmployeePortalMaterialRequestReceivingReportItemRow = {
+  id: string
+  lineNumber: number
+  itemCode: string | null
+  description: string
+  uom: string
+  requestedQuantity: number
+  receivedQuantity: number
+  unitPrice: number | null
+  lineTotal: number | null
+  remarks: string | null
+}
+
+export type EmployeePortalMaterialRequestReceivingReportRow = {
+  id: string
+  materialRequestId: string
+  reportNumber: string
+  requestNumber: string
+  requesterName: string
+  requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
+  departmentName: string
+  datePreparedLabel: string
+  dateRequiredLabel: string
+  processingCompletedAtLabel: string | null
+  receivedAtLabel: string
+  receivedByName: string
+  itemCount: number
+  grandTotal: number
+  postingStatus: MaterialRequestPostingStatus
+  postingReference: string | null
+  postedAtLabel: string | null
+}
+
+export type EmployeePortalMaterialRequestReceivingReportPage = {
+  rows: EmployeePortalMaterialRequestReceivingReportRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export type EmployeePortalMaterialRequestReceivingReportDetail = {
+  id: string
+  materialRequestId: string
+  reportNumber: string
+  requestNumber: string
+  series: MaterialRequestSeries
+  requestType: MaterialRequestType
+  requesterName: string
+  requesterEmployeeNumber: string
+  departmentName: string
+  datePreparedLabel: string
+  dateRequiredLabel: string
+  submittedAtLabel: string | null
+  approvedAtLabel: string | null
+  processingCompletedAtLabel: string | null
+  requesterAcknowledgedAtLabel: string | null
+  receivedAtLabel: string
+  receivedByName: string
+  remarks: string | null
+  postingStatus: MaterialRequestPostingStatus
+  postingReference: string | null
+  postedAtLabel: string | null
+  postedByName: string | null
+  subTotal: number
+  freight: number
+  discount: number
+  grandTotal: number
+  purpose: string | null
+  requestRemarks: string | null
+  items: EmployeePortalMaterialRequestReceivingReportItemRow[]
+  approvalSteps: EmployeePortalMaterialRequestApprovalStepRow[]
+}
+
+export type EmployeePortalMaterialRequestKpiRange = "LAST_30_DAYS" | "LAST_90_DAYS" | "LAST_180_DAYS" | "YTD" | "ALL"
+
+export type EmployeePortalMaterialRequestKpiOverview = {
+  totalSubmittedRequests: number
+  completedRequests: number
+  pendingApprovalRequests: number
+  inProgressProcessingRequests: number
+  avgApprovalLeadTimeMs: number | null
+  avgPurchaserQueueTimeMs: number | null
+  avgPurchaserProcessingTimeMs: number | null
+  avgFulfillmentLeadTimeMs: number | null
+  avgAcknowledgmentLeadTimeMs: number | null
+  approvalSlaBreachCount: number
+  queueSlaBreachCount: number
+  processingSlaBreachCount: number
+  fulfillmentSlaBreachCount: number
+}
+
+export type EmployeePortalMaterialRequestKpiPurchaserRow = {
+  purchaserKey: string
+  purchaserName: string
+  requestCount: number
+  completedCount: number
+  avgQueueTimeMs: number | null
+  avgProcessingTimeMs: number | null
+  avgFulfillmentTimeMs: number | null
+}
+
+export type EmployeePortalMaterialRequestKpiDepartmentRow = {
+  departmentId: string
+  departmentName: string
+  requestCount: number
+  completedCount: number
+  avgApprovalTimeMs: number | null
+  avgQueueTimeMs: number | null
+  avgProcessingTimeMs: number | null
+  avgFulfillmentTimeMs: number | null
+}
+
+export type EmployeePortalMaterialRequestKpiMonthRow = {
+  monthKey: string
+  monthLabel: string
+  requestCount: number
+  approvedCount: number
+  completedCount: number
+  avgApprovalTimeMs: number | null
+  avgProcessingTimeMs: number | null
+  avgFulfillmentTimeMs: number | null
+}
+
+export type EmployeePortalMaterialRequestKpiApprovalStepRow = {
+  stepNumber: number
+  stepName: string
+  actedCount: number
+  avgTurnaroundTimeMs: number | null
+}
+
+export type EmployeePortalMaterialRequestKpiDashboard = {
+  range: EmployeePortalMaterialRequestKpiRange
+  startDateLabel: string | null
+  endDateLabel: string
+  slaTargetsHours: {
+    approval: number
+    queue: number
+    processing: number
+    fulfillment: number
+  }
+  overview: EmployeePortalMaterialRequestKpiOverview
+  byPurchaser: EmployeePortalMaterialRequestKpiPurchaserRow[]
+  byDepartment: EmployeePortalMaterialRequestKpiDepartmentRow[]
+  byMonth: EmployeePortalMaterialRequestKpiMonthRow[]
+  byApprovalStep: EmployeePortalMaterialRequestKpiApprovalStepRow[]
 }
 
 export type EmployeePortalMaterialRequestProcessingDetail = {

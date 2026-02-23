@@ -68,6 +68,7 @@ model DeductionType {
   isPreTax               Boolean @default(true)
   hasEmployerShare       Boolean @default(false)
   payPeriodApplicability String  @default("EVERY_PAYROLL") // EVERY_PAYROLL, FIRST_HALF, SECOND_HALF
+  reportingContributionType ContributionType?
 
   // Calculation
   calculationMethodCode DeductionCalculationMethod?

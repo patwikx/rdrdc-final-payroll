@@ -5,6 +5,7 @@ import {
   upsertDepartmentMaterialRequestApprovalFlowInputSchema,
 } from "../modules/material-requests/schemas/department-approval-flow-actions-schema.ts"
 import {
+  acknowledgeMaterialRequestReceiptInputSchema,
   createMaterialRequestDraftInputSchema,
 } from "../modules/material-requests/schemas/material-request-actions-schema.ts"
 import {
@@ -18,6 +19,10 @@ import {
   getMaterialRequestPostingPageInputSchema,
   postMaterialRequestInputSchema,
 } from "../modules/material-requests/schemas/material-request-posting-actions-schema.ts"
+import {
+  getMaterialRequestReceivingReportDetailsInputSchema,
+  getMaterialRequestReceivingReportPageInputSchema,
+} from "../modules/material-requests/schemas/material-request-receiving-actions-schema.ts"
 
 const COMPANY_ID = "9b1deb4d-bcf9-4f57-9d80-b6fb3be12f3f"
 const DEPARTMENT_ID = "6fa459ea-ee8a-3ca4-894e-db77e160355e"
@@ -319,4 +324,54 @@ test("postMaterialRequestInputSchema allows optional posting reference", () => {
   })
 
   assert.equal(valid.success, true)
+})
+
+test("acknowledgeMaterialRequestReceiptInputSchema validates requester acknowledgment payload", () => {
+  const valid = acknowledgeMaterialRequestReceiptInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    requestId: "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    remarks: "Received all issued quantities.",
+  })
+
+  assert.equal(valid.success, true)
+
+  const invalid = acknowledgeMaterialRequestReceiptInputSchema.safeParse({
+    companyId: "bad-id",
+    requestId: "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+  })
+
+  assert.equal(invalid.success, false)
+})
+
+test("getMaterialRequestReceivingReportPageInputSchema supports receiving report filters", () => {
+  const valid = getMaterialRequestReceivingReportPageInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    search: "RR-MR-PO-20260220-000001",
+    status: "PENDING_POSTING",
+  })
+
+  assert.equal(valid.success, true)
+
+  const invalid = getMaterialRequestReceivingReportPageInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    status: "INVALID_STATUS",
+  })
+
+  assert.equal(invalid.success, false)
+})
+
+test("getMaterialRequestReceivingReportDetailsInputSchema requires valid report id", () => {
+  const valid = getMaterialRequestReceivingReportDetailsInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    reportId: "c4a760a8-8e8d-4dad-8d73-0ad5306ecb14",
+  })
+
+  assert.equal(valid.success, true)
+
+  const invalid = getMaterialRequestReceivingReportDetailsInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    reportId: "not-a-uuid",
+  })
+
+  assert.equal(invalid.success, false)
 })

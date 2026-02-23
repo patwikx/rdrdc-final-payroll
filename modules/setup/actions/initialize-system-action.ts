@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { db } from "@/lib/db"
 import { toPhDayStartUtcInstant } from "@/lib/ph-time"
+import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
 import {
   initializeSystemSchema,
   type InitializeSystemInput,
@@ -351,7 +352,7 @@ export async function initializeSystemAction(
           }
 
           return {
-            companyId: holiday.applicability === "COMPANY" ? company.id : null,
+            companyId: company.id,
             holidayDate,
             name: holiday.name,
             holidayTypeCode: holiday.holidayTypeCode,
@@ -393,6 +394,7 @@ export async function initializeSystemAction(
           name: deductionType.name,
           isMandatory: deductionType.isMandatory,
           isPreTax: deductionType.isPreTax,
+          reportingContributionType: inferReportingContributionType(deductionType.code, deductionType.name),
           isActive: true,
         })),
       })

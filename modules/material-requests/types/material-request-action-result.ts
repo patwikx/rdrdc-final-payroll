@@ -7,6 +7,7 @@ export type MaterialRequestActionMessageResult = {
   ok: true
   message: string
   requestId?: string
+  receivingReportId?: string
 }
 
 export type MaterialRequestActionResult = MaterialRequestActionMessageResult | MaterialRequestActionErrorResult

@@ -6,6 +6,7 @@ import {
   MaterialRequestProcessingStatus,
   MaterialRequestStatus,
   MaterialRequestStepStatus,
+  Prisma,
 } from "@prisma/client"
 
 import { db } from "@/lib/db"
@@ -112,6 +113,13 @@ const currency = new Intl.NumberFormat("en-PH", {
 })
 
 const toRequestTypeLabel = (value: string): string => value.replaceAll("_", " ")
+
+class MaterialRequestApprovalValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "MaterialRequestApprovalValidationError"
+  }
+}
 
 const resolveMaterialRequestPurchaserRecipients = async (
   companyId: string
@@ -608,6 +616,31 @@ const getPendingStepForActor = (params: {
   )
 }
 
+const isApproverStillEligible = async (params: {
+  tx: Prisma.TransactionClient
+  userId: string
+  companyId: string
+}): Promise<boolean> => {
+  const eligibleUser = await params.tx.user.findFirst({
+    where: {
+      id: params.userId,
+      isActive: true,
+      isRequestApprover: true,
+      companyAccess: {
+        some: {
+          companyId: params.companyId,
+          isActive: true,
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  return Boolean(eligibleUser)
+}
+
 export async function approveMaterialRequestStepAction(
   input: DecideMaterialRequestStepInput
 ): Promise<MaterialRequestActionResult> {
@@ -679,6 +712,20 @@ export async function approveMaterialRequestStepAction(
 
   try {
     await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${materialRequest.id} FOR UPDATE`
+
+      const approverStillEligible = await isApproverStillEligible({
+        tx,
+        userId: context.userId,
+        companyId: context.companyId,
+      })
+
+      if (!approverStillEligible) {
+        throw new MaterialRequestApprovalValidationError(
+          "Your request approver access is no longer active. Please contact HR."
+        )
+      }
+
       const stepUpdate = await tx.materialRequestApprovalStep.updateMany({
         where: {
           id: actorStep.id,
@@ -778,6 +825,10 @@ export async function approveMaterialRequestStepAction(
       )
     })
   } catch (error) {
+    if (error instanceof MaterialRequestApprovalValidationError) {
+      return { ok: false, error: error.message }
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to approve material request: ${message}` }
   }
@@ -785,26 +836,21 @@ export async function approveMaterialRequestStepAction(
   revalidateMaterialApprovalPaths(context.companyId)
 
   if (isFinalStep) {
-    const existingNotificationMarker = await db.auditLog.findFirst({
-      where: {
-        tableName: "MaterialRequest",
-        recordId: materialRequest.id,
-        reason: {
-          in: [
-            MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON,
-            MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON,
-          ],
+    const recipients = await resolveMaterialRequestPurchaserRecipients(context.companyId)
+
+    if (recipients.length === 0) {
+      const existingSkippedMarker = await db.auditLog.findFirst({
+        where: {
+          tableName: "MaterialRequest",
+          recordId: materialRequest.id,
+          reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON,
         },
-      },
-      select: {
-        id: true,
-      },
-    })
+        select: {
+          id: true,
+        },
+      })
 
-    if (!existingNotificationMarker) {
-      const recipients = await resolveMaterialRequestPurchaserRecipients(context.companyId)
-
-      if (recipients.length === 0) {
+      if (!existingSkippedMarker) {
         await createAuditLog({
           tableName: "MaterialRequest",
           recordId: materialRequest.id,
@@ -813,8 +859,23 @@ export async function approveMaterialRequestStepAction(
           reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_SKIPPED_REASON,
           changes: [{ fieldName: "notificationTargetCount", newValue: "0" }],
         })
-      } else {
-        const sendResult = await sendMaterialRequestPurchaserQueueEmail({
+      }
+    } else {
+      const existingSuccessfulMarker = await db.auditLog.findFirst({
+        where: {
+          tableName: "MaterialRequest",
+          recordId: materialRequest.id,
+          reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON,
+          fieldName: "notificationFailedCount",
+          newValue: "0",
+        },
+        select: {
+          id: true,
+        },
+      })
+
+      if (!existingSuccessfulMarker) {
+        const firstSend = await sendMaterialRequestPurchaserQueueEmail({
           recipients,
           companyName: context.companyName,
           requestNumber: materialRequest.requestNumber,
@@ -825,8 +886,40 @@ export async function approveMaterialRequestStepAction(
           datePreparedLabel: toPhDateInputValue(materialRequest.datePrepared),
           dateRequiredLabel: toPhDateInputValue(materialRequest.dateRequired),
           amountLabel: `PHP ${currency.format(Number(materialRequest.grandTotal))}`,
-          approvalPath: `/${context.companyId}/employee-portal/material-request-processing`,
+          approvalPath: `/${context.companyId}/employee-portal/material-request-processing/${materialRequest.id}`,
         })
+
+        let sentCount = firstSend.sentCount
+        let failedRecipients = firstSend.failedRecipients
+        let retryCount = 0
+
+        if (firstSend.failedCount > 0) {
+          const failedUserIds = new Set(firstSend.failedRecipients.map((entry) => entry.userId))
+          const failedEmails = new Set(firstSend.failedRecipients.map((entry) => entry.email))
+          const retryRecipients = recipients.filter(
+            (recipient) => failedUserIds.has(recipient.userId) || failedEmails.has(recipient.email)
+          )
+
+          if (retryRecipients.length > 0) {
+            retryCount = 1
+            const retrySend = await sendMaterialRequestPurchaserQueueEmail({
+              recipients: retryRecipients,
+              companyName: context.companyName,
+              requestNumber: materialRequest.requestNumber,
+              requesterName: `${materialRequest.requesterEmployee.firstName} ${materialRequest.requesterEmployee.lastName}`,
+              requesterEmployeeNumber: materialRequest.requesterEmployee.employeeNumber,
+              departmentName: materialRequest.department.name,
+              requestTypeLabel: toRequestTypeLabel(materialRequest.requestType),
+              datePreparedLabel: toPhDateInputValue(materialRequest.datePrepared),
+              dateRequiredLabel: toPhDateInputValue(materialRequest.dateRequired),
+              amountLabel: `PHP ${currency.format(Number(materialRequest.grandTotal))}`,
+              approvalPath: `/${context.companyId}/employee-portal/material-request-processing/${materialRequest.id}`,
+            })
+
+            sentCount += retrySend.sentCount
+            failedRecipients = retrySend.failedRecipients
+          }
+        }
 
         await createAuditLog({
           tableName: "MaterialRequest",
@@ -836,17 +929,18 @@ export async function approveMaterialRequestStepAction(
           reason: MATERIAL_REQUEST_PURCHASER_NOTIFY_REASON,
           changes: [
             { fieldName: "notificationTargetCount", newValue: String(recipients.length) },
-            { fieldName: "notificationSentCount", newValue: String(sendResult.sentCount) },
-            { fieldName: "notificationFailedCount", newValue: String(sendResult.failedCount) },
+            { fieldName: "notificationSentCount", newValue: String(sentCount) },
+            { fieldName: "notificationFailedCount", newValue: String(failedRecipients.length) },
+            { fieldName: "notificationRetryCount", newValue: String(retryCount) },
           ],
         })
 
-        if (sendResult.failedCount > 0) {
+        if (failedRecipients.length > 0) {
           console.error("[approveMaterialRequestStepAction] Purchaser queue notification failed for some recipients", {
             companyId: context.companyId,
             requestId: materialRequest.id,
             requestNumber: materialRequest.requestNumber,
-            failedRecipients: sendResult.failedRecipients,
+            failedRecipients,
           })
         }
       }
@@ -914,6 +1008,20 @@ export async function rejectMaterialRequestStepAction(
 
   try {
     await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${materialRequest.id} FOR UPDATE`
+
+      const approverStillEligible = await isApproverStillEligible({
+        tx,
+        userId: context.userId,
+        companyId: context.companyId,
+      })
+
+      if (!approverStillEligible) {
+        throw new MaterialRequestApprovalValidationError(
+          "Your request approver access is no longer active. Please contact HR."
+        )
+      }
+
       const stepUpdate = await tx.materialRequestApprovalStep.updateMany({
         where: {
           id: actorStep.id,
@@ -993,6 +1101,10 @@ export async function rejectMaterialRequestStepAction(
       )
     })
   } catch (error) {
+    if (error instanceof MaterialRequestApprovalValidationError) {
+      return { ok: false, error: error.message }
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to reject material request: ${message}` }
   }

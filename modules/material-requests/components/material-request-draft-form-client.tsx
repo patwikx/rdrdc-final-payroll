@@ -6,6 +6,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -205,6 +214,8 @@ const getStepDisplayName = (
   return flow?.approversByStep.find((step) => step.stepNumber === stepNumber)?.stepName ?? `Step ${stepNumber}`
 }
 
+const NO_ACTIVE_COMPANY_EMPLOYEE_PROFILE_ERROR = "No linked employee profile found in the active company for this account."
+
 export function MaterialRequestDraftFormClient({
   companyId,
   departments,
@@ -224,6 +235,7 @@ export function MaterialRequestDraftFormClient({
   )
 
   const [isPending, startTransition] = useTransition()
+  const [isMissingEmployeeProfileDialogOpen, setIsMissingEmployeeProfileDialogOpen] = useState(false)
   const [form, setForm] = useState<MaterialRequestFormState>(() =>
     initialRequest
       ? mapRequestToFormState(initialRequest)
@@ -448,9 +460,16 @@ export function MaterialRequestDraftFormClient({
         : await createMaterialRequestDraftAction(basePayload)
 
       if (!result.ok) {
+        if (!initialRequest && result.error === NO_ACTIVE_COMPANY_EMPLOYEE_PROFILE_ERROR) {
+          setIsMissingEmployeeProfileDialogOpen(true)
+          return
+        }
+
         toast.error(result.error)
         return
       }
+
+      setIsMissingEmployeeProfileDialogOpen(false)
 
       const savedRequestId = result.requestId ?? initialRequest?.id
 
@@ -490,6 +509,23 @@ export function MaterialRequestDraftFormClient({
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
+      <AlertDialog
+        open={isMissingEmployeeProfileDialogOpen}
+        onOpenChange={setIsMissingEmployeeProfileDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Employee Profile Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              No active employee profile is linked to your account in this company. Please contact HR to link your employee record before creating a material request.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction type="button">Okay</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">

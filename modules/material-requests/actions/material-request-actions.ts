@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import {
   MaterialRequestItemSource,
+  MaterialRequestProcessingStatus,
   MaterialRequestStatus,
   MaterialRequestStepStatus,
   Prisma,
@@ -15,10 +16,12 @@ import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
+  acknowledgeMaterialRequestReceiptInputSchema,
   cancelMaterialRequestInputSchema,
   createMaterialRequestDraftInputSchema,
   submitMaterialRequestInputSchema,
   updateMaterialRequestDraftInputSchema,
+  type AcknowledgeMaterialRequestReceiptInput,
   type CancelMaterialRequestInput,
   type CreateMaterialRequestDraftInput,
   type SubmitMaterialRequestInput,
@@ -33,6 +36,15 @@ const REQUEST_NUMBER_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Manila",
 })
 const REQUEST_NUMBER_SEQUENCE_DIGITS = 6
+const QUANTITY_TOLERANCE = 0.0005
+const ACKNOWLEDGE_RECEIPT_MAX_RETRIES = 3
+
+class MaterialRequestStateConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "MaterialRequestStateConflictError"
+  }
+}
 
 const toNullableText = (value: string | undefined): string | null => {
   if (!value) {
@@ -175,10 +187,16 @@ const isRequestNumberConflictError = (error: unknown): boolean => {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
 }
 
+const isTransactionSerializationConflict = (error: unknown): boolean => {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034"
+}
+
 const createMaterialRequestRevalidationPaths = (companyId: string): string[] => {
   return [
     `/${companyId}/employee-portal/material-requests`,
+    `/${companyId}/employee-portal/material-request-receiving-reports`,
     `/${companyId}/employee-portal/material-request-processing`,
+    `/${companyId}/employee-portal/material-request-posting`,
     `/${companyId}/employee-portal`,
     `/${companyId}/employee-portal/approvers`,
     `/${companyId}/dashboard`,
@@ -197,11 +215,11 @@ const getRequesterEmployeeForCompanyAccess = async (params: {
 }): Promise<{
   id: string
   departmentId: string | null
-  isInActiveCompany: boolean
 } | null> => {
-  const employees = await db.employee.findMany({
+  const companyEmployee = await db.employee.findFirst({
     where: {
       userId: params.userId,
+      companyId: params.companyId,
       deletedAt: null,
       isActive: true,
     },
@@ -209,30 +227,16 @@ const getRequesterEmployeeForCompanyAccess = async (params: {
     select: {
       id: true,
       departmentId: true,
-      companyId: true,
     },
   })
 
-  const companyEmployee = employees.find((employee) => employee.companyId === params.companyId)
-  if (companyEmployee) {
-    return {
-      id: companyEmployee.id,
-      departmentId: companyEmployee.departmentId,
-      isInActiveCompany: true,
-    }
-  }
-
-  const fallbackEmployee = employees[0]
-  if (!fallbackEmployee) {
+  if (!companyEmployee) {
     return null
   }
 
   return {
-    id: fallbackEmployee.id,
-    // Fallback employee can belong to a different company. Do not reuse
-    // that department as default for the active company request.
-    departmentId: null,
-    isInActiveCompany: false,
+    id: companyEmployee.id,
+    departmentId: companyEmployee.departmentId,
   }
 }
 
@@ -242,6 +246,18 @@ const ensureEmployeeRole = (companyRole: CompanyRole): MaterialRequestActionResu
   }
 
   return { ok: true, message: "Employee role validated." }
+}
+
+const isHrRole = (role: CompanyRole): boolean => {
+  return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
+}
+
+const canAcknowledgeOnBehalfOfRequester = (params: {
+  companyRole: CompanyRole
+  isMaterialRequestPurchaser: boolean
+  isMaterialRequestPoster: boolean
+}): boolean => {
+  return isHrRole(params.companyRole) || params.isMaterialRequestPurchaser || params.isMaterialRequestPoster
 }
 
 const resolveRequestDepartment = async (params: {
@@ -295,7 +311,7 @@ export async function createMaterialRequestDraftAction(
   })
 
   if (!requesterEmployee) {
-    return { ok: false, error: "No linked employee profile found for this account." }
+    return { ok: false, error: "No linked employee profile found in the active company for this account." }
   }
 
   const resolvedDepartment = await resolveRequestDepartment({
@@ -468,7 +484,9 @@ export async function updateMaterialRequestDraftAction(
       select: {
         id: true,
         requestNumber: true,
+        departmentId: true,
         status: true,
+        updatedAt: true,
         steps: {
           select: {
             status: true,
@@ -479,10 +497,6 @@ export async function updateMaterialRequestDraftAction(
       },
     }),
   ])
-
-  if (!requesterEmployee) {
-    return { ok: false, error: "No linked employee profile found for this account." }
-  }
 
   if (!existingRequest) {
     return { ok: false, error: "Material request not found in the active company." }
@@ -507,7 +521,7 @@ export async function updateMaterialRequestDraftAction(
 
   const resolvedDepartment = await resolveRequestDepartment({
     companyId: context.companyId,
-    employeeDepartmentId: requesterEmployee.departmentId,
+    employeeDepartmentId: requesterEmployee?.departmentId ?? existingRequest.departmentId,
     payloadDepartmentId: payload.departmentId,
   })
 
@@ -688,6 +702,55 @@ export async function updateMaterialRequestDraftAction(
 
   try {
     await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${existingRequest.id} FOR UPDATE`
+
+      const lockedRequest = await tx.materialRequest.findFirst({
+        where: {
+          id: existingRequest.id,
+          companyId: context.companyId,
+          requesterUserId: context.userId,
+        },
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          steps: {
+            select: {
+              status: true,
+              actedAt: true,
+              actedByUserId: true,
+            },
+          },
+        },
+      })
+
+      if (!lockedRequest) {
+        throw new MaterialRequestStateConflictError("Material request not found in the active company.")
+      }
+
+      if (lockedRequest.updatedAt.getTime() !== existingRequest.updatedAt.getTime()) {
+        throw new MaterialRequestStateConflictError("The request was updated by another user. Please refresh and try again.")
+      }
+
+      const lockedHasApprovalHistory = lockedRequest.steps.some(
+        (step) =>
+          step.status !== MaterialRequestStepStatus.PENDING ||
+          step.actedAt !== null ||
+          step.actedByUserId !== null
+      )
+      const lockedCanEditPendingWithoutHistory =
+        lockedRequest.status === MaterialRequestStatus.PENDING_APPROVAL && !lockedHasApprovalHistory
+
+      if (lockedRequest.status !== MaterialRequestStatus.DRAFT && !lockedCanEditPendingWithoutHistory) {
+        throw new MaterialRequestStateConflictError(
+          "Only draft requests or pending requests without approval decisions can be edited."
+        )
+      }
+
+      if (lockedCanEditPendingWithoutHistory !== canEditPendingWithoutHistory) {
+        throw new MaterialRequestStateConflictError("The request state changed. Please refresh and try again.")
+      }
+
       await tx.materialRequestItem.deleteMany({
         where: {
           materialRequestId: existingRequest.id,
@@ -711,7 +774,7 @@ export async function updateMaterialRequestDraftAction(
         })
       }
 
-      const updated = await tx.materialRequest.update({
+      await tx.materialRequest.update({
         where: {
           id: existingRequest.id,
         },
@@ -755,17 +818,12 @@ export async function updateMaterialRequestDraftAction(
             })),
           },
         },
-        select: {
-          id: true,
-          requestNumber: true,
-          status: true,
-        },
       })
 
       await createAuditLog(
         {
           tableName: "MaterialRequest",
-          recordId: updated.id,
+          recordId: existingRequest.id,
           action: "UPDATE",
           userId: context.userId,
           reason: pendingSubmissionFlow
@@ -794,6 +852,10 @@ export async function updateMaterialRequestDraftAction(
       requestId: existingRequest.id,
     }
   } catch (error) {
+    if (error instanceof MaterialRequestStateConflictError) {
+      return { ok: false, error: error.message }
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to update material request: ${message}` }
   }
@@ -826,6 +888,7 @@ export async function submitMaterialRequestAction(
       id: true,
       requestNumber: true,
       departmentId: true,
+      updatedAt: true,
       selectedInitialApproverUserId: true,
       selectedStepTwoApproverUserId: true,
       selectedStepThreeApproverUserId: true,
@@ -986,6 +1049,42 @@ export async function submitMaterialRequestAction(
 
   try {
     await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${materialRequest.id} FOR UPDATE`
+
+      const lockedRequest = await tx.materialRequest.findFirst({
+        where: {
+          id: materialRequest.id,
+          companyId: context.companyId,
+          requesterUserId: context.userId,
+        },
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              items: true,
+            },
+          },
+        },
+      })
+
+      if (!lockedRequest) {
+        throw new MaterialRequestStateConflictError("Material request not found in the active company.")
+      }
+
+      if (lockedRequest.updatedAt.getTime() !== materialRequest.updatedAt.getTime()) {
+        throw new MaterialRequestStateConflictError("The request was updated by another user. Please refresh and submit again.")
+      }
+
+      if (lockedRequest.status !== MaterialRequestStatus.DRAFT) {
+        throw new MaterialRequestStateConflictError("Only draft material requests can be submitted for approval.")
+      }
+
+      if (lockedRequest._count.items === 0) {
+        throw new MaterialRequestStateConflictError("At least one item is required before submitting the request.")
+      }
+
       await tx.materialRequestApprovalStep.deleteMany({
         where: {
           materialRequestId: materialRequest.id,
@@ -1001,9 +1100,11 @@ export async function submitMaterialRequestAction(
         })),
       })
 
-      await tx.materialRequest.update({
+      const submitUpdate = await tx.materialRequest.updateMany({
         where: {
           id: materialRequest.id,
+          status: MaterialRequestStatus.DRAFT,
+          updatedAt: lockedRequest.updatedAt,
         },
         data: {
           status: MaterialRequestStatus.PENDING_APPROVAL,
@@ -1019,6 +1120,10 @@ export async function submitMaterialRequestAction(
           cancelledByUserId: null,
         },
       })
+
+      if (submitUpdate.count !== 1) {
+        throw new MaterialRequestStateConflictError("The request state changed while submitting. Please retry.")
+      }
 
       await createAuditLog(
         {
@@ -1050,6 +1155,10 @@ export async function submitMaterialRequestAction(
       message: `Material request ${materialRequest.requestNumber} submitted for approval.`,
     }
   } catch (error) {
+    if (error instanceof MaterialRequestStateConflictError) {
+      return { ok: false, error: error.message }
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to submit material request: ${message}` }
   }
@@ -1082,6 +1191,7 @@ export async function cancelMaterialRequestAction(
       id: true,
       requestNumber: true,
       status: true,
+      updatedAt: true,
       steps: {
         where: {
           status: {
@@ -1117,6 +1227,55 @@ export async function cancelMaterialRequestAction(
 
   try {
     await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${request.id} FOR UPDATE`
+
+      const lockedRequest = await tx.materialRequest.findFirst({
+        where: {
+          id: request.id,
+          companyId: context.companyId,
+          requesterUserId: context.userId,
+        },
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          steps: {
+            where: {
+              status: {
+                in: [MaterialRequestStepStatus.APPROVED, MaterialRequestStepStatus.REJECTED],
+              },
+            },
+            select: {
+              id: true,
+            },
+          },
+        },
+      })
+
+      if (!lockedRequest) {
+        throw new MaterialRequestStateConflictError("Material request not found in the active company.")
+      }
+
+      if (lockedRequest.updatedAt.getTime() !== request.updatedAt.getTime()) {
+        throw new MaterialRequestStateConflictError("The request was updated by another user. Please refresh and try again.")
+      }
+
+      if (
+        lockedRequest.status !== MaterialRequestStatus.DRAFT &&
+        lockedRequest.status !== MaterialRequestStatus.PENDING_APPROVAL
+      ) {
+        throw new MaterialRequestStateConflictError("Only draft or pending requests can be cancelled.")
+      }
+
+      if (
+        lockedRequest.status === MaterialRequestStatus.PENDING_APPROVAL &&
+        lockedRequest.steps.length > 0
+      ) {
+        throw new MaterialRequestStateConflictError(
+          "This request already has an approval decision and can no longer be cancelled."
+        )
+      }
+
       await tx.materialRequestApprovalStep.updateMany({
         where: {
           materialRequestId: request.id,
@@ -1130,9 +1289,13 @@ export async function cancelMaterialRequestAction(
         },
       })
 
-      await tx.materialRequest.update({
+      const cancelUpdate = await tx.materialRequest.updateMany({
         where: {
           id: request.id,
+          updatedAt: lockedRequest.updatedAt,
+          status: {
+            in: [MaterialRequestStatus.DRAFT, MaterialRequestStatus.PENDING_APPROVAL],
+          },
         },
         data: {
           status: MaterialRequestStatus.CANCELLED,
@@ -1141,6 +1304,10 @@ export async function cancelMaterialRequestAction(
           cancelledByUserId: context.userId,
         },
       })
+
+      if (cancelUpdate.count !== 1) {
+        throw new MaterialRequestStateConflictError("The request state changed while cancelling. Please retry.")
+      }
 
       await createAuditLog(
         {
@@ -1172,7 +1339,352 @@ export async function cancelMaterialRequestAction(
       message: `Material request ${request.requestNumber} cancelled.`,
     }
   } catch (error) {
+    if (error instanceof MaterialRequestStateConflictError) {
+      return { ok: false, error: error.message }
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to cancel material request: ${message}` }
+  }
+}
+
+export async function acknowledgeMaterialRequestReceiptAction(
+  input: AcknowledgeMaterialRequestReceiptInput
+): Promise<MaterialRequestActionResult> {
+  const parsed = acknowledgeMaterialRequestReceiptInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid acknowledgment payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const companyRole = context.companyRole as CompanyRole
+  const actedAt = new Date()
+  const remarks = toNullableText(payload.remarks)
+  let outcome:
+    | {
+        kind: "error"
+        message: string
+      }
+    | {
+        kind: "not_required"
+        requestNumber: string
+        receivingReportId: string | null
+      }
+    | {
+        kind: "already_acknowledged"
+        requestNumber: string
+        receivingReportId: string
+      }
+    | {
+        kind: "acknowledged"
+        requestNumber: string
+        receivingReportId: string
+        acknowledgedOnBehalf: boolean
+      }
+    | null = null
+
+  for (let attempt = 0; attempt < ACKNOWLEDGE_RECEIPT_MAX_RETRIES; attempt += 1) {
+    try {
+      outcome = await db.$transaction(async (tx) => {
+      // Lock request row to avoid duplicate receiving report creation.
+        await tx.$queryRaw`SELECT "id" FROM "MaterialRequest" WHERE "id" = ${payload.requestId} FOR UPDATE`
+
+        const request = await tx.materialRequest.findFirst({
+          where: {
+            id: payload.requestId,
+            companyId: context.companyId,
+            status: MaterialRequestStatus.APPROVED,
+            processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+          },
+          select: {
+            id: true,
+            requestNumber: true,
+            requesterUserId: true,
+            requesterAcknowledgedAt: true,
+            requesterAcknowledgedByUserId: true,
+            requiresReceiptAcknowledgment: true,
+            receivingReports: {
+              orderBy: [{ receivedAt: "desc" }, { createdAt: "desc" }],
+              take: 1,
+              select: {
+                id: true,
+                reportNumber: true,
+                remarks: true,
+                receivedAt: true,
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                lineNumber: true,
+                itemCode: true,
+                description: true,
+                uom: true,
+                quantity: true,
+                unitPrice: true,
+                lineTotal: true,
+                remarks: true,
+                serveBatchItems: {
+                  select: {
+                    quantityServed: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+
+        if (!request) {
+          return { kind: "error" as const, message: "Completed material request not found." }
+        }
+
+        let acknowledgedOnBehalf = false
+
+        if (request.requesterUserId !== context.userId) {
+          const [requesterUser, requesterCompanyAccess, actorCompanyAccess] = await Promise.all([
+            tx.user.findUnique({
+              where: {
+                id: request.requesterUserId,
+              },
+              select: {
+                isActive: true,
+              },
+            }),
+            tx.userCompanyAccess.findUnique({
+              where: {
+                userId_companyId: {
+                  userId: request.requesterUserId,
+                  companyId: context.companyId,
+                },
+              },
+              select: {
+                isActive: true,
+              },
+            }),
+            tx.userCompanyAccess.findUnique({
+              where: {
+                userId_companyId: {
+                  userId: context.userId,
+                  companyId: context.companyId,
+                },
+              },
+              select: {
+                isActive: true,
+                isMaterialRequestPurchaser: true,
+                isMaterialRequestPoster: true,
+              },
+            }),
+          ])
+
+          const requesterUnavailable = !requesterUser?.isActive || !requesterCompanyAccess?.isActive
+          const actorCanAcknowledgeOnBehalf =
+            requesterUnavailable &&
+            canAcknowledgeOnBehalfOfRequester({
+              companyRole,
+              isMaterialRequestPurchaser: Boolean(
+                actorCompanyAccess?.isActive && actorCompanyAccess.isMaterialRequestPurchaser
+              ),
+              isMaterialRequestPoster: Boolean(actorCompanyAccess?.isActive && actorCompanyAccess.isMaterialRequestPoster),
+            })
+
+          if (actorCanAcknowledgeOnBehalf) {
+            acknowledgedOnBehalf = true
+          }
+
+          if (!actorCanAcknowledgeOnBehalf) {
+            return {
+              kind: "error" as const,
+              message: requesterUnavailable
+                ? "Requester is unavailable. Only HR, purchaser, or posting users can acknowledge on behalf."
+                : "Only the original requester can acknowledge receipt for this material request.",
+            }
+          }
+        }
+
+        if (!request.requiresReceiptAcknowledgment) {
+          return {
+            kind: "not_required" as const,
+            requestNumber: request.requestNumber,
+            receivingReportId: request.receivingReports[0]?.id ?? null,
+          }
+        }
+
+        const hasRemainingQuantity = request.items.some((item) => {
+          const requestedQuantity = Number(item.quantity)
+          const receivedQuantity = item.serveBatchItems.reduce((accumulator, servedItem) => {
+            return accumulator + Number(servedItem.quantityServed)
+          }, 0)
+
+          return requestedQuantity - receivedQuantity > QUANTITY_TOLERANCE
+        })
+
+        if (hasRemainingQuantity) {
+          return {
+            kind: "error" as const,
+            message: "Cannot acknowledge receipt while one or more items still have remaining quantities.",
+          }
+        }
+
+        const existingReport = request.receivingReports[0] ?? null
+        if (request.requesterAcknowledgedAt && existingReport) {
+          return {
+            kind: "already_acknowledged" as const,
+            requestNumber: request.requestNumber,
+            receivingReportId: existingReport.id,
+          }
+        }
+
+        const report = existingReport
+          ? await tx.materialRequestReceivingReport.update({
+              where: {
+                id: existingReport.id,
+              },
+              data: {
+                remarks: remarks ?? existingReport.remarks,
+              },
+              select: {
+                id: true,
+                reportNumber: true,
+              },
+            })
+          : await tx.materialRequestReceivingReport.create({
+              data: {
+                companyId: context.companyId,
+                materialRequestId: request.id,
+                reportNumber: `RR-${request.requestNumber}`,
+                remarks,
+                receivedAt: actedAt,
+                receivedByUserId: context.userId,
+                items: {
+                  create: request.items.map((item) => {
+                    const receivedQuantity = item.serveBatchItems.reduce((accumulator, servedItem) => {
+                      return accumulator + Number(servedItem.quantityServed)
+                    }, 0)
+
+                    return {
+                      materialRequestItemId: item.id,
+                      lineNumber: item.lineNumber,
+                      itemCode: item.itemCode,
+                      description: item.description,
+                      uom: item.uom,
+                      requestedQuantity: Number(item.quantity),
+                      receivedQuantity,
+                      unitPrice: item.unitPrice === null ? null : Number(item.unitPrice),
+                      lineTotal: item.lineTotal === null ? null : Number(item.lineTotal),
+                      remarks: item.remarks,
+                    }
+                  }),
+                },
+              },
+              select: {
+                id: true,
+                reportNumber: true,
+              },
+            })
+
+        await tx.materialRequest.update({
+          where: {
+            id: request.id,
+          },
+          data: {
+            requesterAcknowledgedAt: request.requesterAcknowledgedAt ?? actedAt,
+            requesterAcknowledgedByUser: {
+              connect: {
+                id: context.userId,
+              },
+            },
+          },
+        })
+
+        await createAuditLog(
+          {
+            tableName: "MaterialRequest",
+            recordId: request.id,
+            action: "UPDATE",
+            userId: context.userId,
+            reason: acknowledgedOnBehalf
+              ? "ACKNOWLEDGE_MATERIAL_REQUEST_RECEIPT_ON_BEHALF"
+              : "EMPLOYEE_ACKNOWLEDGE_MATERIAL_REQUEST_RECEIPT",
+            changes: [
+              {
+                fieldName: "requesterAcknowledgedAt",
+                oldValue: request.requesterAcknowledgedAt,
+                newValue: request.requesterAcknowledgedAt ?? actedAt,
+              },
+              {
+                fieldName: "requesterAcknowledgedByUserId",
+                oldValue: request.requesterAcknowledgedByUserId,
+                newValue: context.userId,
+              },
+              {
+                fieldName: "receivingReportNumber",
+                oldValue: existingReport?.reportNumber ?? null,
+                newValue: report.reportNumber,
+              },
+              {
+                fieldName: "acknowledgedOnBehalf",
+                newValue: acknowledgedOnBehalf,
+              },
+            ],
+          },
+          tx
+        )
+
+        return {
+          kind: "acknowledged" as const,
+          requestNumber: request.requestNumber,
+          receivingReportId: report.id,
+          acknowledgedOnBehalf,
+        }
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      })
+      break
+    } catch (error) {
+      if (isTransactionSerializationConflict(error) && attempt < ACKNOWLEDGE_RECEIPT_MAX_RETRIES - 1) {
+        continue
+      }
+
+      const message = error instanceof Error ? error.message : "Unknown error"
+      return { ok: false, error: `Failed to acknowledge material request receipt: ${message}` }
+    }
+  }
+
+  if (!outcome) {
+    return {
+      ok: false,
+      error: "Failed to acknowledge material request receipt due to concurrent updates. Please retry.",
+    }
+  }
+
+  if (outcome.kind === "error") {
+    return { ok: false, error: outcome.message }
+  }
+
+  revalidateMaterialRequestPaths(context.companyId)
+
+  if (outcome.kind === "already_acknowledged") {
+    return {
+      ok: true,
+      message: `Material request ${outcome.requestNumber} is already acknowledged.`,
+      receivingReportId: outcome.receivingReportId,
+    }
+  }
+
+  if (outcome.kind === "not_required") {
+    return {
+      ok: true,
+      message: `Material request ${outcome.requestNumber} does not require receipt acknowledgment.`,
+      receivingReportId: outcome.receivingReportId ?? undefined,
+    }
+  }
+
+  return {
+    ok: true,
+    message: outcome.acknowledgedOnBehalf
+      ? `Material request ${outcome.requestNumber} receipt acknowledged on behalf of the requester.`
+      : `Material request ${outcome.requestNumber} receipt acknowledged successfully.`,
+    receivingReportId: outcome.receivingReportId,
   }
 }

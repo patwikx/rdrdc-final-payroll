@@ -55,28 +55,22 @@ export const updateMaterialRequestProcessingStatusInputSchema = z
       return
     }
 
-    if (!value.processingPoNumber?.trim()) {
-      context.addIssue({
-        code: "custom",
-        path: ["processingPoNumber"],
-        message: "PO # is required when marking request as served.",
-      })
-    }
+    if (servedItems.length > 0) {
+      if (!value.processingPoNumber?.trim()) {
+        context.addIssue({
+          code: "custom",
+          path: ["processingPoNumber"],
+          message: "PO # is required when marking request as served.",
+        })
+      }
 
-    if (!value.processingSupplierName?.trim()) {
-      context.addIssue({
-        code: "custom",
-        path: ["processingSupplierName"],
-        message: "Supplier is required when marking request as served.",
-      })
-    }
-
-    if (servedItems.length === 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["servedItems"],
-        message: "At least one line item quantity is required when marking request as served.",
-      })
+      if (!value.processingSupplierName?.trim()) {
+        context.addIssue({
+          code: "custom",
+          path: ["processingSupplierName"],
+          message: "Supplier is required when marking request as served.",
+        })
+      }
     }
   })
 

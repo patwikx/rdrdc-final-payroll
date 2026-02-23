@@ -383,13 +383,8 @@ export function MaterialRequestProcessingClient({
             .filter((servedItem) => Number.isFinite(servedItem.quantityServed) && servedItem.quantityServed > 0)
         : []
 
-    if (action.type === "IN_PROGRESS" && (!trimmedPoNumber || !trimmedSupplierName)) {
+    if (action.type === "IN_PROGRESS" && servedItems.length > 0 && (!trimmedPoNumber || !trimmedSupplierName)) {
       toast.error("PO # and supplier are required to mark request as served.")
-      return
-    }
-
-    if (action.type === "IN_PROGRESS" && servedItems.length === 0) {
-      toast.error("Enter at least one line item quantity to serve.")
       return
     }
 
@@ -411,7 +406,7 @@ export function MaterialRequestProcessingClient({
       servedItems: action.type === "IN_PROGRESS" ? servedItems : undefined,
     }
 
-    if (action.type === "IN_PROGRESS" && actionDetail) {
+    if (action.type === "IN_PROGRESS" && actionDetail && servedItems.length > 0) {
       const enteredByItemId = new Map(
         servedItems.map((servedItem) => [servedItem.materialRequestItemId, servedItem.quantityServed] as const)
       )

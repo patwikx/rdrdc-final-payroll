@@ -211,6 +211,7 @@ export async function updateMaterialRequestProcessingStatusAction(
         requestNumber: string
         previousStatus: MaterialRequestProcessingStatus
         alreadyCompleted: boolean
+        inProgressUpdateMode: "SERVED" | "METADATA_ONLY" | "STARTED" | "NO_CHANGES" | null
       }
     | null = null
 
@@ -241,6 +242,7 @@ export async function updateMaterialRequestProcessingStatusAction(
                 id: true,
                 poNumber: true,
                 supplierName: true,
+                notes: true,
               },
             },
             items: {
@@ -292,15 +294,18 @@ export async function updateMaterialRequestProcessingStatusAction(
               requestNumber: request.requestNumber,
               previousStatus,
               alreadyCompleted: true,
+              inProgressUpdateMode: null,
             }
           }
         }
 
         const latestServeBatch = request.serveBatches[0] ?? null
-        const remarks = asNullableText(payload.remarks) ?? request.processingRemarks
-        const processingPoNumber = asNullableText(payload.processingPoNumber) ?? latestServeBatch?.poNumber ?? null
-        const processingSupplierName =
-          asNullableText(payload.processingSupplierName) ?? latestServeBatch?.supplierName ?? null
+        const incomingRemarks = asNullableText(payload.remarks)
+        const incomingPoNumber = asNullableText(payload.processingPoNumber)
+        const incomingSupplierName = asNullableText(payload.processingSupplierName)
+        const remarks = incomingRemarks ?? request.processingRemarks
+        const processingPoNumber = incomingPoNumber ?? latestServeBatch?.poNumber ?? null
+        const processingSupplierName = incomingSupplierName ?? latestServeBatch?.supplierName ?? null
 
         const requestedQuantityByItemId = new Map<string, number>()
         const servedQuantityByItemId = new Map<string, number>()
@@ -341,15 +346,6 @@ export async function updateMaterialRequestProcessingStatusAction(
           servedQuantityByItemId.set(servedItem.materialRequestItemId, alreadyServed + servedItem.quantityServed)
         }
 
-        if (
-          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
-          batchItemsToCreate.length === 0
-        ) {
-          throw new MaterialRequestProcessingValidationError(
-            "At least one line item quantity is required when marking request as served."
-          )
-        }
-
         const hasRemainingQuantities = Array.from(requestedQuantityByItemId.entries()).some(
           ([itemId, requestedQuantity]) =>
             requestedQuantity - (servedQuantityByItemId.get(itemId) ?? 0) > QUANTITY_TOLERANCE
@@ -362,9 +358,44 @@ export async function updateMaterialRequestProcessingStatusAction(
         }
 
         const shouldCreateServeBatch = batchItemsToCreate.length > 0
+        const shouldUpdateLatestServeBatchMetadata =
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          !shouldCreateServeBatch &&
+          latestServeBatch !== null &&
+          (
+            processingPoNumber !== latestServeBatch.poNumber ||
+            processingSupplierName !== latestServeBatch.supplierName ||
+            remarks !== latestServeBatch.notes
+          )
 
         if (shouldCreateServeBatch && (!processingPoNumber || !processingSupplierName)) {
           throw new MaterialRequestProcessingValidationError("PO # and supplier are required to mark request as served.")
+        }
+
+        if (
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          !shouldCreateServeBatch &&
+          latestServeBatch === null &&
+          (incomingPoNumber !== null || incomingSupplierName !== null)
+        ) {
+          throw new MaterialRequestProcessingValidationError(
+            "PO # and supplier can be updated only after at least one served quantity entry exists."
+          )
+        }
+
+        if (
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          !shouldCreateServeBatch &&
+          !shouldUpdateLatestServeBatchMetadata &&
+          remarks === request.processingRemarks
+        ) {
+          return {
+            requestNumber: request.requestNumber,
+            previousStatus,
+            alreadyCompleted: false,
+            inProgressUpdateMode: "NO_CHANGES" as const,
+          }
         }
 
         const updateData: Prisma.MaterialRequestUpdateInput =
@@ -432,6 +463,22 @@ export async function updateMaterialRequestProcessingStatusAction(
             },
           })
         } else if (
+          shouldUpdateLatestServeBatchMetadata &&
+          latestServeBatch?.id &&
+          processingPoNumber &&
+          processingSupplierName
+        ) {
+          await tx.materialRequestServeBatch.update({
+            where: {
+              id: latestServeBatch.id,
+            },
+            data: {
+              poNumber: processingPoNumber,
+              supplierName: processingSupplierName,
+              notes: remarks,
+            },
+          })
+        } else if (
           payload.status === MaterialRequestProcessingStatus.COMPLETED &&
           latestServeBatch?.id
         ) {
@@ -481,7 +528,25 @@ export async function updateMaterialRequestProcessingStatusAction(
                       newValue: batchItemsToCreate.length,
                     },
                   ]
-                : []),
+                : shouldUpdateLatestServeBatchMetadata
+                  ? [
+                      {
+                        fieldName: "serveBatchPoNumber",
+                        oldValue: latestServeBatch?.poNumber ?? null,
+                        newValue: processingPoNumber,
+                      },
+                      {
+                        fieldName: "serveBatchSupplierName",
+                        oldValue: latestServeBatch?.supplierName ?? null,
+                        newValue: processingSupplierName,
+                      },
+                      {
+                        fieldName: "serveBatchNotes",
+                        oldValue: latestServeBatch?.notes ?? null,
+                        newValue: remarks,
+                      },
+                    ]
+                  : []),
             ],
           },
           tx
@@ -491,6 +556,16 @@ export async function updateMaterialRequestProcessingStatusAction(
           requestNumber: request.requestNumber,
           previousStatus,
           alreadyCompleted: false,
+          inProgressUpdateMode:
+            payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
+              ? shouldCreateServeBatch
+                ? "SERVED"
+                : previousStatus === MaterialRequestProcessingStatus.PENDING_PURCHASER
+                  ? "STARTED"
+                  : shouldUpdateLatestServeBatchMetadata || remarks !== request.processingRemarks
+                    ? "METADATA_ONLY"
+                    : "NO_CHANGES"
+              : null,
         }
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -527,9 +602,15 @@ export async function updateMaterialRequestProcessingStatusAction(
     ok: true,
     message:
       payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
-        ? outcome.previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS
-          ? `Material request ${outcome.requestNumber} updated with served quantities.`
-          : `Material request ${outcome.requestNumber} marked as served.`
+        ? outcome.inProgressUpdateMode === "SERVED"
+          ? outcome.previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS
+            ? `Material request ${outcome.requestNumber} updated with served quantities.`
+            : `Material request ${outcome.requestNumber} marked as served.`
+          : outcome.inProgressUpdateMode === "STARTED"
+            ? `Material request ${outcome.requestNumber} marked as in progress.`
+            : outcome.inProgressUpdateMode === "METADATA_ONLY"
+              ? `Material request ${outcome.requestNumber} processing details updated.`
+              : `No processing changes were applied to material request ${outcome.requestNumber}.`
         : `Material request ${outcome.requestNumber} marked as completed.`,
   }
 }

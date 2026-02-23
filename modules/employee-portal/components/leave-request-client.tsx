@@ -301,7 +301,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
             className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[450px]"
             onCloseAutoFocus={(event) => event.preventDefault()}
           >
-            <DialogHeader className="mb-3 border-b border-border/60 pb-3">
+            <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
               <DialogTitle className="text-base font-semibold">
                 {editingRequestId ? "Edit Leave Request" : "Submit Leave Request"}
               </DialogTitle>
@@ -481,9 +481,9 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                 />
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg">Cancel</Button>
-                <Button type="button" onClick={submit} disabled={isPending} className="rounded-lg">
+              <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-3 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-lg sm:min-w-[96px]">Cancel</Button>
+                <Button type="button" onClick={submit} disabled={isPending} className="rounded-lg sm:min-w-[96px]">
                   {isPending ? (editingRequestId ? "Updating..." : "Submitting...") : editingRequestId ? "Update Request" : "Submit"}
                 </Button>
               </div>
@@ -578,9 +578,9 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
               <p className="text-sm text-muted-foreground">You haven&apos;t made any leave requests yet.</p>
             </div>
           ) : (
-            <div className="overflow-hidden border border-border/60 bg-card">
-              <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex-row sm:items-center">
-                <div className="relative min-w-0 sm:w-[360px] sm:flex-none">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
+              <div className="grid grid-cols-3 gap-2 border-b border-border/60 bg-muted/20 px-3 py-3 sm:flex sm:flex-wrap sm:items-center">
+                <div className="relative col-span-3 sm:w-[360px] sm:flex-none">
                   <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={logSearch}
@@ -593,29 +593,32 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                     className="rounded-lg pl-8"
                   />
                 </div>
-                <Select
-                  value={logStatus}
-                  onValueChange={(value) => {
-                    setLogStatus(value)
-                    setCurrentPage(1)
-                    setExpandedRequestId(null)
-                  }}
-                >
-                  <SelectTrigger className="w-full sm:w-[220px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All Statuses</SelectItem>
-                    <SelectItem value="PENDING">Pending</SelectItem>
-                    <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
-                    <SelectItem value="APPROVED">Approved</SelectItem>
-                    <SelectItem value="REJECTED">Rejected</SelectItem>
-                    <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="col-span-2">
+                  <Select
+                    value={logStatus}
+                    onValueChange={(value) => {
+                      setLogStatus(value)
+                      setCurrentPage(1)
+                      setExpandedRequestId(null)
+                    }}
+                  >
+                    <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All statuses</SelectItem>
+                      <SelectItem value="PENDING">Pending</SelectItem>
+                      <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
+                      <SelectItem value="APPROVED">Approved</SelectItem>
+                      <SelectItem value="REJECTED">Rejected</SelectItem>
+                      <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
+                  className="col-span-1 w-full rounded-lg text-xs sm:w-auto sm:text-sm"
                   onClick={() => {
                     setLogSearch("")
                     setLogStatus("ALL")
@@ -623,8 +626,9 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                     setExpandedRequestId(null)
                   }}
                 >
-                  <IconFilterOff className="mr-2 h-4 w-4" />
-                  Reset
+                  <IconFilterOff className="h-4 w-4" />
+                  <span className="sm:hidden">Clear</span>
+                  <span className="hidden sm:inline">Clear Filters</span>
                 </Button>
               </div>
 
@@ -636,7 +640,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
 
               {filteredRequests.length > 0 ? (
                 <>
-                  <div className="space-y-2 p-3 lg:hidden">
+                  <div className="space-y-2 lg:hidden">
                     {paginatedRequests.map((request) => {
                       const isExpanded = expandedRequestId === request.id
                       return (
@@ -652,33 +656,44 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                             className="w-full p-3 text-left"
                             onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
                           >
-                            <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="text-[11px] text-muted-foreground">Request #</p>
-                                <p className="truncate text-sm font-medium text-foreground">{request.requestNumber}</p>
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
+                                <p className="truncate text-sm font-semibold text-foreground">{request.requestNumber}</p>
                               </div>
-                              <Badge variant={statusVariant(request.statusCode)} className="shrink-0 text-xs font-normal">
+                              <Badge variant={statusVariant(request.statusCode)} className="shrink-0 rounded-full text-[10px] font-normal">
                                 {statusLabel(request.statusCode)}
                               </Badge>
                             </div>
 
-                            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Leave Type</p>
-                                <p className="text-foreground">{request.leaveTypeName}</p>
-                                {request.isHalfDay ? <p className="text-orange-600">Half Day ({request.halfDayPeriod})</p> : null}
+                            <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Leave Type</p>
+                              <p className="mt-1 text-sm font-semibold text-foreground">{request.leaveTypeName}</p>
+                              {request.isHalfDay ? (
+                                <p className="mt-0.5 text-[11px] text-orange-600">Half Day ({request.halfDayPeriod})</p>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                              <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Duration</p>
+                                <p className="mt-0.5 text-xs font-medium text-foreground">{request.numberOfDays} day(s)</p>
                               </div>
-                              <div>
-                                <p className="text-[11px] text-muted-foreground">Days</p>
-                                <p className="text-foreground">{request.numberOfDays}</p>
+                              <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Status</p>
+                                <p className="mt-0.5 text-xs font-medium text-foreground">{statusLabel(request.statusCode)}</p>
                               </div>
-                              <div className="col-span-2">
-                                <p className="text-[11px] text-muted-foreground">Date Range</p>
-                                <p className="text-foreground">{request.startDate} to {request.endDate}</p>
+                              <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Start Date</p>
+                                <p className="mt-0.5 text-xs font-medium text-foreground">{request.startDate}</p>
                               </div>
-                              <div className="col-span-2">
-                                <p className="text-[11px] text-muted-foreground">Reason</p>
-                                <p className="line-clamp-2 text-foreground">{request.reason || "-"}</p>
+                              <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">End Date</p>
+                                <p className="mt-0.5 text-xs font-medium text-foreground">{request.endDate}</p>
+                              </div>
+                              <div className="col-span-2 rounded-md border border-border/60 bg-background px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Reason</p>
+                                <p className="mt-0.5 line-clamp-2 text-xs font-medium text-foreground">{request.reason || "-"}</p>
                               </div>
                             </div>
                           </button>

@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
   IconCalendarEvent,
   IconCheck,
+  IconChevronDown,
   IconClockHour4,
   IconFilterOff,
   IconListCheck,
@@ -321,8 +322,8 @@ export function OvertimeApprovalClient({
             <span className="text-xs text-muted-foreground">{filteredRows.length} records</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-[280px] sm:w-[360px]">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="relative col-span-3 sm:w-[360px]">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search employee/request..."
@@ -341,7 +342,7 @@ export function OvertimeApprovalClient({
                 setRowsPage(1)
               }}
             >
-              <SelectTrigger className="w-[180px] rounded-lg">
+              <SelectTrigger className="w-full rounded-lg sm:w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent className="rounded-lg">
@@ -357,7 +358,7 @@ export function OvertimeApprovalClient({
                 setRowsPage(1)
               }}
             >
-              <SelectTrigger className="w-[220px] rounded-lg">
+              <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
               <SelectContent className="rounded-lg">
@@ -373,7 +374,7 @@ export function OvertimeApprovalClient({
             <Button
               type="button"
               variant="outline"
-              className="rounded-lg"
+              className="w-full rounded-lg text-xs sm:w-auto sm:text-sm"
               onClick={() => {
                 setQueueSearch("")
                 setQueueStatus("ALL")
@@ -383,6 +384,7 @@ export function OvertimeApprovalClient({
               disabled={!hasActiveQueueFilters}
             >
               <IconFilterOff className="h-4 w-4" />
+              <span>Clear</span>
             </Button>
           </div>
 
@@ -395,7 +397,7 @@ export function OvertimeApprovalClient({
               No requests match the current filters.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-foreground/70">Employee</p>
@@ -413,48 +415,59 @@ export function OvertimeApprovalClient({
 
                 return (
                   <>
-                    <div className="space-y-2 p-3 lg:hidden">
+                    <div className="space-y-2 lg:hidden">
                       {paginatedRows.map((row) => (
                         <div key={row.id} className="rounded-xl border border-border/60 bg-background p-3">
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[11px] text-muted-foreground">Request #</p>
-                              <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
+                              <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
                             </div>
-                            <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="shrink-0 text-xs">
+                            <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="shrink-0 rounded-full text-[10px]">
                               {toLabel(row.statusCode)}
                             </Badge>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Employee</p>
-                              <div className="mt-1 flex items-center gap-2">
-                                <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                                  <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
-                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                                    {getNameInitials(row.employeeName)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <p className="truncate text-foreground">{row.employeeName}</p>
+
+                          <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Employee</p>
+                            <div className="mt-1.5 flex items-center gap-2.5">
+                              <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.employeeName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">{row.employeeName}</p>
+                                <p className="truncate text-[11px] text-muted-foreground">
+                                  {row.employeeNumber} • {row.departmentName}
+                                </p>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">OT Date</p>
-                              <p className="text-foreground">{row.overtimeDate}</p>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                <IconCalendarEvent className="h-3.5 w-3.5" />
+                                OT Date
+                              </p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.overtimeDate}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Hours</p>
-                              <p className="text-foreground">{row.hours.toFixed(2)}h</p>
-                            </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Status</p>
-                              <p className="text-foreground">{toLabel(row.statusCode)}</p>
-                            </div>
-                            <div className="col-span-2">
-                              <p className="text-[11px] text-muted-foreground">Reason</p>
-                              <p className="line-clamp-2 text-foreground">{row.reason ?? "-"}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Hours</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.hours.toFixed(2)} hour(s)</p>
+                              {isHR && row.ctoConversionPreview ? (
+                                <Badge className="mt-1.5 h-5 bg-primary px-1.5 text-[10px] text-primary-foreground">CTO 1:1</Badge>
+                              ) : null}
                             </div>
                           </div>
+
+                          <div className="mt-3 rounded-md border border-border/50 bg-muted/30 px-2.5 py-2 text-xs">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Reason</p>
+                            <p className="mt-0.5 line-clamp-2 text-foreground">{row.reason ?? "No reason provided."}</p>
+                          </div>
+
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, "reject")} disabled={isPending}>
                               <IconX className="mr-1 h-3.5 w-3.5" />
@@ -558,8 +571,8 @@ export function OvertimeApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
-            <div className="relative">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+            <div className="relative col-span-3 sm:col-span-1">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search employee/request..."
@@ -570,138 +583,72 @@ export function OvertimeApprovalClient({
                 className="rounded-lg pl-8"
               />
             </div>
-            <Select
-              value={historyStatus}
-              onValueChange={(value) => {
-                const nextStatus = value as HistoryStatusFilter
-                setHistoryStatus(nextStatus)
-                setExpandedHistoryRequestId(null)
-                clearHistorySearchTimer()
-                loadHistoryPage({
-                  page: 1,
-                  pageSize: historyItemsPerPage,
-                  search: historySearch,
-                  status: nextStatus,
-                  departmentId: historyDepartmentId,
-                  fromDate: historyFromDate,
-                  toDate: historyToDate,
-                })
-              }}
-            >
-              <SelectTrigger className="rounded-lg">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg">
-                <SelectItem value="ALL">All statuses</SelectItem>
-                <SelectItem value="APPROVED">Approved</SelectItem>
-                <SelectItem value="REJECTED">Rejected</SelectItem>
-                <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={historyDepartmentId}
-              onValueChange={(value) => {
-                setHistoryDepartmentId(value)
-                setExpandedHistoryRequestId(null)
-                clearHistorySearchTimer()
-                loadHistoryPage({
-                  page: 1,
-                  pageSize: historyItemsPerPage,
-                  search: historySearch,
-                  status: historyStatus,
-                  departmentId: value,
-                  fromDate: historyFromDate,
-                  toDate: historyToDate,
-                })
-              }}
-            >
-              <SelectTrigger className="rounded-lg">
-                <SelectValue placeholder="Department" />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg">
-                <SelectItem value="ALL">All departments</SelectItem>
-                {departmentOptions.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>
-                    {department.name}
-                    {!department.isActive ? " (Inactive)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyFromDate && "text-muted-foreground")}>
-                  <IconCalendarEvent className="mr-2 h-4 w-4" />
-                  {historyFromDate ? format(fromDateValue(historyFromDate) as Date, "PPP") : "From date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto rounded-lg border-border/60 p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={fromDateValue(historyFromDate)}
-                  onSelect={(date) => {
-                    const nextFrom = toDateValue(date)
-                    const nextTo = historyToDate && nextFrom && historyToDate < nextFrom ? "" : historyToDate
-                    setHistoryFromDate(nextFrom)
-                    if (nextTo !== historyToDate) {
-                      setHistoryToDate(nextTo)
-                    }
-                    setExpandedHistoryRequestId(null)
-                    clearHistorySearchTimer()
-                    loadHistoryPage({
-                      page: 1,
-                      pageSize: historyItemsPerPage,
-                      search: historySearch,
-                      status: historyStatus,
-                      departmentId: historyDepartmentId,
-                      fromDate: nextFrom,
-                      toDate: nextTo,
-                    })
-                  }}
-                  captionLayout="dropdown"
-                />
-              </PopoverContent>
-            </Popover>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyToDate && "text-muted-foreground")}>
-                  <IconCalendarEvent className="mr-2 h-4 w-4" />
-                  {historyToDate ? format(fromDateValue(historyToDate) as Date, "PPP") : "To date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto rounded-lg border-border/60 p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={fromDateValue(historyToDate)}
-                  onSelect={(date) => {
-                    const nextTo = toDateValue(date)
-                    setHistoryToDate(nextTo)
-                    setExpandedHistoryRequestId(null)
-                    clearHistorySearchTimer()
-                    loadHistoryPage({
-                      page: 1,
-                      pageSize: historyItemsPerPage,
-                      search: historySearch,
-                      status: historyStatus,
-                      departmentId: historyDepartmentId,
-                      fromDate: historyFromDate,
-                      toDate: nextTo,
-                    })
-                  }}
-                  disabled={(date) => {
-                    if (!historyFromDate) return false
-                    const fromDate = fromDateValue(historyFromDate)
-                    if (!fromDate) return false
-                    return date < fromDate
-                  }}
-                  captionLayout="dropdown"
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="col-span-1">
+              <Select
+                value={historyStatus}
+                onValueChange={(value) => {
+                  const nextStatus = value as HistoryStatusFilter
+                  setHistoryStatus(nextStatus)
+                  setExpandedHistoryRequestId(null)
+                  clearHistorySearchTimer()
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: historySearch,
+                    status: nextStatus,
+                    departmentId: historyDepartmentId,
+                    fromDate: historyFromDate,
+                    toDate: historyToDate,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All statuses</SelectItem>
+                  <SelectItem value="APPROVED">Approved</SelectItem>
+                  <SelectItem value="REJECTED">Rejected</SelectItem>
+                  <SelectItem value="SUPERVISOR_APPROVED">Supervisor Approved</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-1">
+              <Select
+                value={historyDepartmentId}
+                onValueChange={(value) => {
+                  setHistoryDepartmentId(value)
+                  setExpandedHistoryRequestId(null)
+                  clearHistorySearchTimer()
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: historySearch,
+                    status: historyStatus,
+                    departmentId: value,
+                    fromDate: historyFromDate,
+                    toDate: historyToDate,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All departments</SelectItem>
+                  {departmentOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                      {!department.isActive ? " (Inactive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="button"
               variant="outline"
-              className="w-full rounded-lg"
+              className="col-span-1 w-full rounded-lg text-xs sm:text-sm"
               onClick={() => {
                 setHistorySearch("")
                 setHistoryStatus("ALL")
@@ -722,9 +669,84 @@ export function OvertimeApprovalClient({
               }}
               disabled={!hasActiveHistoryFilters}
             >
-              <IconFilterOff className="mr-2 h-4 w-4" />
-              Clear Filters
+              <IconFilterOff className="h-4 w-4" />
+              <span className="sm:hidden">Clear</span>
+              <span className="hidden sm:inline">Clear Filters</span>
             </Button>
+            <div className="col-span-3 sm:col-span-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyFromDate && "text-muted-foreground")}>
+                    <IconCalendarEvent className="mr-2 h-4 w-4" />
+                    {historyFromDate ? format(fromDateValue(historyFromDate) as Date, "PPP") : "From date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto rounded-lg border-border/60 p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={fromDateValue(historyFromDate)}
+                    onSelect={(date) => {
+                      const nextFrom = toDateValue(date)
+                      const nextTo = historyToDate && nextFrom && historyToDate < nextFrom ? "" : historyToDate
+                      setHistoryFromDate(nextFrom)
+                      if (nextTo !== historyToDate) {
+                        setHistoryToDate(nextTo)
+                      }
+                      setExpandedHistoryRequestId(null)
+                      clearHistorySearchTimer()
+                      loadHistoryPage({
+                        page: 1,
+                        pageSize: historyItemsPerPage,
+                        search: historySearch,
+                        status: historyStatus,
+                        departmentId: historyDepartmentId,
+                        fromDate: nextFrom,
+                        toDate: nextTo,
+                      })
+                    }}
+                    captionLayout="dropdown"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="col-span-3 sm:col-span-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyToDate && "text-muted-foreground")}>
+                    <IconCalendarEvent className="mr-2 h-4 w-4" />
+                    {historyToDate ? format(fromDateValue(historyToDate) as Date, "PPP") : "To date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto rounded-lg border-border/60 p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={fromDateValue(historyToDate)}
+                    onSelect={(date) => {
+                      const nextTo = toDateValue(date)
+                      setHistoryToDate(nextTo)
+                      setExpandedHistoryRequestId(null)
+                      clearHistorySearchTimer()
+                      loadHistoryPage({
+                        page: 1,
+                        pageSize: historyItemsPerPage,
+                        search: historySearch,
+                        status: historyStatus,
+                        departmentId: historyDepartmentId,
+                        fromDate: historyFromDate,
+                        toDate: nextTo,
+                      })
+                    }}
+                    disabled={(date) => {
+                      if (!historyFromDate) return false
+                      const fromDate = fromDateValue(historyFromDate)
+                      if (!fromDate) return false
+                      return date < fromDate
+                    }}
+                    captionLayout="dropdown"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           {historyLoadError ? (
@@ -738,7 +760,7 @@ export function OvertimeApprovalClient({
               No approval history found for the selected filters.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Employee</p>
@@ -749,7 +771,7 @@ export function OvertimeApprovalClient({
                 <p className="col-span-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">CTO</p>
               </div>
 
-              <div className="space-y-2 p-3 lg:hidden">
+              <div className="space-y-2 lg:hidden">
                 {historyRowsState.map((row) => {
                   const isExpanded = expandedHistoryRequestId === row.id
                   return (
@@ -759,44 +781,54 @@ export function OvertimeApprovalClient({
                         className="w-full p-3 text-left"
                         onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
                             <p className="text-[11px] text-muted-foreground">Request #</p>
                             <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {row.employeeName} • {row.hours.toFixed(2)}h
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">Decided: {row.decidedAtLabel}</p>
                           </div>
-                          <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="shrink-0 text-xs">
-                            {toLabel(row.statusCode)}
-                          </Badge>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                          <div>
-                            <p className="text-[11px] text-muted-foreground">Employee</p>
-                            <div className="mt-1 flex items-center gap-2">
-                              <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                                <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
-                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                                  {getNameInitials(row.employeeName)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <p className="truncate text-foreground">{row.employeeName}</p>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-[11px] text-muted-foreground">OT Date</p>
-                            <p className="text-foreground">{row.overtimeDate}</p>
-                          </div>
-                          <div>
-                            <p className="text-[11px] text-muted-foreground">Hours</p>
-                            <p className="text-foreground">{row.hours.toFixed(2)}h</p>
-                          </div>
-                          <div>
-                            <p className="text-[11px] text-muted-foreground">Decided At</p>
-                            <p className="text-foreground">{row.decidedAtLabel}</p>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Badge variant={row.statusCode === "REJECTED" ? "destructive" : "default"} className="shrink-0 text-xs">
+                              {toLabel(row.statusCode)}
+                            </Badge>
+                            <IconChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isExpanded && "rotate-180")} />
                           </div>
                         </div>
                       </button>
                       {isExpanded ? (
-                        <div className="space-y-2 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
+                        <div className="space-y-3 border-t border-border/60 bg-muted/30 px-3 py-3 text-xs">
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Employee</p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <Avatar className="h-8 w-8 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                  <AvatarImage src={row.employeePhotoUrl ?? undefined} alt={row.employeeName} className="!rounded-md object-cover" />
+                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                    {getNameInitials(row.employeeName)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="truncate text-foreground">{row.employeeName}</p>
+                                  <p className="truncate text-[11px] text-muted-foreground">{row.employeeNumber}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">OT Date</p>
+                              <p className="text-foreground">{row.overtimeDate}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Hours</p>
+                              <p className="text-foreground">{row.hours.toFixed(2)} hour(s)</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Status</p>
+                              <p className="text-foreground">{toLabel(row.statusCode)}</p>
+                            </div>
+                          </div>
                           <div>
                             <p className="text-[11px] text-muted-foreground">Reason</p>
                             <p className="text-foreground">{row.reason ?? "-"}</p>
@@ -985,38 +1017,71 @@ export function OvertimeApprovalClient({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl border-border/60 shadow-none">
-          <DialogHeader className="mb-3 border-b border-border/60 pb-3">
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-none sm:max-w-2xl">
+          <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
             <DialogTitle className="text-base font-semibold">
               {actionType === "approve" ? "Approve" : "Reject"} Overtime Request
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              {selected?.requestNumber} - {selected?.employeeName}
+              Review the request details before you submit your decision.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Date</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{selected?.overtimeDate}</p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                      <AvatarImage src={selected?.employeePhotoUrl ?? undefined} alt={selected?.employeeName ?? "Employee"} className="!rounded-md object-cover" />
+                      <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                        {getNameInitials(selected?.employeeName ?? "")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{selected?.employeeName ?? "-"}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {selected?.employeeNumber ?? "-"} • {selected?.departmentName ?? "-"}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">Request {selected?.requestNumber ?? "-"}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1 sm:justify-end">
+                    {selected ? (
+                      <Badge variant={selected.statusCode === "REJECTED" ? "destructive" : "secondary"} className="rounded-full text-[10px]">
+                        {toLabel(selected.statusCode)}
+                      </Badge>
+                    ) : null}
+                    {isHR && selected?.ctoConversionPreview ? (
+                      <Badge className="rounded-full bg-primary text-[10px] text-primary-foreground">CTO 1:1</Badge>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Hours</p>
-                <p className="mt-1 text-sm font-medium text-foreground">{selected?.hours.toFixed(2)} Hours</p>
-                {isHR && selected?.ctoConversionPreview ? (
-                  <Badge className="mt-2 bg-primary text-primary-foreground">Will convert to CTO leave (1:1)</Badge>
-                ) : null}
+
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:grid-cols-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{selected?.overtimeDate ?? "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Hours</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">
+                    {selected ? `${selected.hours.toFixed(2)} hour(s)` : "-"}
+                  </p>
+                </div>
+                <div className="hidden sm:block sm:col-span-1">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Decision Stage</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{isHR ? "HR Final Approval" : "Supervisor Approval"}</p>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Label className="text-xs text-foreground">Request Reason</Label>
-              <Input
-                value={selected?.reason ?? "No reason provided."}
-                readOnly
-                className="rounded-lg text-sm"
-              />
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 text-sm text-foreground">
+                {selected?.reason?.trim() ? selected.reason : "No reason provided."}
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -1026,15 +1091,15 @@ export function OvertimeApprovalClient({
               <Textarea
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
-                className="min-h-[100px] rounded-lg text-sm"
+                className="min-h-[84px] rounded-lg text-sm"
                 placeholder={actionType === "approve" ? "Add remarks..." : "Provide rejection reason..."}
               />
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
-              <Button variant="outline" className="rounded-lg" onClick={() => setOpen(false)} disabled={isPending}>Cancel</Button>
+            <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-3 sm:flex-row sm:justify-end">
+              <Button variant="outline" className="rounded-lg sm:min-w-[96px]" onClick={() => setOpen(false)} disabled={isPending}>Cancel</Button>
               <Button
-                className={cn("rounded-lg", actionType === "reject" && "bg-destructive hover:bg-destructive/90")}
+                className={cn("rounded-lg sm:min-w-[96px]", actionType === "reject" && "bg-destructive hover:bg-destructive/90")}
                 onClick={submit}
                 disabled={isPending || (actionType === "reject" && !remarks.trim())}
               >

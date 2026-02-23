@@ -58,7 +58,6 @@ export default async function EmployeePortalLayout({ children, params }: Employe
         />
         <SidebarInset>
           <EmployeePortalHeader
-            companyName={context.companyName}
             dashboardHref={canSwitchToDashboard ? `/${context.companyId}/dashboard` : null}
           />
           <main className="flex-1 p-4 sm:p-6">{children}</main>

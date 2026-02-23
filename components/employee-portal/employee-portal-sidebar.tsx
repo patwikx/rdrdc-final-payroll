@@ -10,13 +10,10 @@ import {
   IconClockHour4,
   IconFileText,
   IconHome2,
-  IconLayoutRows,
   IconPackage,
   IconReceipt2,
   IconUser,
   IconUserCheck,
-  IconCommand,
-  IconWaveSine,
 } from "@tabler/icons-react"
 
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -42,6 +39,7 @@ type EmployeePortalCompany = {
   companyId: string
   companyCode: string
   companyName: string
+  logoUrl?: string | null
   role: string
 }
 
@@ -60,8 +58,6 @@ type EmployeePortalSidebarProps = {
     materialRequestPostingPending: number
   }
 }
-
-const companyLogos = [IconLayoutRows, IconWaveSine, IconCommand]
 
 const menuItems = [
   {
@@ -176,16 +172,13 @@ export function EmployeePortalSidebar({
 
   const teams = useMemo(
     () =>
-      companies.map((company, index) => {
-        const CompanyLogo = companyLogos[index % companyLogos.length]
-        return {
-          id: company.companyId,
-          name: company.companyName,
-          code: company.companyCode,
-          logo: <CompanyLogo className="size-4" />,
-          plan: company.role,
-        }
-      }),
+      companies.map((company) => ({
+        id: company.companyId,
+        name: company.companyName,
+        code: company.companyCode,
+        logoUrl: company.logoUrl ?? null,
+        plan: company.role,
+      })),
     [companies]
   )
 

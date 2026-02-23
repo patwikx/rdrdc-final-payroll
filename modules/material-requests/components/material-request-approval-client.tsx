@@ -383,8 +383,8 @@ export function MaterialRequestApprovalClient({
             <span className="text-xs text-muted-foreground">{filteredQueueRows.length} records</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-[280px] sm:w-[360px]">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="relative col-span-3 sm:w-[360px]">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search request #, requester, department..."
@@ -396,29 +396,31 @@ export function MaterialRequestApprovalClient({
                 className="rounded-lg pl-8"
               />
             </div>
-            <Select
-              value={queueDepartmentId}
-              onValueChange={(value) => {
-                setQueueDepartmentId(value)
-                setQueuePage(1)
-              }}
-            >
-              <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
-                <SelectValue placeholder="Department" />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg">
-                <SelectItem value="ALL">All departments</SelectItem>
-                {departmentOptions.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>
-                    {department.name}
-                    {!department.isActive ? " (Inactive)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="col-span-2">
+              <Select
+                value={queueDepartmentId}
+                onValueChange={(value) => {
+                  setQueueDepartmentId(value)
+                  setQueuePage(1)
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                  <SelectValue placeholder="Department" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All departments</SelectItem>
+                  {departmentOptions.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                      {!department.isActive ? " (Inactive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               variant="outline"
-              className="rounded-lg"
+              className="col-span-1 w-full rounded-lg text-xs sm:w-auto sm:text-sm"
               onClick={() => {
                 setQueueSearch("")
                 setQueueDepartmentId("ALL")
@@ -427,6 +429,8 @@ export function MaterialRequestApprovalClient({
               disabled={!hasQueueFilters}
             >
               <IconFilterOff className="h-4 w-4" />
+              <span className="sm:hidden">Clear</span>
+              <span className="hidden sm:inline">Clear Filters</span>
             </Button>
           </div>
 
@@ -439,7 +443,7 @@ export function MaterialRequestApprovalClient({
               No requests match the current filters.
             </div>
           ) : (
-            <div className="overflow-hidden border border-border/60 bg-card">
+            <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
@@ -459,7 +463,7 @@ export function MaterialRequestApprovalClient({
 
                 return (
                   <>
-                    <div className="space-y-2 p-3 lg:hidden">
+                    <div className="space-y-2 lg:hidden">
                       {paginatedRows.map((row) => (
                         <motion.div
                           key={`queue-mobile-${row.id}`}
@@ -469,47 +473,52 @@ export function MaterialRequestApprovalClient({
                           transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
                           className="rounded-xl border border-border/60 bg-background p-3"
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[11px] text-muted-foreground">Request #</p>
-                              <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
+                              <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
                             </div>
-                            <Badge variant="secondary" className="shrink-0 text-xs">
+                            <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
                               Step {row.currentStep}/{row.requiredSteps}
                             </Badge>
                           </div>
-                          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Requester</p>
-                              <div className="mt-1 flex items-center gap-2">
-                                <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                                  <AvatarImage
-                                    src={row.requesterPhotoUrl ?? undefined}
-                                    alt={row.requesterName}
-                                    className="!rounded-md object-cover"
-                                  />
-                                  <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                                    {getNameInitials(row.requesterName)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <p className="truncate text-foreground">{row.requesterName}</p>
+                          <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Requester</p>
+                            <div className="mt-1.5 flex items-center gap-2.5">
+                              <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                                <AvatarImage
+                                  src={row.requesterPhotoUrl ?? undefined}
+                                  alt={row.requesterName}
+                                  className="!rounded-md object-cover"
+                                />
+                                <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                                  {getNameInitials(row.requesterName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-foreground">{row.requesterName}</p>
+                                <p className="truncate text-[11px] text-muted-foreground">
+                                  {row.requesterEmployeeNumber} • {row.departmentName}
+                                </p>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Department</p>
-                              <p className="text-foreground">{row.departmentName}</p>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.datePreparedLabel}</p>
                             </div>
-                            <div className="col-span-2">
-                              <p className="text-[11px] text-muted-foreground">Date Range</p>
-                              <p className="text-foreground">{row.datePreparedLabel} to {row.dateRequiredLabel}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.dateRequiredLabel}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Amount</p>
-                              <p className="text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">PHP {currency.format(row.grandTotal)}</p>
                             </div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Submitted</p>
-                              <p className="text-foreground">{row.submittedAtLabel ?? "-"}</p>
+                            <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Submitted</p>
+                              <p className="mt-0.5 text-xs font-medium text-foreground">{row.submittedAtLabel ?? "-"}</p>
                             </div>
                           </div>
                           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -646,8 +655,8 @@ export function MaterialRequestApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="relative min-w-0">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+            <div className="relative col-span-3 sm:col-span-3">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search request #, requester, department..."
@@ -685,7 +694,7 @@ export function MaterialRequestApprovalClient({
                 }}
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="col-span-1 sm:col-span-1">
               <Select
                 value={historyStatus}
                 onValueChange={(value) => {
@@ -702,7 +711,7 @@ export function MaterialRequestApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="rounded-lg">
+                <SelectTrigger className="w-full rounded-lg">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -713,6 +722,8 @@ export function MaterialRequestApprovalClient({
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="col-span-1 sm:col-span-1">
               <Select
                 value={historyDepartmentId}
                 onValueChange={(value) => {
@@ -728,7 +739,7 @@ export function MaterialRequestApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                <SelectTrigger className="w-full rounded-lg">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -741,28 +752,30 @@ export function MaterialRequestApprovalClient({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                variant="outline"
-                className="rounded-lg"
-                onClick={() => {
-                  setHistorySearch("")
-                  setHistoryStatus("ALL")
-                  setHistoryDepartmentId("ALL")
-                  setExpandedHistoryRequestId(null)
-                  clearHistorySearchDebounceTimeout()
-                  loadHistoryPage({
-                    page: 1,
-                    pageSize: historyItemsPerPage,
-                    search: "",
-                    status: "ALL",
-                    departmentId: "ALL",
-                  })
-                }}
-                disabled={!hasHistoryFilters}
-              >
-                <IconFilterOff className="h-4 w-4" />
-              </Button>
             </div>
+            <Button
+              variant="outline"
+              className="col-span-1 w-full rounded-lg text-xs sm:text-sm"
+              onClick={() => {
+                setHistorySearch("")
+                setHistoryStatus("ALL")
+                setHistoryDepartmentId("ALL")
+                setExpandedHistoryRequestId(null)
+                clearHistorySearchDebounceTimeout()
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: "",
+                  status: "ALL",
+                  departmentId: "ALL",
+                })
+              }}
+              disabled={!hasHistoryFilters}
+            >
+              <IconFilterOff className="h-4 w-4" />
+              <span className="sm:hidden">Clear</span>
+              <span className="hidden sm:inline">Clear Filters</span>
+            </Button>
           </div>
 
           {historyLoadError ? (
@@ -1100,24 +1113,65 @@ export function MaterialRequestApprovalClient({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] w-[96vw] max-w-[96vw] overflow-hidden rounded-2xl border-border/60 shadow-none sm:max-w-2xl lg:max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-none sm:max-w-2xl">
+          <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
             <DialogTitle className="text-base font-semibold">
               {decisionType === "approve" ? "Approve Material Request" : "Reject Material Request"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm text-muted-foreground">
               {(decisionDetail ?? selectedRequest)
                 ? `${(decisionDetail ?? selectedRequest)?.requestNumber} • ${(decisionDetail ?? selectedRequest)?.requesterName} • Step ${(decisionDetail ?? selectedRequest)?.currentStep}/${(decisionDetail ?? selectedRequest)?.requiredSteps}`
                 : "Confirm your decision."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground">
-              <p>Amount: PHP {currency.format(decisionDetail?.grandTotal ?? selectedRequest?.grandTotal ?? 0)}</p>
-              <p className="text-xs text-muted-foreground">
-                Prepared {(decisionDetail ?? selectedRequest)?.datePreparedLabel ?? "-"} • Required {(decisionDetail ?? selectedRequest)?.dateRequiredLabel ?? "-"}
-              </p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                    <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                      <AvatarImage
+                        src={selectedRequest?.requesterPhotoUrl ?? undefined}
+                        alt={(decisionDetail ?? selectedRequest)?.requesterName ?? "Requester"}
+                        className="!rounded-md object-cover"
+                      />
+                      <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                        {getNameInitials((decisionDetail ?? selectedRequest)?.requesterName ?? "")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{(decisionDetail ?? selectedRequest)?.requesterName ?? "-"}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {(decisionDetail ?? selectedRequest)?.requesterEmployeeNumber ?? "-"} • {(decisionDetail ?? selectedRequest)?.departmentName ?? "-"}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                        Request {(decisionDetail ?? selectedRequest)?.requestNumber ?? "-"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
+                    Step {(decisionDetail ?? selectedRequest)?.currentStep ?? "-"}/{(decisionDetail ?? selectedRequest)?.requiredSteps ?? "-"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:grid-cols-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">
+                    PHP {currency.format(decisionDetail?.grandTotal ?? selectedRequest?.grandTotal ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.datePreparedLabel ?? "-"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.dateRequiredLabel ?? "-"}</p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1237,22 +1291,24 @@ export function MaterialRequestApprovalClient({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-xs text-foreground">Remarks</Label>
+              <Label className="text-xs text-foreground">
+                {decisionType === "approve" ? "Approval Remarks (Optional)" : "Rejection Reason"}
+              </Label>
               <Textarea
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
-                placeholder={decisionType === "approve" ? "Approval notes (optional)" : "Reason for rejection"}
-                className="min-h-[110px] resize-none rounded-lg text-sm"
+                placeholder={decisionType === "approve" ? "Add remarks..." : "Provide rejection reason..."}
+                className="min-h-[84px] rounded-lg text-sm"
               />
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-border/60 pt-3">
-              <Button type="button" variant="outline" className="rounded-lg" onClick={() => setOpen(false)}>
+            <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-3 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="rounded-lg sm:min-w-[96px]" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <Button
                 type="button"
-                className={cn("rounded-lg", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+                className={cn("rounded-lg sm:min-w-[96px]", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
                 onClick={submitDecision}
                 disabled={isPending || isDetailPending || Boolean(decisionDetailError)}
               >

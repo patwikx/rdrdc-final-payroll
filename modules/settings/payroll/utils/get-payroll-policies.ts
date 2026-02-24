@@ -154,27 +154,20 @@ export async function getPayrollPoliciesViewModel(companyId: string, selectedYea
       })
     : []
 
-  const generatedRows = generateDefaultRows(resolvedYear)
-
-  const periodRows = generatedRows.map((row) => {
-    const existing = existingRows.find((item) => item.periodNumber === row.periodNumber)
-
-    if (!existing) {
-      return row
-    }
-
-    return {
-      id: existing.id,
-      year: existing.year,
-      periodNumber: existing.periodNumber,
-      periodHalf: existing.periodHalf,
-      cutoffStartDate: toDateInputValue(existing.cutoffStartDate),
-      cutoffEndDate: toDateInputValue(existing.cutoffEndDate),
-      paymentDate: toDateInputValue(existing.paymentDate),
-      statusCode: existing.statusCode,
-      workingDays: existing.workingDays ?? undefined,
-    }
-  })
+  const periodRows =
+    existingRows.length === 0
+      ? generateDefaultRows(resolvedYear)
+      : existingRows.map((existing) => ({
+          id: existing.id,
+          year: existing.year,
+          periodNumber: existing.periodNumber,
+          periodHalf: existing.periodHalf,
+          cutoffStartDate: toDateInputValue(existing.cutoffStartDate),
+          cutoffEndDate: toDateInputValue(existing.cutoffEndDate),
+          paymentDate: toDateInputValue(existing.paymentDate),
+          statusCode: existing.statusCode,
+          workingDays: existing.workingDays ?? undefined,
+        }))
 
   return {
     companyName: context.companyName,

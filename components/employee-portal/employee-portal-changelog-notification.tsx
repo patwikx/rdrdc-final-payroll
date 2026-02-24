@@ -76,7 +76,6 @@ export function EmployeePortalChangelogNotification({
   userEmail,
 }: EmployeePortalChangelogNotificationProps) {
   const [open, setOpen] = useState(false)
-  const [hasAutoOpened, setHasAutoOpened] = useState(false)
   const [hasLoadedSeenState, setHasLoadedSeenState] = useState(false)
   const [lastSeenId, setLastSeenId] = useState<string | null>(null)
   const storageKey = useMemo(() => buildStorageKey({ companyId, userEmail }), [companyId, userEmail])
@@ -100,17 +99,6 @@ export function EmployeePortalChangelogNotification({
     setLastSeenId(stored)
     setHasLoadedSeenState(true)
   }, [storageKey])
-
-  useEffect(() => {
-    if (!hasLoadedSeenState || hasAutoOpened) {
-      return
-    }
-
-    if (unreadCount > 0) {
-      setOpen(true)
-    }
-    setHasAutoOpened(true)
-  }, [hasAutoOpened, hasLoadedSeenState, unreadCount])
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && open) {

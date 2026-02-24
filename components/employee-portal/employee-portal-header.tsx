@@ -3,11 +3,13 @@
 import Link from "next/link"
 import { IconLayoutDashboard } from "@tabler/icons-react"
 
+import { EmployeePortalChangelogNotification } from "@/components/employee-portal/employee-portal-changelog-notification"
 import { NavUser } from "@/components/nav-user"
 import { Button } from "@/components/ui/button"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
 type EmployeePortalHeaderProps = {
+  companyId: string
   dashboardHref?: string | null
   accountHref: string
   user: {
@@ -18,6 +20,7 @@ type EmployeePortalHeaderProps = {
 }
 
 export function EmployeePortalHeader({
+  companyId,
   dashboardHref = null,
   accountHref,
   user,
@@ -32,6 +35,7 @@ export function EmployeePortalHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        <EmployeePortalChangelogNotification companyId={companyId} userEmail={user.email} />
         {dashboardHref ? (
           <Button
             asChild

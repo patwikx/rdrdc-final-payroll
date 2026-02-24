@@ -16,6 +16,7 @@ type SyncLegacyMaterialRequestsActionResult =
       message: string
       dryRun: boolean
       summary: Awaited<ReturnType<typeof executeLegacyMaterialRequestSync>>["summary"]
+      matched: Awaited<ReturnType<typeof executeLegacyMaterialRequestSync>>["matched"]
       unmatched: Awaited<ReturnType<typeof executeLegacyMaterialRequestSync>>["unmatched"]
       skipped: Awaited<ReturnType<typeof executeLegacyMaterialRequestSync>>["skipped"]
       errors: Awaited<ReturnType<typeof executeLegacyMaterialRequestSync>>["errors"]
@@ -28,6 +29,7 @@ type SyncLegacyMaterialRequestsActionResult =
 export async function syncLegacyMaterialRequestsAction(
   input: SyncLegacyMaterialRequestsInput
 ): Promise<SyncLegacyMaterialRequestsActionResult> {
+  const MAX_MATCHED_PREVIEW_ROWS = 500
   const parsed = syncLegacyMaterialRequestsInputSchema.safeParse(input)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
@@ -83,6 +85,7 @@ export async function syncLegacyMaterialRequestsAction(
         : "Legacy material request sync completed.",
       dryRun: payload.dryRun,
       summary: report.summary,
+      matched: report.matched.slice(0, MAX_MATCHED_PREVIEW_ROWS),
       unmatched: report.unmatched,
       skipped: report.skipped,
       errors: report.errors,

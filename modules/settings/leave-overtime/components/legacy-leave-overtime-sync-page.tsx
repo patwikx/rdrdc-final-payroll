@@ -257,6 +257,14 @@ export function LegacyLeaveOvertimeSyncPage({ companyId, companyName }: LegacyLe
                           <div key={`${item.domain}-${item.legacyRecordId}-${String(index)}`} className="rounded-md border border-border/60 px-3 py-2">
                             <p className="text-xs font-medium uppercase text-foreground">{item.domain}</p>
                             <p className="text-xs text-muted-foreground">{item.reason}</p>
+                            {item.reasonDetail ? (
+                              <p className="text-xs text-muted-foreground">{item.reasonDetail}</p>
+                            ) : null}
+                            {item.leaveTypeCode || item.leaveTypeName ? (
+                              <p className="text-xs text-muted-foreground">
+                                Leave Type: {item.leaveTypeCode || "NO-CODE"} · {item.leaveTypeName || "NO-NAME"}
+                              </p>
+                            ) : null}
                             <p className="text-xs text-muted-foreground">
                               {item.employeeNumber || "NO-ID"} · {item.firstName || "?"} {item.lastName || "?"}
                             </p>

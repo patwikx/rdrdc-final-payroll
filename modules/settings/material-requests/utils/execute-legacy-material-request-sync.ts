@@ -35,6 +35,18 @@ type LegacySyncUnmatchedRow = {
   requesterName: string
 }
 
+type LegacySyncMatchedRow = {
+  domain: "material-request"
+  legacyRecordId: string
+  requestNumber: string
+  legacyStatus: string
+  mappedStatus: string
+  pendingStepName: string | null
+  employeeNumber: string
+  requesterName: string
+  departmentName: string
+}
+
 type LegacySyncSkippedRow = {
   domain: "material-request"
   reason: string
@@ -67,6 +79,7 @@ type LegacySyncSummary = {
 
 export type LegacyMaterialRequestSyncExecutionResult = {
   summary: LegacySyncSummary
+  matched: LegacySyncMatchedRow[]
   unmatched: LegacySyncUnmatchedRow[]
   skipped: LegacySyncSkippedRow[]
   errors: LegacySyncErrorRow[]
@@ -1053,6 +1066,7 @@ export async function executeLegacyMaterialRequestSync(
   )
 
   const unmatched: LegacySyncUnmatchedRow[] = []
+  const matched: LegacySyncMatchedRow[] = []
   const skipped: LegacySyncSkippedRow[] = []
   const errors: LegacySyncErrorRow[] = []
 
@@ -1719,6 +1733,17 @@ export async function executeLegacyMaterialRequestSync(
       if (postingStatus === MaterialRequestPostingStatus.POSTED) {
         summary.processed.postings += 1
       }
+      matched.push({
+        domain: "material-request",
+        legacyRecordId,
+        requestNumber: preferredRequestNumber,
+        legacyStatus,
+        mappedStatus: mappedStatusLabel,
+        pendingStepName,
+        employeeNumber: requester.employeeNumber,
+        requesterName: `${requester.firstName} ${requester.lastName}`,
+        departmentName: resolvedDepartment.matched?.name ?? departmentName,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       errors.push({
@@ -1734,6 +1759,7 @@ export async function executeLegacyMaterialRequestSync(
 
   return {
     summary,
+    matched,
     unmatched,
     skipped,
     errors,

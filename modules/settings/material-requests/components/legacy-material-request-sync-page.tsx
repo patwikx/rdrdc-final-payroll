@@ -219,6 +219,12 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
   const [unmatchedPageSize, setUnmatchedPageSize] =
     useState<(typeof UNMATCHED_PAGE_SIZE_OPTIONS)[number]>("10")
   const [unmatchedPage, setUnmatchedPage] = useState(1)
+  const [matchedSearch, setMatchedSearch] = useState("")
+  const [matchedLegacyStatusFilter, setMatchedLegacyStatusFilter] = useState("ALL")
+  const [matchedMappedStatusFilter, setMatchedMappedStatusFilter] = useState("ALL")
+  const [matchedPageSize, setMatchedPageSize] =
+    useState<(typeof UNMATCHED_PAGE_SIZE_OPTIONS)[number]>("10")
+  const [matchedPage, setMatchedPage] = useState(1)
   const [selectedLegacyRecordIds, setSelectedLegacyRecordIds] = useState<string[]>([])
   const [isBulkSavingRows, setIsBulkSavingRows] = useState(false)
 
@@ -238,6 +244,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
   >({})
 
   const unmatchedRows = useMemo(() => (result?.ok ? result.unmatched : []), [result])
+  const matchedRows = useMemo(() => (result?.ok ? result.matched : []), [result])
   const unmatchedRowById = useMemo(
     () => new Map(unmatchedRows.map((entry) => [entry.legacyRecordId, entry])),
     [unmatchedRows]
@@ -343,6 +350,14 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     () => [...new Set(unmatchedRows.map((entry) => entry.legacyDepartmentName || "-"))].sort((a, b) => a.localeCompare(b)),
     [unmatchedRows]
   )
+  const matchedLegacyStatusOptions = useMemo(
+    () => [...new Set(matchedRows.map((entry) => entry.legacyStatus).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [matchedRows]
+  )
+  const matchedMappedStatusOptions = useMemo(
+    () => [...new Set(matchedRows.map((entry) => entry.mappedStatus).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [matchedRows]
+  )
   const unmatchedFilteredRows = useMemo(() => {
     const searchKey = unmatchedSearch.trim().toLowerCase()
 
@@ -384,6 +399,36 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
       return values.some((value) => value.toLowerCase().includes(searchKey))
     })
   }, [unmatchedLegacyDepartmentFilter, unmatchedReasonFilter, unmatchedRows, unmatchedSearch, unmatchedStatusFilter])
+  const matchedFilteredRows = useMemo(() => {
+    const searchKey = matchedSearch.trim().toLowerCase()
+
+    return matchedRows.filter((entry) => {
+      if (matchedLegacyStatusFilter !== "ALL" && entry.legacyStatus !== matchedLegacyStatusFilter) {
+        return false
+      }
+
+      if (matchedMappedStatusFilter !== "ALL" && entry.mappedStatus !== matchedMappedStatusFilter) {
+        return false
+      }
+
+      if (!searchKey) {
+        return true
+      }
+
+      const values = [
+        entry.requestNumber,
+        entry.legacyRecordId,
+        entry.legacyStatus,
+        entry.mappedStatus,
+        entry.pendingStepName ?? "",
+        entry.employeeNumber,
+        entry.requesterName,
+        entry.departmentName,
+      ]
+
+      return values.some((value) => value.toLowerCase().includes(searchKey))
+    })
+  }, [matchedLegacyStatusFilter, matchedMappedStatusFilter, matchedRows, matchedSearch])
   const unmatchedPageSizeValue = Number(unmatchedPageSize)
   const unmatchedTotalPages = Math.max(1, Math.ceil(unmatchedFilteredRows.length / unmatchedPageSizeValue))
   const unmatchedActivePage = Math.min(unmatchedPage, unmatchedTotalPages)
@@ -391,11 +436,22 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     const start = (unmatchedActivePage - 1) * unmatchedPageSizeValue
     return unmatchedFilteredRows.slice(start, start + unmatchedPageSizeValue)
   }, [unmatchedActivePage, unmatchedFilteredRows, unmatchedPageSizeValue])
+  const matchedPageSizeValue = Number(matchedPageSize)
+  const matchedTotalPages = Math.max(1, Math.ceil(matchedFilteredRows.length / matchedPageSizeValue))
+  const matchedActivePage = Math.min(matchedPage, matchedTotalPages)
+  const matchedPageRows = useMemo(() => {
+    const start = (matchedActivePage - 1) * matchedPageSizeValue
+    return matchedFilteredRows.slice(start, start + matchedPageSizeValue)
+  }, [matchedActivePage, matchedFilteredRows, matchedPageSizeValue])
   const hasUnmatchedFilters =
     unmatchedSearch.trim().length > 0 ||
     unmatchedReasonFilter !== "ALL" ||
     unmatchedStatusFilter !== "ALL" ||
     unmatchedLegacyDepartmentFilter !== "ALL"
+  const hasMatchedFilters =
+    matchedSearch.trim().length > 0 ||
+    matchedLegacyStatusFilter !== "ALL" ||
+    matchedMappedStatusFilter !== "ALL"
   const selectedLegacyRecordIdSet = useMemo(() => new Set(selectedLegacyRecordIds), [selectedLegacyRecordIds])
   const unmatchedPageRecordIds = useMemo(() => unmatchedPageRows.map((entry) => entry.legacyRecordId), [unmatchedPageRows])
   const isAllCurrentPageSelected =
@@ -462,6 +518,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
 
       applySyncResult(response)
       setUnmatchedPage(1)
+      setMatchedPage(1)
       toast.success(response.message)
       setWizardStep("edit")
     })
@@ -1311,6 +1368,168 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                         Preview Changes
                       </Button>
                     </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/60">
+              <CardHeader>
+                <CardTitle className="text-base">Matched Rows Preview</CardTitle>
+                <CardDescription>
+                  Preview of rows that resolved successfully in this sync run. Showing up to 500 rows.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {matchedRows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No matched rows in this run.</p>
+                ) : (
+                  <>
+                    <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+                      <div className="relative md:col-span-2">
+                        <IconSearch className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={matchedSearch}
+                          onChange={(event) => {
+                            setMatchedSearch(event.target.value)
+                            setMatchedPage(1)
+                          }}
+                          placeholder="Search request, legacy ID, requester..."
+                          className="pl-8"
+                        />
+                      </div>
+                      <Select
+                        value={matchedLegacyStatusFilter}
+                        onValueChange={(value) => {
+                          setMatchedLegacyStatusFilter(value)
+                          setMatchedPage(1)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Legacy status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">All Legacy Statuses</SelectItem>
+                          {matchedLegacyStatusOptions.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={matchedMappedStatusFilter}
+                        onValueChange={(value) => {
+                          setMatchedMappedStatusFilter(value)
+                          setMatchedPage(1)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Mapped status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">All Mapped Statuses</SelectItem>
+                          {matchedMappedStatusOptions.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!hasMatchedFilters}
+                        onClick={() => {
+                          setMatchedSearch("")
+                          setMatchedLegacyStatusFilter("ALL")
+                          setMatchedMappedStatusFilter("ALL")
+                          setMatchedPage(1)
+                        }}
+                      >
+                        <IconFilterOff className="size-4" />
+                      </Button>
+                    </div>
+
+                    {matchedFilteredRows.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-border/60 bg-muted/20 px-3 py-6 text-center text-sm text-muted-foreground">
+                        No matched rows match current filters.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto rounded-md border border-border/60">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Request</TableHead>
+                                <TableHead>Legacy ID</TableHead>
+                                <TableHead>Legacy Status</TableHead>
+                                <TableHead>Mapped New Status</TableHead>
+                                <TableHead>Pending Step</TableHead>
+                                <TableHead>Requester #</TableHead>
+                                <TableHead>Requester Name</TableHead>
+                                <TableHead>Department (New System)</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {matchedPageRows.map((entry) => (
+                                <TableRow key={`${entry.legacyRecordId}-${entry.requestNumber}`}>
+                                  <TableCell className="text-xs">{entry.requestNumber}</TableCell>
+                                  <TableCell className="text-xs">{entry.legacyRecordId}</TableCell>
+                                  <TableCell className="text-xs">{entry.legacyStatus || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.mappedStatus || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.pendingStepName || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.employeeNumber || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.requesterName || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.departmentName || "-"}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            Page {matchedActivePage} of {matchedTotalPages} • {matchedFilteredRows.length} filtered row(s)
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={matchedPageSize}
+                              onValueChange={(value) => {
+                                setMatchedPageSize(value as (typeof UNMATCHED_PAGE_SIZE_OPTIONS)[number])
+                                setMatchedPage(1)
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-[110px]">
+                                <SelectValue placeholder="Rows / page" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {UNMATCHED_PAGE_SIZE_OPTIONS.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option} / page
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={matchedActivePage <= 1}
+                              onClick={() => setMatchedPage((previous) => Math.max(1, previous - 1))}
+                            >
+                              Previous
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={matchedActivePage >= matchedTotalPages}
+                              onClick={() => setMatchedPage((previous) => Math.min(matchedTotalPages, previous + 1))}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </CardContent>

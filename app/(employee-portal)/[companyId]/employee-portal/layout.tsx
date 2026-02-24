@@ -64,6 +64,7 @@ export default async function EmployeePortalLayout({ children, params }: Employe
         />
         <SidebarInset>
           <EmployeePortalHeader
+            companyId={context.companyId}
             dashboardHref={canSwitchToDashboard ? `/${context.companyId}/dashboard` : null}
             accountHref={`/${context.companyId}/account`}
             user={{

@@ -47,10 +47,28 @@ type DepartmentOption = {
   name: string
 }
 
+type DepartmentApprovalFlowStepOption = {
+  stepNumber: number
+  stepName: string
+  defaultApproverUserId: string | null
+  approvers: Array<{
+    approverUserId: string
+    approverName: string
+  }>
+}
+
+type DepartmentApprovalFlowOption = {
+  departmentId: string
+  requiredSteps: number
+  missingStepNumbers: number[]
+  steps: DepartmentApprovalFlowStepOption[]
+}
+
 type LegacyMaterialRequestSyncPageProps = {
   companyId: string
   companyName: string
   departments: DepartmentOption[]
+  departmentApprovalFlows: DepartmentApprovalFlowOption[]
 }
 
 type SyncResult = Awaited<ReturnType<typeof syncLegacyMaterialRequestsAction>>
@@ -61,10 +79,11 @@ type ManualOverrideDraft = {
   legacyStatus: string
   requesterEmployeeNumber: string
   requesterName: string
-  pendingApproverEmployeeNumber: string
-  recommendingApproverEmployeeNumber: string
-  finalApproverEmployeeNumber: string
   departmentId: string
+  stepOneApproverUserId: string
+  stepTwoApproverUserId: string
+  stepThreeApproverUserId: string
+  stepFourApproverUserId: string
 }
 
 type UnmatchedColumnKey =
@@ -78,15 +97,33 @@ type UnmatchedColumnKey =
   | "legacyFinal"
   | "requesterNumber"
   | "requesterName"
-  | "pendingApprover"
-  | "recommendingApprover"
-  | "finalApprover"
   | "departmentNewSystem"
+  | "stepOneApprover"
+  | "stepTwoApprover"
+  | "stepThreeApprover"
+  | "stepFourApprover"
 type UnmatchedColumnVisibility = Record<UnmatchedColumnKey, boolean>
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const normalizeInput = (value: string): string => value.trim()
+const normalizeLookupKey = (value: string): string => normalizeInput(value).toLowerCase()
+
+const getDraftStepApproverUserId = (draft: ManualOverrideDraft, stepNumber: number): string => {
+  if (stepNumber === 1) return draft.stepOneApproverUserId
+  if (stepNumber === 2) return draft.stepTwoApproverUserId
+  if (stepNumber === 3) return draft.stepThreeApproverUserId
+  if (stepNumber === 4) return draft.stepFourApproverUserId
+  return ""
+}
+
+const createStepApproverPatch = (stepNumber: number, userId: string): Partial<ManualOverrideDraft> => {
+  if (stepNumber === 1) return { stepOneApproverUserId: userId }
+  if (stepNumber === 2) return { stepTwoApproverUserId: userId }
+  if (stepNumber === 3) return { stepThreeApproverUserId: userId }
+  if (stepNumber === 4) return { stepFourApproverUserId: userId }
+  return {}
+}
 
 const UNMATCHED_COLUMN_OPTIONS: Array<{ key: UnmatchedColumnKey; label: string }> = [
   { key: "reason", label: "Reason" },
@@ -97,12 +134,13 @@ const UNMATCHED_COLUMN_OPTIONS: Array<{ key: UnmatchedColumnKey; label: string }
   { key: "legacyDepartment", label: "Legacy Department" },
   { key: "legacyRecommending", label: "Legacy Recommending Approval" },
   { key: "legacyFinal", label: "Legacy Final Approval" },
-  { key: "requesterNumber", label: "Requester #" },
+  { key: "requesterNumber", label: "Requester Emp #" },
   { key: "requesterName", label: "Requester Name" },
-  { key: "pendingApprover", label: "Pending Approver Emp #" },
-  { key: "recommendingApprover", label: "Recommending Approver Emp #" },
-  { key: "finalApprover", label: "Final Approver Emp #" },
   { key: "departmentNewSystem", label: "Department (New System)" },
+  { key: "stepOneApprover", label: "Step 1 Approver" },
+  { key: "stepTwoApprover", label: "Step 2 Approver" },
+  { key: "stepThreeApprover", label: "Step 3 Approver" },
+  { key: "stepFourApprover", label: "Step 4 Approver" },
 ]
 
 const DEFAULT_UNMATCHED_COLUMN_VISIBILITY: UnmatchedColumnVisibility = {
@@ -116,10 +154,11 @@ const DEFAULT_UNMATCHED_COLUMN_VISIBILITY: UnmatchedColumnVisibility = {
   legacyFinal: true,
   requesterNumber: true,
   requesterName: true,
-  pendingApprover: true,
-  recommendingApprover: true,
-  finalApprover: true,
   departmentNewSystem: true,
+  stepOneApprover: true,
+  stepTwoApprover: true,
+  stepThreeApprover: true,
+  stepFourApprover: true,
 }
 
 const UNMATCHED_PAGE_SIZE_OPTIONS = ["10", "20", "50"] as const
@@ -150,42 +189,50 @@ const createDraftFromUnmatchedEntry = (entry: UnmatchedEntry, inferredDepartment
   legacyStatus: entry.legacyStatus ?? "",
   requesterEmployeeNumber: entry.employeeNumber ?? "",
   requesterName: entry.requesterName ?? "",
-  pendingApproverEmployeeNumber: entry.pendingApproverEmployeeNumber ?? "",
-  recommendingApproverEmployeeNumber: entry.recommendingApproverEmployeeNumber ?? "",
-  finalApproverEmployeeNumber: entry.finalApproverEmployeeNumber ?? "",
   departmentId: inferredDepartmentId,
+  stepOneApproverUserId: "",
+  stepTwoApproverUserId: "",
+  stepThreeApproverUserId: "",
+  stepFourApproverUserId: "",
 })
 
 const buildManualOverridePayload = (
   entry: UnmatchedEntry,
   draft: ManualOverrideDraft,
-  inferredDepartmentId: string
+  inferredDepartmentId: string,
+  sourceApproverUserIdByStep: Map<number, string>
 ): ManualOverridePayload | null => {
   const requesterEmployeeNumber = normalizeInput(draft.requesterEmployeeNumber)
   const requesterName = normalizeInput(draft.requesterName)
   const legacyStatus = normalizeInput(draft.legacyStatus).toUpperCase()
-  const pendingApproverEmployeeNumber = normalizeInput(draft.pendingApproverEmployeeNumber)
-  const recommendingApproverEmployeeNumber = normalizeInput(draft.recommendingApproverEmployeeNumber)
-  const finalApproverEmployeeNumber = normalizeInput(draft.finalApproverEmployeeNumber)
   const departmentId = normalizeInput(draft.departmentId)
+  const stepOneApproverUserId = normalizeInput(draft.stepOneApproverUserId)
+  const stepTwoApproverUserId = normalizeInput(draft.stepTwoApproverUserId)
+  const stepThreeApproverUserId = normalizeInput(draft.stepThreeApproverUserId)
+  const stepFourApproverUserId = normalizeInput(draft.stepFourApproverUserId)
 
   const sourceLegacyStatus = normalizeInput(entry.legacyStatus).toUpperCase()
   const sourceRequesterEmployeeNumber = normalizeInput(entry.employeeNumber ?? "")
   const sourceRequesterName = normalizeInput(entry.requesterName ?? "")
-  const sourcePendingApproverEmployeeNumber = normalizeInput(entry.pendingApproverEmployeeNumber ?? "")
-  const sourceRecommendingApproverEmployeeNumber = normalizeInput(entry.recommendingApproverEmployeeNumber ?? "")
-  const sourceFinalApproverEmployeeNumber = normalizeInput(entry.finalApproverEmployeeNumber ?? "")
   const sourceDepartmentId = normalizeInput(inferredDepartmentId)
+  const sourceStepOneApproverUserId = sourceApproverUserIdByStep.get(1) ?? ""
+  const sourceStepTwoApproverUserId = sourceApproverUserIdByStep.get(2) ?? ""
+  const sourceStepThreeApproverUserId = sourceApproverUserIdByStep.get(3) ?? ""
+  const sourceStepFourApproverUserId = sourceApproverUserIdByStep.get(4) ?? ""
 
   const payload: ManualOverridePayload = {
     legacyRecordId: entry.legacyRecordId,
     departmentId: undefined,
     requesterEmployeeNumber: undefined,
     requesterName: undefined,
-    legacyStatus: undefined,
     pendingApproverEmployeeNumber: undefined,
     recommendingApproverEmployeeNumber: undefined,
     finalApproverEmployeeNumber: undefined,
+    stepOneApproverUserId: undefined,
+    stepTwoApproverUserId: undefined,
+    stepThreeApproverUserId: undefined,
+    stepFourApproverUserId: undefined,
+    legacyStatus: undefined,
     departmentCode: undefined,
     departmentName: undefined,
   }
@@ -202,37 +249,46 @@ const buildManualOverridePayload = (
     payload.legacyStatus = legacyStatus
   }
 
-  if (pendingApproverEmployeeNumber && pendingApproverEmployeeNumber !== sourcePendingApproverEmployeeNumber) {
-    payload.pendingApproverEmployeeNumber = pendingApproverEmployeeNumber
-  }
-  if (
-    recommendingApproverEmployeeNumber &&
-    recommendingApproverEmployeeNumber !== sourceRecommendingApproverEmployeeNumber
-  ) {
-    payload.recommendingApproverEmployeeNumber = recommendingApproverEmployeeNumber
-  }
-  if (finalApproverEmployeeNumber && finalApproverEmployeeNumber !== sourceFinalApproverEmployeeNumber) {
-    payload.finalApproverEmployeeNumber = finalApproverEmployeeNumber
-  }
-
   if (departmentId && departmentId !== sourceDepartmentId) {
     payload.departmentId = departmentId
+  }
+
+  if (stepOneApproverUserId && stepOneApproverUserId !== sourceStepOneApproverUserId) {
+    payload.stepOneApproverUserId = stepOneApproverUserId
+  }
+
+  if (stepTwoApproverUserId && stepTwoApproverUserId !== sourceStepTwoApproverUserId) {
+    payload.stepTwoApproverUserId = stepTwoApproverUserId
+  }
+
+  if (stepThreeApproverUserId && stepThreeApproverUserId !== sourceStepThreeApproverUserId) {
+    payload.stepThreeApproverUserId = stepThreeApproverUserId
+  }
+
+  if (stepFourApproverUserId && stepFourApproverUserId !== sourceStepFourApproverUserId) {
+    payload.stepFourApproverUserId = stepFourApproverUserId
   }
 
   const hasAnyOverride = Boolean(
     payload.requesterEmployeeNumber ||
       payload.requesterName ||
       payload.legacyStatus ||
-      payload.pendingApproverEmployeeNumber ||
-      payload.recommendingApproverEmployeeNumber ||
-      payload.finalApproverEmployeeNumber ||
-      payload.departmentId
+      payload.departmentId ||
+      payload.stepOneApproverUserId ||
+      payload.stepTwoApproverUserId ||
+      payload.stepThreeApproverUserId ||
+      payload.stepFourApproverUserId
   )
 
   return hasAnyOverride ? payload : null
 }
 
-export function LegacyMaterialRequestSyncPage({ companyId, companyName, departments }: LegacyMaterialRequestSyncPageProps) {
+export function LegacyMaterialRequestSyncPage({
+  companyId,
+  companyName,
+  departments,
+  departmentApprovalFlows,
+}: LegacyMaterialRequestSyncPageProps) {
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<SyncResult | null>(null)
   const [rowActionRecordId, setRowActionRecordId] = useState<string | null>(null)
@@ -276,10 +332,63 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     () => new Map(unmatchedRows.map((entry) => [entry.legacyRecordId, entry])),
     [unmatchedRows]
   )
+  const departmentLookup = useMemo(() => {
+    const byCode = new Map<string, string>()
+    const byName = new Map<string, string>()
+    const duplicateCodeKeys = new Set<string>()
+    const duplicateNameKeys = new Set<string>()
 
-  const inferDepartmentIdFromEntry = useCallback((_entry: UnmatchedEntry): string => {
+    for (const department of departments) {
+      const codeKey = normalizeLookupKey(department.code)
+      if (codeKey) {
+        if (byCode.has(codeKey)) {
+          duplicateCodeKeys.add(codeKey)
+        } else {
+          byCode.set(codeKey, department.id)
+        }
+      }
+
+      const nameKey = normalizeLookupKey(department.name)
+      if (nameKey) {
+        if (byName.has(nameKey)) {
+          duplicateNameKeys.add(nameKey)
+        } else {
+          byName.set(nameKey, department.id)
+        }
+      }
+    }
+
+    return {
+      byCode,
+      byName,
+      duplicateCodeKeys,
+      duplicateNameKeys,
+    }
+  }, [departments])
+  const departmentApprovalFlowByDepartmentId = useMemo(
+    () => new Map(departmentApprovalFlows.map((flow) => [flow.departmentId, flow])),
+    [departmentApprovalFlows]
+  )
+
+  const inferDepartmentIdFromEntry = useCallback((entry: UnmatchedEntry): string => {
+    const codeKey = normalizeLookupKey(entry.departmentCode)
+    if (codeKey && !departmentLookup.duplicateCodeKeys.has(codeKey)) {
+      const byCodeMatch = departmentLookup.byCode.get(codeKey)
+      if (byCodeMatch) {
+        return byCodeMatch
+      }
+    }
+
+    const nameKey = normalizeLookupKey(entry.departmentName)
+    if (nameKey && !departmentLookup.duplicateNameKeys.has(nameKey)) {
+      const byNameMatch = departmentLookup.byName.get(nameKey)
+      if (byNameMatch) {
+        return byNameMatch
+      }
+    }
+
     return ""
-  }, [])
+  }, [departmentLookup])
 
   const resolveDraftForEntry = useCallback((entry: UnmatchedEntry): ManualOverrideDraft => {
     const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
@@ -288,6 +397,34 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
       createDraftFromUnmatchedEntry(entry, inferredDepartmentId)
     )
   }, [inferDepartmentIdFromEntry, manualOverrideDraftByRecordId])
+  const resolveDepartmentIdForDraft = useCallback((entry: UnmatchedEntry, draft: ManualOverrideDraft): string => {
+    const draftDepartmentId = normalizeInput(draft.departmentId)
+    if (draftDepartmentId) {
+      return draftDepartmentId
+    }
+
+    return normalizeInput(inferDepartmentIdFromEntry(entry))
+  }, [inferDepartmentIdFromEntry])
+  const resolveSourceApproverUserIdByStep = useCallback((entry: UnmatchedEntry, draft: ManualOverrideDraft) => {
+    const departmentId = resolveDepartmentIdForDraft(entry, draft)
+    const stepDefaults = new Map<number, string>()
+    if (!departmentId) {
+      return stepDefaults
+    }
+
+    const flow = departmentApprovalFlowByDepartmentId.get(departmentId)
+    if (!flow) {
+      return stepDefaults
+    }
+
+    for (const step of flow.steps) {
+      if (step.defaultApproverUserId) {
+        stepDefaults.set(step.stepNumber, step.defaultApproverUserId)
+      }
+    }
+
+    return stepDefaults
+  }, [departmentApprovalFlowByDepartmentId, resolveDepartmentIdForDraft])
 
   const summaryRows = useMemo(() => {
     if (!result || !result.ok) return []
@@ -312,14 +449,15 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     for (const entry of unmatchedRows) {
       const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
       const draft = resolveDraftForEntry(entry)
-      const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId)
+      const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
+      const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
       if (payload) {
         rows.push(payload)
       }
     }
 
     return rows
-  }, [inferDepartmentIdFromEntry, resolveDraftForEntry, unmatchedRows])
+  }, [inferDepartmentIdFromEntry, resolveDraftForEntry, resolveSourceApproverUserIdByStep, unmatchedRows])
   const hiddenColumnCount = useMemo(
     () => UNMATCHED_COLUMN_OPTIONS.filter((column) => !unmatchedColumnVisibility[column.key]).length,
     [unmatchedColumnVisibility]
@@ -377,9 +515,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         entry.legacyDepartmentName,
         entry.requesterName,
         entry.employeeNumber,
-        entry.pendingApproverEmployeeNumber,
-        entry.recommendingApproverEmployeeNumber,
-        entry.finalApproverEmployeeNumber,
       ]
 
       return values.some((value) => value.toLowerCase().includes(searchKey))
@@ -554,6 +689,10 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         next[legacyRecordId] = {
           ...existing,
           departmentId,
+          stepOneApproverUserId: "",
+          stepTwoApproverUserId: "",
+          stepThreeApproverUserId: "",
+          stepFourApproverUserId: "",
         }
       }
 
@@ -606,7 +745,8 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         for (const entry of selectedRows) {
           const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
           const draft = resolveDraftForEntry(entry)
-          const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId)
+          const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
+          const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
           if (payload) {
             selectedOverrides.push(payload)
           }
@@ -670,7 +810,8 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         const draft =
           manualOverrideDraftByRecordId[entry.legacyRecordId] ??
           createDraftFromUnmatchedEntry(entry, inferredDepartmentId)
-        const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId)
+        const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
+        const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
 
         let applyResponse: SyncResult
         try {
@@ -736,10 +877,11 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
               legacyStatus: "",
               requesterEmployeeNumber: "",
               requesterName: "",
-              pendingApproverEmployeeNumber: "",
-              recommendingApproverEmployeeNumber: "",
-              finalApproverEmployeeNumber: "",
               departmentId: "",
+              stepOneApproverUserId: "",
+              stepTwoApproverUserId: "",
+              stepThreeApproverUserId: "",
+              stepFourApproverUserId: "",
             })
 
       return {
@@ -750,6 +892,93 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         },
       }
     })
+  }
+
+  const renderStepApproverCell = (params: {
+    entry: UnmatchedEntry
+    draft: ManualOverrideDraft
+    stepNumber: number
+    resolvedDepartmentId: string
+    selectedDepartmentFlow: DepartmentApprovalFlowOption | null
+  }) => {
+    const { entry, draft, stepNumber, resolvedDepartmentId, selectedDepartmentFlow } = params
+
+    if (!resolvedDepartmentId) {
+      return (
+        <TableCell className="min-w-72 align-top text-xs">
+          <div className="text-muted-foreground">Select department first.</div>
+        </TableCell>
+      )
+    }
+
+    if (!selectedDepartmentFlow) {
+      return (
+        <TableCell className="min-w-72 align-top text-xs">
+          <div className="text-destructive">No active department flow.</div>
+        </TableCell>
+      )
+    }
+
+    if (stepNumber > selectedDepartmentFlow.requiredSteps) {
+      return (
+        <TableCell className="min-w-72 align-top text-xs">
+          <div className="text-muted-foreground">Not required for this department.</div>
+        </TableCell>
+      )
+    }
+
+    const flowStep = selectedDepartmentFlow.steps.find((step) => step.stepNumber === stepNumber) ?? null
+    if (!flowStep) {
+      return (
+        <TableCell className="min-w-72 align-top text-xs">
+          <div className="text-destructive">Step not configured.</div>
+        </TableCell>
+      )
+    }
+
+    const draftSelection = normalizeInput(getDraftStepApproverUserId(draft, stepNumber))
+    const approverIdSet = new Set(flowStep.approvers.map((approver) => approver.approverUserId))
+    const selectedValue =
+      draftSelection && approverIdSet.has(draftSelection)
+        ? draftSelection
+        : flowStep.defaultApproverUserId || "__UNSET__"
+    const hasApproverOptions = flowStep.approvers.length > 0
+
+    return (
+      <TableCell className="min-w-72 align-top">
+        <div className="mb-1 text-xs font-medium text-muted-foreground">{flowStep.stepName}</div>
+        <Select
+          value={selectedValue}
+          onValueChange={(value) => {
+            if (value === "__DEFAULT__" || value === "__UNSET__") {
+              updateDraft(entry.legacyRecordId, createStepApproverPatch(stepNumber, ""))
+              return
+            }
+
+            updateDraft(entry.legacyRecordId, createStepApproverPatch(stepNumber, value))
+          }}
+          disabled={!hasApproverOptions}
+        >
+          <SelectTrigger className="w-full" data-no-row-select="true">
+            <SelectValue placeholder="Select approver" />
+          </SelectTrigger>
+          <SelectContent>
+            {flowStep.defaultApproverUserId ? (
+              <SelectItem value="__DEFAULT__">Use department default</SelectItem>
+            ) : null}
+            {!hasApproverOptions ? (
+              <SelectItem value="__UNSET__">No approver assigned</SelectItem>
+            ) : (
+              flowStep.approvers.map((approver) => (
+                <SelectItem key={approver.approverUserId} value={approver.approverUserId}>
+                  {approver.approverName}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </TableCell>
+    )
   }
 
   return (
@@ -894,7 +1123,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
               <CardHeader>
                 <CardTitle className="text-base">Step 2: Unmatched Rows Editor</CardTitle>
                 <CardDescription>
-                  Update row details below. Requester/approver fields are matched using legacy employee ID against employee number in this new system. Department is manual assignment, and legacy status can be adjusted when needed.
+                  Update row details below. Requester is matched using legacy employee number to employee number in this new system. Department assignment is manual, and each approval step has its own approver column so you can override the selected department approver per step.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -951,7 +1180,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                             setUnmatchedSearch(event.target.value)
                             setUnmatchedPage(1)
                           }}
-                          placeholder="Search request, legacy ID, requester, approver..."
+                          placeholder="Search request, legacy ID, requester, department..."
                           className="pl-8"
                         />
                       </div>
@@ -1105,12 +1334,13 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                 {unmatchedColumnVisibility.legacyDepartment ? <TableHead>Legacy Department</TableHead> : null}
                                 {unmatchedColumnVisibility.legacyRecommending ? <TableHead>Legacy Recommending Approval</TableHead> : null}
                                 {unmatchedColumnVisibility.legacyFinal ? <TableHead>Legacy Final Approval</TableHead> : null}
-                                {unmatchedColumnVisibility.requesterNumber ? <TableHead>Requester #</TableHead> : null}
+                                {unmatchedColumnVisibility.requesterNumber ? <TableHead>Requester Emp #</TableHead> : null}
                                 {unmatchedColumnVisibility.requesterName ? <TableHead>Requester Name</TableHead> : null}
-                                {unmatchedColumnVisibility.pendingApprover ? <TableHead>Pending Approver Emp #</TableHead> : null}
-                                {unmatchedColumnVisibility.recommendingApprover ? <TableHead>Recommending Approver Emp #</TableHead> : null}
-                                {unmatchedColumnVisibility.finalApprover ? <TableHead>Final Approver Emp #</TableHead> : null}
                                 {unmatchedColumnVisibility.departmentNewSystem ? <TableHead>Department (New System)</TableHead> : null}
+                                {unmatchedColumnVisibility.stepOneApprover ? <TableHead>Step 1 Approver</TableHead> : null}
+                                {unmatchedColumnVisibility.stepTwoApprover ? <TableHead>Step 2 Approver</TableHead> : null}
+                                {unmatchedColumnVisibility.stepThreeApprover ? <TableHead>Step 3 Approver</TableHead> : null}
+                                {unmatchedColumnVisibility.stepFourApprover ? <TableHead>Step 4 Approver</TableHead> : null}
                                 <TableHead className="text-right">Actions</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1121,6 +1351,10 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                 const draft =
                                   manualOverrideDraftByRecordId[entry.legacyRecordId] ??
                                   createDraftFromUnmatchedEntry(entry, inferredDepartmentId)
+                                const resolvedDepartmentId = normalizeInput(draft.departmentId) || normalizeInput(inferredDepartmentId)
+                                const selectedDepartmentFlow = resolvedDepartmentId
+                                  ? (departmentApprovalFlowByDepartmentId.get(resolvedDepartmentId) ?? null)
+                                  : null
                                 const isSavingThisRow = isPending && rowActionRecordId === entry.legacyRecordId
 
                                 return (
@@ -1209,7 +1443,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                           requesterEmployeeNumber: event.target.value,
                                         })
                                       }
-                                      placeholder="Emp #"
+                                      placeholder="Employee no."
                                     />
                                   </TableCell>
                                 ) : null}
@@ -1223,45 +1457,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                         })
                                       }
                                       placeholder="Requester name"
-                                    />
-                                  </TableCell>
-                                ) : null}
-                                {unmatchedColumnVisibility.pendingApprover ? (
-                                  <TableCell className="min-w-48">
-                                    <Input
-                                      value={draft.pendingApproverEmployeeNumber}
-                                      onChange={(event) =>
-                                        updateDraft(entry.legacyRecordId, {
-                                          pendingApproverEmployeeNumber: event.target.value,
-                                        })
-                                      }
-                                      placeholder="Approver emp #"
-                                    />
-                                  </TableCell>
-                                ) : null}
-                                {unmatchedColumnVisibility.recommendingApprover ? (
-                                  <TableCell className="min-w-48">
-                                    <Input
-                                      value={draft.recommendingApproverEmployeeNumber}
-                                      onChange={(event) =>
-                                        updateDraft(entry.legacyRecordId, {
-                                          recommendingApproverEmployeeNumber: event.target.value,
-                                        })
-                                      }
-                                      placeholder="Recommending emp #"
-                                    />
-                                  </TableCell>
-                                ) : null}
-                                {unmatchedColumnVisibility.finalApprover ? (
-                                  <TableCell className="min-w-40">
-                                    <Input
-                                      value={draft.finalApproverEmployeeNumber}
-                                      onChange={(event) =>
-                                        updateDraft(entry.legacyRecordId, {
-                                          finalApproverEmployeeNumber: event.target.value,
-                                        })
-                                      }
-                                      placeholder="Final emp #"
                                     />
                                   </TableCell>
                                 ) : null}
@@ -1282,6 +1477,10 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
 
                                         updateDraft(entry.legacyRecordId, {
                                           departmentId: nextDepartmentId,
+                                          stepOneApproverUserId: "",
+                                          stepTwoApproverUserId: "",
+                                          stepThreeApproverUserId: "",
+                                          stepFourApproverUserId: "",
                                         })
                                       }}
                                     >
@@ -1299,6 +1498,42 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                     </Select>
                                   </TableCell>
                                 ) : null}
+                                {unmatchedColumnVisibility.stepOneApprover
+                                  ? renderStepApproverCell({
+                                      entry,
+                                      draft,
+                                      stepNumber: 1,
+                                      resolvedDepartmentId,
+                                      selectedDepartmentFlow,
+                                    })
+                                  : null}
+                                {unmatchedColumnVisibility.stepTwoApprover
+                                  ? renderStepApproverCell({
+                                      entry,
+                                      draft,
+                                      stepNumber: 2,
+                                      resolvedDepartmentId,
+                                      selectedDepartmentFlow,
+                                    })
+                                  : null}
+                                {unmatchedColumnVisibility.stepThreeApprover
+                                  ? renderStepApproverCell({
+                                      entry,
+                                      draft,
+                                      stepNumber: 3,
+                                      resolvedDepartmentId,
+                                      selectedDepartmentFlow,
+                                    })
+                                  : null}
+                                {unmatchedColumnVisibility.stepFourApprover
+                                  ? renderStepApproverCell({
+                                      entry,
+                                      draft,
+                                      stepNumber: 4,
+                                      resolvedDepartmentId,
+                                      selectedDepartmentFlow,
+                                    })
+                                  : null}
                                 <TableCell className="min-w-40 text-right">
                                   <Button
                                     size="sm"
@@ -1472,7 +1707,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                 <TableHead>Legacy Status</TableHead>
                                 <TableHead>Mapped New Status</TableHead>
                                 <TableHead>Pending Step</TableHead>
-                                <TableHead>Requester #</TableHead>
+                                <TableHead>Requester Emp #</TableHead>
                                 <TableHead>Requester Name</TableHead>
                                 <TableHead>Legacy Department</TableHead>
                                 <TableHead>Department (New System)</TableHead>

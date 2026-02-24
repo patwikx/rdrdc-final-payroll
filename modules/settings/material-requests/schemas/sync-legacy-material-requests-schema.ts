@@ -39,6 +39,30 @@ const manualOverrideSchema = z.object({
     .max(100, "Final approver employee number is too long.")
     .optional()
     .transform((value) => value || undefined),
+  stepOneApproverUserId: z
+    .string()
+    .trim()
+    .uuid("Step 1 approver is invalid.")
+    .optional()
+    .transform((value) => value || undefined),
+  stepTwoApproverUserId: z
+    .string()
+    .trim()
+    .uuid("Step 2 approver is invalid.")
+    .optional()
+    .transform((value) => value || undefined),
+  stepThreeApproverUserId: z
+    .string()
+    .trim()
+    .uuid("Step 3 approver is invalid.")
+    .optional()
+    .transform((value) => value || undefined),
+  stepFourApproverUserId: z
+    .string()
+    .trim()
+    .uuid("Step 4 approver is invalid.")
+    .optional()
+    .transform((value) => value || undefined),
   legacyStatus: z
     .string()
     .trim()

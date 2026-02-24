@@ -59,17 +59,129 @@ export default async function LegacyMaterialRequestSyncRoutePage({ params }: Leg
     }
   }
 
-  const departments = await db.department.findMany({
-    where: {
-      companyId: company.companyId,
-      isActive: true,
-    },
-    orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      code: true,
-      name: true,
-    },
+  const [departments, departmentApprovalFlowsRaw] = await Promise.all([
+    db.department.findMany({
+      where: {
+        companyId: company.companyId,
+        isActive: true,
+      },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    }),
+    db.departmentMaterialRequestApprovalFlow.findMany({
+      where: {
+        companyId: company.companyId,
+        isActive: true,
+      },
+      select: {
+        departmentId: true,
+        requiredSteps: true,
+        steps: {
+          orderBy: [{ stepNumber: "asc" }, { approverUserId: "asc" }],
+          select: {
+            stepNumber: true,
+            stepName: true,
+            approverUserId: true,
+            approverUser: {
+              select: {
+                firstName: true,
+                lastName: true,
+                isActive: true,
+                isRequestApprover: true,
+                companyAccess: {
+                  where: {
+                    companyId: company.companyId,
+                    isActive: true,
+                  },
+                  select: {
+                    id: true,
+                  },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const departmentApprovalFlows = departmentApprovalFlowsRaw.map((flow) => {
+    const stepSummaryByStepNumber = new Map<
+      number,
+      {
+        stepName: string
+        defaultApproverUserId: string | null
+        approvers: Array<{ approverUserId: string; approverName: string }>
+      }
+    >()
+
+    for (let stepNumber = 1; stepNumber <= flow.requiredSteps; stepNumber += 1) {
+      stepSummaryByStepNumber.set(stepNumber, {
+        stepName: `Step ${stepNumber}`,
+        defaultApproverUserId: null,
+        approvers: [],
+      })
+    }
+
+    for (const step of flow.steps) {
+      if (step.stepNumber < 1 || step.stepNumber > flow.requiredSteps) {
+        continue
+      }
+
+      if (
+        !step.approverUser.isActive ||
+        !step.approverUser.isRequestApprover ||
+        step.approverUser.companyAccess.length === 0
+      ) {
+        continue
+      }
+
+      const targetStep = stepSummaryByStepNumber.get(step.stepNumber)
+      if (!targetStep) {
+        continue
+      }
+
+      if (step.stepName?.trim()) {
+        targetStep.stepName = step.stepName.trim()
+      }
+
+      const approverName = `${step.approverUser.firstName} ${step.approverUser.lastName}`.trim()
+      if (!targetStep.defaultApproverUserId) {
+        targetStep.defaultApproverUserId = step.approverUserId
+      }
+
+      if (!targetStep.approvers.some((approver) => approver.approverUserId === step.approverUserId)) {
+        targetStep.approvers.push({
+          approverUserId: step.approverUserId,
+          approverName,
+        })
+      }
+    }
+
+    const steps = Array.from(stepSummaryByStepNumber.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([stepNumber, value]) => ({
+        stepNumber,
+        stepName: value.stepName,
+        defaultApproverUserId: value.defaultApproverUserId,
+        approvers: value.approvers,
+      }))
+
+    const missingStepNumbers = steps
+      .filter((step) => step.approvers.length === 0)
+      .map((step) => step.stepNumber)
+
+    return {
+      departmentId: flow.departmentId,
+      requiredSteps: flow.requiredSteps,
+      missingStepNumbers,
+      steps,
+    }
   })
 
   return (
@@ -77,6 +189,7 @@ export default async function LegacyMaterialRequestSyncRoutePage({ params }: Leg
       companyId={company.companyId}
       companyName={company.companyName}
       departments={departments}
+      departmentApprovalFlows={departmentApprovalFlows}
     />
   )
 }

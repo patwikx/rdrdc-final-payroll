@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getConsolidatedApprovalHistoryPageAction } from "@/modules/employee-portal/actions/approval-history-actions"
 import type {
   ConsolidatedApprovalStatusFilter,
@@ -345,12 +346,19 @@ export function ApprovalHistoryClient({
 
                     <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
                       <p className="text-xs text-muted-foreground">Decided {item.decidedAtLabel}</p>
-                      <Button asChild variant="outline" size="sm" className="rounded-lg text-xs">
-                        <Link href={item.requestHref}>
-                          <IconExternalLink className="mr-1 h-3.5 w-3.5" />
-                          Open
-                        </Link>
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild size="sm" className="rounded-lg bg-primary px-2 text-xs hover:bg-primary/90">
+                            <Link href={item.requestHref}>
+                              <IconExternalLink className="h-3.5 w-3.5" />
+                              <span className="sr-only">Open details</span>
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
+                          Open details
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 ))}
@@ -401,11 +409,19 @@ export function ApprovalHistoryClient({
                     </div>
                     <div className="col-span-2 text-xs text-muted-foreground">{item.decidedAtLabel}</div>
                     <div className="col-span-1 flex justify-end">
-                      <Button asChild variant="outline" size="sm" className="rounded-lg">
-                        <Link href={item.requestHref}>
-                          <IconExternalLink className="h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button asChild size="sm" className="rounded-lg bg-primary hover:bg-primary/90">
+                            <Link href={item.requestHref}>
+                              <IconExternalLink className="h-3.5 w-3.5" />
+                              <span className="sr-only">Open details</span>
+                            </Link>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
+                          Open details
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 ))}

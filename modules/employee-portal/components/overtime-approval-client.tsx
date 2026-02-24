@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toPhDayStartUtcInstant } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import type {
@@ -603,14 +604,28 @@ export function OvertimeApprovalClient({
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
-                              <IconX className="mr-1 h-3.5 w-3.5" />
-                              Reject
-                            </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
-                              <IconCheck className="mr-1 h-3.5 w-3.5" />
-                              Approve
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
+                                  <IconX className="mr-1 h-3.5 w-3.5" />
+                                  Reject
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Reject this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
+                                  <IconCheck className="mr-1 h-3.5 w-3.5" />
+                                  Approve
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Approve this request
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </div>
                       ))}
@@ -650,14 +665,28 @@ export function OvertimeApprovalClient({
                             </Badge>
                           </div>
                           <div className="col-span-2 flex justify-end gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
-                              <IconX className="mr-1 h-3.5 w-3.5" />
-                              Reject
-                            </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
-                              <IconCheck className="mr-1 h-3.5 w-3.5" />
-                              Approve
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
+                                  <IconX className="mr-1 h-3.5 w-3.5" />
+                                  Reject
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Reject this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
+                                  <IconCheck className="mr-1 h-3.5 w-3.5" />
+                                  Approve
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Approve this request
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </div>
                       ))}

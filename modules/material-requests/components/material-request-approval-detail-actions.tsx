@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   approveMaterialRequestStepAction,
   rejectMaterialRequestStepAction,
@@ -92,25 +93,39 @@ export function MaterialRequestApprovalDetailActions({
           <Button type="button" variant="outline" className="rounded-lg" disabled={isPending} onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            className="rounded-lg"
-            disabled={isPending}
-            onClick={() => submitDecision("reject")}
-          >
-            <IconX className="mr-1 h-4 w-4" />
-            Reject
-          </Button>
-          <Button
-            type="button"
-            className="rounded-lg bg-green-600 hover:bg-green-700"
-            disabled={isPending}
-            onClick={() => submitDecision("approve")}
-          >
-            <IconCheck className="mr-1 h-4 w-4" />
-            Approve
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-lg"
+                disabled={isPending}
+                onClick={() => submitDecision("reject")}
+              >
+                <IconX className="mr-1 h-4 w-4" />
+                Reject
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6}>
+              Reject this material request
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                className="rounded-lg bg-green-600 hover:bg-green-700"
+                disabled={isPending}
+                onClick={() => submitDecision("approve")}
+              >
+                <IconCheck className="mr-1 h-4 w-4" />
+                Approve
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6}>
+              Approve this material request
+            </TooltipContent>
+          </Tooltip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

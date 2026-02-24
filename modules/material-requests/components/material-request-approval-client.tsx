@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import {
   IconCheck,
   IconExternalLink,
@@ -24,6 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
   approveMaterialRequestStepAction,
@@ -104,7 +104,6 @@ export function MaterialRequestApprovalClient({
   initialHistoryPageSize,
   view = "both",
 }: MaterialRequestApprovalClientProps) {
-  const router = useRouter()
   const queueRequestTokenRef = useRef(0)
   const queueSearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
@@ -383,28 +382,53 @@ export function MaterialRequestApprovalClient({
       return
     }
 
+    const requestId = selectedRequestId
+    const requestCompanyId = selectedRequestCompanyId
+    const decisionRemarks = remarks
+    const previousQueueRows = queueRowsState
+    const previousQueueTotal = queueTotal
+    const previousQueuePage = queuePage
+    const hadSelectedRow = previousQueueRows.some((row) => row.id === requestId)
+    const nextQueueTotal = hadSelectedRow ? Math.max(0, previousQueueTotal - 1) : previousQueueTotal
+    const nextQueueTotalPages = Math.max(1, Math.ceil(nextQueueTotal / queueItemsPerPage))
+    const nextQueuePage = Math.min(previousQueuePage, nextQueueTotalPages)
+
+    setOpen(false)
+    setQueueRowsState((currentRows) => currentRows.filter((row) => row.id !== requestId))
+    if (hadSelectedRow) {
+      setQueueTotal(nextQueueTotal)
+    }
+
     startTransition(async () => {
       const response =
         decisionType === "approve"
           ? await approveMaterialRequestStepAction({
-              companyId: selectedRequestCompanyId,
-              requestId: selectedRequestId,
-              remarks,
+              companyId: requestCompanyId,
+              requestId,
+              remarks: decisionRemarks,
             })
           : await rejectMaterialRequestStepAction({
-              companyId: selectedRequestCompanyId,
-              requestId: selectedRequestId,
-              remarks,
+              companyId: requestCompanyId,
+              requestId,
+              remarks: decisionRemarks,
             })
 
       if (!response.ok) {
+        setQueueRowsState(previousQueueRows)
+        setQueueTotal(previousQueueTotal)
+        setQueuePage(previousQueuePage)
+        setOpen(true)
         toast.error(response.error)
         return
       }
 
       toast.success(response.message)
-      setOpen(false)
-      router.refresh()
+      loadQueuePage({
+        page: nextQueuePage,
+        search: queueSearch,
+        companyId: queueCompanyId,
+        departmentId: queueDepartmentId,
+      })
     })
   }
 
@@ -659,33 +683,54 @@ export function MaterialRequestApprovalClient({
                             </div>
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2">
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="rounded-lg text-xs"
-                              disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row, "reject")}
-                            >
-                              <IconX className="mr-1 h-3.5 w-3.5" />
-                              Reject
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="rounded-lg bg-green-600 text-xs hover:bg-green-700"
-                              disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row, "approve")}
-                            >
-                              <IconCheck className="mr-1 h-3.5 w-3.5" />
-                              Approve
-                            </Button>
-                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg text-xs">
-                              <Link href={getApprovalDetailHref(row.id, row.companyId)}>
-                                <IconExternalLink className="mr-1 h-3.5 w-3.5" />
-                                View
-                              </Link>
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  className="rounded-lg text-xs"
+                                  disabled={isPending || isDetailPending}
+                                  onClick={() => openDecisionDialog(row, "reject")}
+                                >
+                                  <IconX className="mr-1 h-3.5 w-3.5" />
+                                  Reject
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Reject this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="rounded-lg bg-green-600 text-xs hover:bg-green-700"
+                                  disabled={isPending || isDetailPending}
+                                  onClick={() => openDecisionDialog(row, "approve")}
+                                >
+                                  <IconCheck className="mr-1 h-3.5 w-3.5" />
+                                  Approve
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Approve this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button asChild type="button" size="sm" className="rounded-lg bg-primary text-xs hover:bg-primary/90">
+                                  <Link href={getApprovalDetailHref(row.id, row.companyId)}>
+                                    <IconExternalLink className="mr-1 h-3.5 w-3.5" />
+                                    View
+                                  </Link>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Open request details
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </motion.div>
                       ))}
@@ -735,33 +780,54 @@ export function MaterialRequestApprovalClient({
                           <div className="col-span-2 text-sm font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
                           <div className="col-span-1 text-xs text-muted-foreground">{row.submittedAtLabel ?? "-"}</div>
                           <div className="col-span-2 flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="rounded-lg"
-                              disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row, "reject")}
-                            >
-                              <IconX className="mr-1 h-3.5 w-3.5" />
-                              Reject
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="rounded-lg bg-green-600 hover:bg-green-700"
-                              disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row, "approve")}
-                            >
-                              <IconCheck className="mr-1 h-3.5 w-3.5" />
-                              Approve
-                            </Button>
-                            <Button asChild type="button" variant="outline" size="sm" className="rounded-lg">
-                              <Link href={getApprovalDetailHref(row.id, row.companyId)}>
-                                <IconExternalLink className="h-3.5 w-3.5" />
-                                <span className="sr-only">View Details</span>
-                              </Link>
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="sm"
+                                  className="rounded-lg"
+                                  disabled={isPending || isDetailPending}
+                                  onClick={() => openDecisionDialog(row, "reject")}
+                                >
+                                  <IconX className="mr-1 h-3.5 w-3.5" />
+                                  Reject
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Reject this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="rounded-lg bg-green-600 hover:bg-green-700"
+                                  disabled={isPending || isDetailPending}
+                                  onClick={() => openDecisionDialog(row, "approve")}
+                                >
+                                  <IconCheck className="mr-1 h-3.5 w-3.5" />
+                                  Approve
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Approve this request
+                              </TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button asChild type="button" size="sm" className="rounded-lg bg-primary hover:bg-primary/90">
+                                  <Link href={getApprovalDetailHref(row.id, row.companyId)}>
+                                    <IconExternalLink className="h-3.5 w-3.5" />
+                                    <span className="sr-only">View Details</span>
+                                  </Link>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" sideOffset={6}>
+                                Open request details
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                         </motion.div>
                       ))}

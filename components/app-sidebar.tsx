@@ -21,6 +21,7 @@ import {
   IconSettings,
   IconShieldCheck,
   IconSwitchHorizontal,
+  IconTrash,
   IconUserCheck,
   IconUserPlus,
   IconUsers,
@@ -141,6 +142,7 @@ const subItemIconMap: Record<string, ReactNode> = {
   "settings-legacy-employee-sync": <IconClipboardList className="size-3.5" />,
   "settings-legacy-leave-ot-sync": <IconClipboardList className="size-3.5" />,
   "settings-legacy-material-requests-sync": <IconClipboardList className="size-3.5" />,
+  "settings-legacy-material-requests-cleanup": <IconTrash className="size-3.5" />,
 }
 
 const isLegacySyncItemId = (itemId: string): boolean => {
@@ -364,7 +366,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
                           {legacySyncItems.length > 0 ? (
                             <>
                               <SidebarMenuSubItem className="mt-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/60">
-                                Legacy Sync
+                                Legacy Tools
                               </SidebarMenuSubItem>
                               {legacySyncItems.map((sub) => (
                                 <SidebarMenuSubItem key={sub.id}>

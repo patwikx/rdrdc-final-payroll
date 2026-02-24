@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -61,6 +62,10 @@ const PAYROLL_YEAR_MIN = 2000
 const PAYROLL_YEAR_MAX = 2100
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
+
+const getPeriodRowKey = (row: PayrollPoliciesInput["periodRows"][number]): string => {
+  return row.id ?? `${row.year}:${row.periodNumber}`
+}
 
 const statutoryTimingLabel: Record<(typeof STATUTORY_DEDUCTION_TIMING_OPTIONS)[number], string> = {
   FIRST_HALF: "First Half",
@@ -115,7 +120,8 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
   const [isArchivingYear, startArchiveYearTransition] = useTransition()
   const [isSavingPattern, setIsSavingPattern] = useState(false)
   const [isSavingRows, setIsSavingRows] = useState(false)
-  const [pendingDeleteRowIndex, setPendingDeleteRowIndex] = useState<number | null>(null)
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [pendingDeleteRowKeys, setPendingDeleteRowKeys] = useState<string[]>([])
   const yearValue = form.periodYear
 
   const isTopControlsBusy = isGeneratingYear || isArchivingYear || isSavingPattern
@@ -123,6 +129,8 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
 
   useEffect(() => {
     setForm(initialData)
+    setSelectedRowKeys([])
+    setPendingDeleteRowKeys([])
   }, [initialData])
 
   const canGenerateYear = !availableYears.includes(yearValue)
@@ -190,27 +198,72 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
       return
     }
 
-    setPendingDeleteRowIndex(index)
+    setPendingDeleteRowKeys([getPeriodRowKey(row)])
+  }
+
+  const handleToggleRowSelection = (key: string, checked: boolean) => {
+    setSelectedRowKeys((previous) => {
+      if (checked) {
+        if (previous.includes(key)) return previous
+        return [...previous, key]
+      }
+
+      return previous.filter((item) => item !== key)
+    })
+  }
+
+  const handleToggleAllRemovableRows = (checked: boolean, removableRowKeys: string[]) => {
+    if (!checked) {
+      setSelectedRowKeys((previous) => previous.filter((key) => !removableRowKeys.includes(key)))
+      return
+    }
+
+    setSelectedRowKeys((previous) => {
+      const existing = new Set(previous)
+      for (const key of removableRowKeys) {
+        existing.add(key)
+      }
+      return Array.from(existing)
+    })
+  }
+
+  const handleRequestRemoveSelectedRows = () => {
+    if (isYearFullyLocked || isRowsControlsBusy) {
+      return
+    }
+
+    const selectedSet = new Set(selectedRowKeys)
+    const selectedRemovableRowKeys = form.periodRows
+      .filter((row) => selectedSet.has(getPeriodRowKey(row)) && row.statusCode !== "LOCKED")
+      .map(getPeriodRowKey)
+
+    if (selectedRemovableRowKeys.length === 0) {
+      toast.error("Select at least one removable row.")
+      return
+    }
+
+    if (form.periodRows.length - selectedRemovableRowKeys.length < 1) {
+      toast.error("At least one pay period row must remain.")
+      return
+    }
+
+    setPendingDeleteRowKeys(selectedRemovableRowKeys)
   }
 
   const handleConfirmRemoveRow = () => {
-    if (pendingDeleteRowIndex === null) {
+    if (pendingDeleteRowKeys.length === 0) {
       return
     }
 
-    const row = form.periodRows[pendingDeleteRowIndex]
-
-    if (!row) {
-      setPendingDeleteRowIndex(null)
-      return
-    }
+    const removeSet = new Set(pendingDeleteRowKeys)
 
     setForm((previous) => ({
       ...previous,
-      periodRows: previous.periodRows.filter((_, rowIndex) => rowIndex !== pendingDeleteRowIndex),
+      periodRows: previous.periodRows.filter((row) => !removeSet.has(getPeriodRowKey(row))),
     }))
 
-    setPendingDeleteRowIndex(null)
+    setSelectedRowKeys((previous) => previous.filter((key) => !removeSet.has(key)))
+    setPendingDeleteRowKeys([])
   }
 
   const handleReset = () => {
@@ -236,7 +289,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
     setIsSavingPattern(true)
     void (async () => {
       try {
-        const result = await updatePayrollPoliciesAction(form)
+        const result = await updatePayrollPoliciesAction(form, { includePeriodRows: false })
 
         if (!result.ok) {
           toast.error(result.error)
@@ -621,6 +674,10 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
           rows={form.periodRows}
           onChange={updateRowField}
           onRemove={handleRequestRemoveRow}
+          onRemoveSelected={handleRequestRemoveSelectedRows}
+          selectedRowKeys={selectedRowKeys}
+          onToggleRowSelection={handleToggleRowSelection}
+          onToggleAllRemovableRows={handleToggleAllRemovableRows}
           isYearLocked={isYearFullyLocked}
           selectedYear={yearValue}
           canArchiveYear={Boolean(form.patternId) && !isYearFullyLocked}
@@ -633,20 +690,24 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
       </section>
 
       <AlertDialog
-        open={pendingDeleteRowIndex !== null}
+        open={pendingDeleteRowKeys.length > 0}
         onOpenChange={(open) => {
           if (!open) {
-            setPendingDeleteRowIndex(null)
+            setPendingDeleteRowKeys([])
           }
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove pay period row?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingDeleteRowKeys.length > 1 ? "Remove selected pay period rows?" : "Remove pay period row?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingDeleteRowIndex === null
+              {pendingDeleteRowKeys.length === 0
                 ? "This action removes the selected row from this year."
-                : `This will remove pay period #${form.periodRows[pendingDeleteRowIndex]?.periodNumber ?? ""} from ${yearValue}. Save period rows to persist this change.`}
+                : pendingDeleteRowKeys.length === 1
+                  ? `This will remove one pay period row from ${yearValue}. Save period rows to persist this change.`
+                  : `This will remove ${pendingDeleteRowKeys.length} pay period rows from ${yearValue}. Save period rows to persist these changes.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -665,6 +726,10 @@ function PeriodTableRows({
   rows,
   onChange,
   onRemove,
+  onRemoveSelected,
+  selectedRowKeys,
+  onToggleRowSelection,
+  onToggleAllRemovableRows,
   isYearLocked,
   selectedYear,
   canArchiveYear,
@@ -681,6 +746,10 @@ function PeriodTableRows({
     value: PayrollPoliciesInput["periodRows"][number][K]
   ) => void
   onRemove: (index: number) => void
+  onRemoveSelected: () => void
+  selectedRowKeys: string[]
+  onToggleRowSelection: (key: string, checked: boolean) => void
+  onToggleAllRemovableRows: (checked: boolean, removableRowKeys: string[]) => void
   isYearLocked: boolean
   selectedYear: number
   canArchiveYear: boolean
@@ -690,6 +759,12 @@ function PeriodTableRows({
   onArchiveYear: () => void
   onSaveRows: () => void
 }) {
+  const removableRows = rows.filter((row) => row.statusCode !== "LOCKED")
+  const removableRowKeys = removableRows.map(getPeriodRowKey)
+  const selectedRemovableRowCount = removableRowKeys.filter((key) => selectedRowKeys.includes(key)).length
+  const isAllRemovableSelected = removableRowKeys.length > 0 && selectedRemovableRowCount === removableRowKeys.length
+  const isSomeRemovableSelected = selectedRemovableRowCount > 0 && !isAllRemovableSelected
+
   return (
     <section className="border border-border/60 bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -704,6 +779,17 @@ function PeriodTableRows({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="h-8 px-2"
+            onClick={onRemoveSelected}
+            disabled={isBusy || isYearLocked || selectedRemovableRowCount === 0}
+          >
+            <IconTrash className="size-4" />
+            {selectedRemovableRowCount > 0 ? `Remove Selected (${selectedRemovableRowCount})` : "Remove Selected"}
+          </Button>
           <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={onArchiveYear} disabled={isBusy || !canArchiveYear}>
             <IconLock className="size-4" />
             {isYearLocked ? "Year Locked" : isArchivingYear ? "Archiving..." : "Archive Year"}
@@ -718,6 +804,14 @@ function PeriodTableRows({
           <table className="w-full text-xs">
             <thead className="bg-muted/50">
               <tr>
+                <th className="w-10 px-3 py-2 text-left font-medium text-muted-foreground">
+                  <Checkbox
+                    checked={isAllRemovableSelected ? true : isSomeRemovableSelected ? "indeterminate" : false}
+                    onCheckedChange={(checked) => onToggleAllRemovableRows(checked === true, removableRowKeys)}
+                    disabled={isBusy || isYearLocked || removableRowKeys.length === 0}
+                    aria-label="Select all removable rows"
+                  />
+                </th>
                 {[
                   "#",
                   "Year",
@@ -738,11 +832,13 @@ function PeriodTableRows({
             <tbody>
               {rows.map((row, index) => (
                 <PeriodEditableRow
-                  key={`${row.year}-${row.periodNumber}`}
+                  key={getPeriodRowKey(row)}
                   index={index}
                   row={row}
                   onChange={onChange}
                   onRemove={onRemove}
+                  isSelected={selectedRowKeys.includes(getPeriodRowKey(row))}
+                  onToggleSelect={onToggleRowSelection}
                   disabled={isBusy || isYearLocked}
                   canRemove={rows.length > 1}
                 />
@@ -759,6 +855,8 @@ function PeriodEditableRow({
   row,
   onChange,
   onRemove,
+  isSelected,
+  onToggleSelect,
   disabled,
   canRemove,
 }: {
@@ -770,13 +868,49 @@ function PeriodEditableRow({
     value: PayrollPoliciesInput["periodRows"][number][K]
   ) => void
   onRemove: (index: number) => void
+  isSelected: boolean
+  onToggleSelect: (key: string, checked: boolean) => void
   disabled: boolean
   canRemove: boolean
 }) {
+  const rowKey = getPeriodRowKey(row)
+  const isSelectionDisabled = disabled || row.statusCode === "LOCKED"
   const isRemoveDisabled = disabled || !canRemove || row.statusCode === "LOCKED"
+  const isInteractiveRowClickTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='menuitem'], [data-slot='checkbox'], [data-slot='select-trigger'], [data-slot='popover-content']"
+      )
+    )
+  }
 
   return (
-    <tr className="border-t border-border/50">
+    <tr
+      className={`border-t border-border/50 ${isSelected ? "bg-primary/5" : ""} ${isSelectionDisabled ? "" : "cursor-pointer"}`}
+      onClick={(event) => {
+        if (isSelectionDisabled) {
+          return
+        }
+
+        if (isInteractiveRowClickTarget(event.target)) {
+          return
+        }
+
+        onToggleSelect(rowKey, !isSelected)
+      }}
+    >
+      <td className="px-3 py-2">
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onToggleSelect(rowKey, checked === true)}
+          disabled={isSelectionDisabled}
+          aria-label={`Select pay period ${row.periodNumber}`}
+        />
+      </td>
       <td className="px-3 py-2 text-foreground">{row.periodNumber}</td>
       <td className="px-3 py-2 text-foreground">{row.year}</td>
       <td className="px-3 py-2 text-foreground">{row.periodHalf}</td>

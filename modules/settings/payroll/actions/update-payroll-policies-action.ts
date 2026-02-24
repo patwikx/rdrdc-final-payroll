@@ -34,7 +34,10 @@ const toStoredPolicyConfig = (payload: PayrollPoliciesInput): Record<string, str
 })
 
 export async function updatePayrollPoliciesAction(
-  input: PayrollPoliciesInput
+  input: PayrollPoliciesInput,
+  options?: {
+    includePeriodRows?: boolean
+  }
 ): Promise<UpdatePayrollPoliciesActionResult> {
   const parsed = payrollPoliciesInputSchema.safeParse(input)
 
@@ -49,6 +52,7 @@ export async function updatePayrollPoliciesAction(
   }
 
   const payload = parsed.data
+  const includePeriodRows = options?.includePeriodRows ?? true
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
 
   if (!hasModuleAccess(context.companyRole as CompanyRole, "settings")) {
@@ -91,42 +95,44 @@ export async function updatePayrollPoliciesAction(
         },
       })
 
-      for (const row of payload.periodRows) {
-        const rowWhere = row.id
-          ? { id: row.id }
-          : {
-              patternId_year_periodNumber: {
-                patternId: record.id,
-                year: row.year,
-                periodNumber: row.periodNumber,
-              },
-            }
+      if (includePeriodRows) {
+        for (const row of payload.periodRows) {
+          const rowWhere = row.id
+            ? { id: row.id }
+            : {
+                patternId_year_periodNumber: {
+                  patternId: record.id,
+                  year: row.year,
+                  periodNumber: row.periodNumber,
+                },
+              }
 
-        await tx.payPeriod.upsert({
-          where: rowWhere,
-          update: {
-            patternId: record.id,
-            year: row.year,
-            periodNumber: row.periodNumber,
-            periodHalf: row.periodHalf,
-            cutoffStartDate: parsePhDate(row.cutoffStartDate),
-            cutoffEndDate: parsePhDate(row.cutoffEndDate),
-            paymentDate: parsePhDate(row.paymentDate),
-            statusCode: row.statusCode,
-            workingDays: row.workingDays ?? null,
-          },
-          create: {
-            patternId: record.id,
-            year: row.year,
-            periodNumber: row.periodNumber,
-            periodHalf: row.periodHalf,
-            cutoffStartDate: parsePhDate(row.cutoffStartDate),
-            cutoffEndDate: parsePhDate(row.cutoffEndDate),
-            paymentDate: parsePhDate(row.paymentDate),
-            statusCode: row.statusCode,
-            workingDays: row.workingDays ?? null,
-          },
-        })
+          await tx.payPeriod.upsert({
+            where: rowWhere,
+            update: {
+              patternId: record.id,
+              year: row.year,
+              periodNumber: row.periodNumber,
+              periodHalf: row.periodHalf,
+              cutoffStartDate: parsePhDate(row.cutoffStartDate),
+              cutoffEndDate: parsePhDate(row.cutoffEndDate),
+              paymentDate: parsePhDate(row.paymentDate),
+              statusCode: row.statusCode,
+              workingDays: row.workingDays ?? null,
+            },
+            create: {
+              patternId: record.id,
+              year: row.year,
+              periodNumber: row.periodNumber,
+              periodHalf: row.periodHalf,
+              cutoffStartDate: parsePhDate(row.cutoffStartDate),
+              cutoffEndDate: parsePhDate(row.cutoffEndDate),
+              paymentDate: parsePhDate(row.paymentDate),
+              statusCode: row.statusCode,
+              workingDays: row.workingDays ?? null,
+            },
+          })
+        }
       }
 
       await createAuditLog(
@@ -143,7 +149,7 @@ export async function updatePayrollPoliciesAction(
             { fieldName: "statutoryDeductionSchedule", newValue: payload.statutoryDeductionSchedule },
             { fieldName: "thirteenthMonthFormula", newValue: payload.thirteenthMonthFormula },
             { fieldName: "isActive", newValue: payload.isActive },
-            { fieldName: "periodRows.count", newValue: payload.periodRows.length },
+            ...(includePeriodRows ? [{ fieldName: "periodRows.count", newValue: payload.periodRows.length }] : []),
           ],
         },
         tx
@@ -153,7 +159,10 @@ export async function updatePayrollPoliciesAction(
     revalidatePath(`/${context.companyId}/settings/payroll`)
     revalidatePath(`/${context.companyId}/dashboard`)
 
-    return { ok: true, message: "Payroll policies updated successfully." }
+    return {
+      ok: true,
+      message: includePeriodRows ? "Payroll policies updated successfully." : "Payroll pattern updated successfully.",
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to update payroll policies: ${message}` }

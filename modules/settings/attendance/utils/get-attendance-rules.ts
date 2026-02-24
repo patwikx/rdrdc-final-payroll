@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
-import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import { getActiveCompanyContext, getUserCompanyOptions } from "@/modules/auth/utils/active-company-context"
+import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import {
   WORK_SCHEDULE_DAY_OPTIONS,
   type AttendanceRulesInput,
@@ -9,6 +10,11 @@ export type AttendanceRulesViewModel = {
   companyName: string
   companyCode: string
   companyRole: string
+  copySourceCompanies: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
+  }>
   schedules: Array<{
     id: string
     code: string
@@ -94,10 +100,13 @@ const getDayOverrides = (value: unknown): Partial<Record<AttendanceRulesInput["d
 export async function getAttendanceRulesViewModel(companyId: string, selectedScheduleId?: string): Promise<AttendanceRulesViewModel> {
   const context = await getActiveCompanyContext({ companyId })
 
-  const schedules = await db.workSchedule.findMany({
-    where: { companyId: context.companyId },
-    orderBy: [{ isActive: "desc" }, { effectiveFrom: "desc" }, { createdAt: "desc" }],
-  })
+  const [schedules, userCompanies] = await Promise.all([
+    db.workSchedule.findMany({
+      where: { companyId: context.companyId },
+      orderBy: [{ isActive: "desc" }, { effectiveFrom: "desc" }, { createdAt: "desc" }],
+    }),
+    getUserCompanyOptions(context.userId),
+  ])
 
   const schedule = selectedScheduleId
     ? schedules.find((item) => item.id === selectedScheduleId) ?? null
@@ -118,10 +127,20 @@ export async function getAttendanceRulesViewModel(companyId: string, selectedSch
     }
   })
 
+  const copySourceCompanies = userCompanies
+    .filter((item) => item.companyId !== context.companyId)
+    .filter((item) => hasModuleAccess(item.role as CompanyRole, "settings"))
+    .map((item) => ({
+      companyId: item.companyId,
+      companyCode: item.companyCode,
+      companyName: item.companyName,
+    }))
+
   return {
     companyName: context.companyName,
     companyCode: context.companyCode,
     companyRole: context.companyRole,
+    copySourceCompanies,
     schedules: schedules.map((item) => ({
       id: item.id,
       code: item.code,

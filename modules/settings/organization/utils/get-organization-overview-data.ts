@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import { getActiveCompanyContext, getUserCompanyOptions } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
 export type OrganizationOverviewData = {
@@ -7,6 +7,11 @@ export type OrganizationOverviewData = {
   companyName: string
   companyCode: string
   companyRole: string
+  copySourceCompanies: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
+  }>
   departments: Array<{
     id: string
     code: string
@@ -65,7 +70,7 @@ export async function getOrganizationOverviewData(companyId: string): Promise<Or
     throw new Error("You do not have access to organization settings.")
   }
 
-  const [departments, divisions, ranks, branches] = await Promise.all([
+  const [departments, divisions, ranks, branches, userCompanies] = await Promise.all([
     db.department.findMany({
       where: { companyId: context.companyId },
       select: {
@@ -131,13 +136,24 @@ export async function getOrganizationOverviewData(companyId: string): Promise<Or
       },
       orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
     }),
+    getUserCompanyOptions(context.userId),
   ])
+
+  const copySourceCompanies = userCompanies
+    .filter((item) => item.companyId !== context.companyId)
+    .filter((item) => hasModuleAccess(item.role as CompanyRole, "settings"))
+    .map((item) => ({
+      companyId: item.companyId,
+      companyCode: item.companyCode,
+      companyName: item.companyName,
+    }))
 
   return {
     companyId: context.companyId,
     companyName: context.companyName,
     companyCode: context.companyCode,
     companyRole: context.companyRole,
+    copySourceCompanies,
     departments: departments.map((item) => ({
       id: item.id,
       code: item.code,

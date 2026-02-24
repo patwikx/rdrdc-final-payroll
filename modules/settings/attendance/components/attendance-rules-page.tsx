@@ -6,6 +6,7 @@ import {
   IconBuilding,
   IconCalendarEvent,
   IconCheck,
+  IconClipboardList,
   IconFilter,
   IconPlus,
   IconRefresh,
@@ -19,6 +20,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -33,6 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
+import { copyWorkSchedulesFromCompanyAction } from "@/modules/settings/attendance/actions/copy-work-schedules-from-company-action"
 import { deleteWorkScheduleAction } from "@/modules/settings/attendance/actions/delete-work-schedule-action"
 import { updateAttendanceRulesAction } from "@/modules/settings/attendance/actions/update-attendance-rules-action"
 import {
@@ -52,6 +63,11 @@ type AttendanceRulesPageProps = {
     workStartTime: string
     workEndTime: string
     isActive: boolean
+  }>
+  copySourceCompanies: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
   }>
 }
 
@@ -78,17 +94,40 @@ const getDefaultWorkingTimes = (rows: AttendanceRulesInput["daySchedules"]) => {
   }
 }
 
-export function AttendanceRulesPage({ companyName, initialData, schedules }: AttendanceRulesPageProps) {
+export function AttendanceRulesPage({
+  companyName,
+  initialData,
+  schedules,
+  copySourceCompanies,
+}: AttendanceRulesPageProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [form, setForm] = useState<AttendanceRulesInput>(initialData)
   const [isPending, startTransition] = useTransition()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL")
+  const [copySchedulesDialogOpen, setCopySchedulesDialogOpen] = useState(false)
+  const [copySchedulesSourceCompanyId, setCopySchedulesSourceCompanyId] = useState("")
 
   useEffect(() => {
     setForm(initialData)
   }, [initialData])
+
+  useEffect(() => {
+    if (copySourceCompanies.length === 0) {
+      setCopySchedulesSourceCompanyId("")
+      return
+    }
+
+    const firstSourceCompanyId = copySourceCompanies[0]?.companyId ?? ""
+    setCopySchedulesSourceCompanyId((previous) => {
+      if (!previous || !copySourceCompanies.some((item) => item.companyId === previous)) {
+        return firstSourceCompanyId
+      }
+
+      return previous
+    })
+  }, [copySourceCompanies])
 
   const updateField = <K extends keyof AttendanceRulesInput>(key: K, value: AttendanceRulesInput[K]) => {
     setForm((previous) => ({ ...previous, [key]: value }))
@@ -188,6 +227,29 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
     })
   }
 
+  const handleCopySchedules = () => {
+    if (!copySchedulesSourceCompanyId) {
+      toast.error("Select a source company first.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await copyWorkSchedulesFromCompanyAction({
+        companyId: form.companyId,
+        sourceCompanyId: copySchedulesSourceCompanyId,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setCopySchedulesDialogOpen(false)
+      router.refresh()
+    })
+  }
+
   const filteredSchedules = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase()
 
@@ -241,6 +303,15 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
           </div>
           <div className="flex flex-wrap items-center gap-2 border border-border/60 bg-background/90 p-2">
             <Badge variant="outline">{filteredSchedules.length} Schedules</Badge>
+            <CopySchedulesDialog
+              open={copySchedulesDialogOpen}
+              onOpenChange={setCopySchedulesDialogOpen}
+              sourceCompanyId={copySchedulesSourceCompanyId}
+              onSourceCompanyChange={setCopySchedulesSourceCompanyId}
+              sourceCompanies={copySourceCompanies}
+              onSubmit={handleCopySchedules}
+              isPending={isPending}
+            />
             <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={handleReset} disabled={isPending}>
               <IconRefresh className="size-4" />
               Reset
@@ -577,6 +648,68 @@ export function AttendanceRulesPage({ companyName, initialData, schedules }: Att
           </div>
       </section>
     </main>
+  )
+}
+
+function CopySchedulesDialog({
+  open,
+  onOpenChange,
+  sourceCompanyId,
+  onSourceCompanyChange,
+  sourceCompanies,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sourceCompanyId: string
+  onSourceCompanyChange: (value: string) => void
+  sourceCompanies: AttendanceRulesPageProps["copySourceCompanies"]
+  onSubmit: () => void
+  isPending: boolean
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2" disabled={sourceCompanies.length === 0}>
+          <IconClipboardList className="size-4" />
+          Copy Schedules
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Copy Work Schedules From Company</DialogTitle>
+          <DialogDescription>
+            Copy all work schedule values from another company into this company. Existing codes will be updated, new codes will be created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="copy-work-schedules-source-company">
+            Source Company<Required />
+          </Label>
+          <Select value={sourceCompanyId} onValueChange={onSourceCompanyChange}>
+            <SelectTrigger id="copy-work-schedules-source-company" className="w-full">
+              <SelectValue placeholder="Select source company" />
+            </SelectTrigger>
+            <SelectContent>
+              {sourceCompanies.map((company) => (
+                <SelectItem key={company.companyId} value={company.companyId}>
+                  {company.companyCode} - {company.companyName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sourceCompanies.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No eligible source companies available.</p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button type="button" onClick={onSubmit} disabled={isPending || !sourceCompanyId || sourceCompanies.length === 0}>
+            {isPending ? "Copying..." : "Copy Schedules"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

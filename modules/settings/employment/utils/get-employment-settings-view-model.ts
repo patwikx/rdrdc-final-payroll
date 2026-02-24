@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import { getActiveCompanyContext, getUserCompanyOptions } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
 
 export type EmploymentSettingsViewModel = {
@@ -7,6 +7,11 @@ export type EmploymentSettingsViewModel = {
   companyName: string
   companyCode: string
   companyRole: string
+  copySourceCompanies: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
+  }>
   positions: Array<{
     id: string
     code: string
@@ -76,7 +81,7 @@ export async function getEmploymentSettingsViewModel(companyId: string): Promise
     throw new Error("You do not have access to employment settings.")
   }
 
-  const [positions, employmentStatuses, employmentTypes, employmentClasses] = await Promise.all([
+  const [positions, employmentStatuses, employmentTypes, employmentClasses, userCompanies] = await Promise.all([
     db.position.findMany({
       where: { companyId: context.companyId },
       orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
@@ -145,13 +150,24 @@ export async function getEmploymentSettingsViewModel(companyId: string): Promise
         isActive: true,
       },
     }),
+    getUserCompanyOptions(context.userId),
   ])
+
+  const copySourceCompanies = userCompanies
+    .filter((item) => item.companyId !== context.companyId)
+    .filter((item) => hasModuleAccess(item.role as CompanyRole, "settings"))
+    .map((item) => ({
+      companyId: item.companyId,
+      companyCode: item.companyCode,
+      companyName: item.companyName,
+    }))
 
   return {
     companyId: context.companyId,
     companyName: context.companyName,
     companyCode: context.companyCode,
     companyRole: context.companyRole,
+    copySourceCompanies,
     positions: positions.map((row) => ({
       id: row.id,
       code: row.code,

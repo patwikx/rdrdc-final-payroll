@@ -89,17 +89,46 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     redirect("/login")
   }
 
+  const pendingMaterialAcknowledgmentsRaw = await db.materialRequest.findMany({
+    where: {
+      companyId: context.companyId,
+      requesterUserId: context.userId,
+      status: MaterialRequestStatus.APPROVED,
+      processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+      requiresReceiptAcknowledgment: true,
+      requesterAcknowledgedAt: null,
+    },
+    orderBy: [{ processingCompletedAt: "desc" }, { updatedAt: "desc" }],
+    select: {
+      id: true,
+      requestNumber: true,
+      processingCompletedAt: true,
+    },
+  })
+
+  const pendingMaterialAcknowledgments = pendingMaterialAcknowledgmentsRaw.map((request) => ({
+    id: request.id,
+    requestNumber: request.requestNumber,
+    processingCompletedAtLabel: request.processingCompletedAt ? dateLabel.format(request.processingCompletedAt) : null,
+  }))
+
   if (!context.employee) {
     return (
-      <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          Your account is not linked to an employee profile for this company yet.
-        </CardContent>
-      </Card>
+      <>
+        <MaterialRequestAcknowledgmentNotificationDialog
+          companyId={context.companyId}
+          requests={pendingMaterialAcknowledgments}
+        />
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            Your account is not linked to an employee profile for this company yet.
+          </CardContent>
+        </Card>
+      </>
     )
   }
 
-  const [leaveDashboard, pendingOvertimeRequests, recentPayslips, upcomingHolidays, pendingMaterialAcknowledgmentsRaw] = await Promise.all([
+  const [leaveDashboard, pendingOvertimeRequests, recentPayslips, upcomingHolidays] = await Promise.all([
     getEmployeePortalLeaveDashboardReadModel({
       companyId: context.companyId,
       employeeId: context.employee.id,
@@ -154,29 +183,7 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
         holidayTypeCode: true,
       },
     }),
-    db.materialRequest.findMany({
-      where: {
-        companyId: context.companyId,
-        requesterUserId: context.userId,
-        status: MaterialRequestStatus.APPROVED,
-        processingStatus: MaterialRequestProcessingStatus.COMPLETED,
-        requiresReceiptAcknowledgment: true,
-        requesterAcknowledgedAt: null,
-      },
-      orderBy: [{ processingCompletedAt: "desc" }, { updatedAt: "desc" }],
-      select: {
-        id: true,
-        requestNumber: true,
-        processingCompletedAt: true,
-      },
-    }),
   ])
-
-  const pendingMaterialAcknowledgments = pendingMaterialAcknowledgmentsRaw.map((request) => ({
-    id: request.id,
-    requestNumber: request.requestNumber,
-    processingCompletedAtLabel: request.processingCompletedAt ? dateLabel.format(request.processingCompletedAt) : null,
-  }))
 
   return (
     <div className="min-h-screen w-full animate-in fade-in bg-background pb-8 duration-500">

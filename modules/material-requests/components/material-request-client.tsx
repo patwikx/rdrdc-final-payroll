@@ -424,6 +424,7 @@ export function MaterialRequestClient({
                           {receivingReportHref ? (
                             <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" asChild>
                               <Link href={receivingReportHref}>
+                                <IconExternalLink className="mr-1.5 h-3.5 w-3.5" />
                                 View Receiving Report
                               </Link>
                             </Button>
@@ -748,6 +749,7 @@ export function MaterialRequestClient({
                                 {receivingReportHref ? (
                                   <Button type="button" variant="outline" size="sm" asChild>
                                     <Link href={receivingReportHref}>
+                                      <IconExternalLink className="mr-1.5 h-3.5 w-3.5" />
                                       View Receiving Report
                                     </Link>
                                   </Button>

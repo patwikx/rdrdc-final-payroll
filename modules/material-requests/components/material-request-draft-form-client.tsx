@@ -30,13 +30,17 @@ import {
   submitMaterialRequestAction,
   updateMaterialRequestDraftAction,
 } from "@/modules/material-requests/actions/material-request-actions"
+import {
+  type ExistingCatalogItemSelection,
+  MaterialRequestExistingItemsDialog,
+} from "@/modules/material-requests/components/material-request-existing-items-dialog"
 import type {
   EmployeePortalMaterialRequestDepartmentFlowPreview,
   EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestItemRow,
   EmployeePortalMaterialRequestRow,
 } from "@/modules/material-requests/types/employee-portal-material-request-types"
-import type { MaterialRequestSeries, MaterialRequestType } from "@prisma/client"
+import type { MaterialRequestItemSource, MaterialRequestSeries, MaterialRequestType } from "@prisma/client"
 
 type MaterialRequestDraftFormClientProps = {
   companyId: string
@@ -48,6 +52,7 @@ type MaterialRequestDraftFormClientProps = {
 
 type MaterialRequestItemForm = {
   id: string
+  source: MaterialRequestItemSource
   itemCode: string
   description: string
   uom: string
@@ -78,9 +83,36 @@ const currency = new Intl.NumberFormat("en-PH", {
   maximumFractionDigits: 2,
 })
 
-const createEmptyItem = (): MaterialRequestItemForm => ({
+const AUTO_ITEM_CODE_PREFIX = "ITM"
+const AUTO_ITEM_CODE_PADDING = 4
+
+const formatAutoItemCode = (sequence: number): string => {
+  return `${AUTO_ITEM_CODE_PREFIX}-${String(sequence).padStart(AUTO_ITEM_CODE_PADDING, "0")}`
+}
+
+const parseAutoItemCodeSequence = (itemCode: string): number => {
+  const matched = itemCode.trim().match(new RegExp(`^${AUTO_ITEM_CODE_PREFIX}-(\\d+)$`, "i"))
+  if (!matched) {
+    return 0
+  }
+
+  const parsed = Number(matched[1])
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+const getNextAutoItemCode = (items: MaterialRequestItemForm[]): string => {
+  const maxAutoSequence = items.reduce((max, item) => {
+    return Math.max(max, parseAutoItemCodeSequence(item.itemCode))
+  }, 0)
+
+  const nextSequence = maxAutoSequence > 0 ? maxAutoSequence + 1 : items.length + 1
+  return formatAutoItemCode(nextSequence)
+}
+
+const createEmptyItem = (itemCode: string): MaterialRequestItemForm => ({
   id: crypto.randomUUID(),
-  itemCode: "",
+  source: "MANUAL",
+  itemCode,
   description: "",
   uom: "",
   quantity: "1",
@@ -108,7 +140,7 @@ const createInitialFormState = (
     isStoreUse: false,
     freight: "0",
     discount: "0",
-    items: [createEmptyItem()],
+    items: [createEmptyItem(formatAutoItemCode(1))],
   }
 }
 
@@ -139,6 +171,7 @@ const truncateWithDots = (value: string, maxLength: number): string => {
 
 const mapRequestItemToFormItem = (item: EmployeePortalMaterialRequestItemRow): MaterialRequestItemForm => ({
   id: item.id,
+  source: item.source,
   itemCode: item.itemCode ?? "",
   description: item.description,
   uom: item.uom,
@@ -166,7 +199,10 @@ const mapRequestToFormState = (request: EmployeePortalMaterialRequestRow): Mater
   isStoreUse: request.isStoreUse,
   freight: String(request.freight),
   discount: String(request.discount),
-  items: request.items.length > 0 ? request.items.map(mapRequestItemToFormItem) : [createEmptyItem()],
+  items:
+    request.items.length > 0
+      ? request.items.map(mapRequestItemToFormItem)
+      : [createEmptyItem(formatAutoItemCode(1))],
 })
 
 const computeLineTotal = (item: MaterialRequestItemForm): number => {
@@ -178,6 +214,17 @@ const computeLineTotal = (item: MaterialRequestItemForm): number => {
   }
 
   return quantity * unitPrice
+}
+
+const isInitialPlaceholderItemRow = (item: MaterialRequestItemForm): boolean => {
+  return (
+    item.source === "MANUAL" &&
+    item.description.trim().length === 0 &&
+    item.uom.trim().length === 0 &&
+    item.remarks.trim().length === 0 &&
+    item.unitPrice.trim().length === 0 &&
+    (item.quantity.trim().length === 0 || item.quantity.trim() === "1")
+  )
 }
 
 const computePreviewTotals = (form: MaterialRequestFormState): { subTotal: number; grandTotal: number } => {
@@ -236,6 +283,7 @@ export function MaterialRequestDraftFormClient({
 
   const [isPending, startTransition] = useTransition()
   const [isMissingEmployeeProfileDialogOpen, setIsMissingEmployeeProfileDialogOpen] = useState(false)
+  const [isExistingItemsDialogOpen, setIsExistingItemsDialogOpen] = useState(false)
   const [form, setForm] = useState<MaterialRequestFormState>(() =>
     initialRequest
       ? mapRequestToFormState(initialRequest)
@@ -285,8 +333,62 @@ export function MaterialRequestDraftFormClient({
   const addItem = () => {
     setForm((previous) => ({
       ...previous,
-      items: [...previous.items, createEmptyItem()],
+      items: [...previous.items, createEmptyItem(getNextAutoItemCode(previous.items))],
     }))
+  }
+
+  const addExistingItems = (selectedItems: ExistingCatalogItemSelection[]) => {
+    const shouldReplaceInitialPlaceholderRow =
+      form.items.length === 1 && isInitialPlaceholderItemRow(form.items[0])
+
+    const currentItems = shouldReplaceInitialPlaceholderRow ? [] : form.items
+    const existingCodes = new Set(
+      currentItems.map((item) => item.itemCode.trim().toUpperCase()).filter((itemCode) => itemCode.length > 0)
+    )
+
+    const nextItems: MaterialRequestItemForm[] = []
+    let addedCount = 0
+    let skippedCount = 0
+
+    for (const selectedItem of selectedItems) {
+      const normalizedCode = selectedItem.itemCode.trim().toUpperCase()
+      if (!normalizedCode || existingCodes.has(normalizedCode)) {
+        skippedCount += 1
+        continue
+      }
+
+      existingCodes.add(normalizedCode)
+      addedCount += 1
+
+      nextItems.push({
+        id: crypto.randomUUID(),
+        source: "CATALOG",
+        itemCode: normalizedCode,
+        description: selectedItem.description,
+        uom: selectedItem.uom,
+        quantity: selectedItem.quantity,
+        unitPrice: selectedItem.unitPrice,
+        remarks: selectedItem.remarks,
+      })
+    }
+
+    if (nextItems.length > 0) {
+      setForm((previous) => ({
+        ...previous,
+        items:
+          shouldReplaceInitialPlaceholderRow && previous.items.length === 1 && isInitialPlaceholderItemRow(previous.items[0])
+            ? nextItems
+            : [...previous.items, ...nextItems],
+      }))
+    }
+
+    if (addedCount > 0) {
+      toast.success(`${addedCount} existing item${addedCount === 1 ? "" : "s"} added.`)
+    }
+
+    if (skippedCount > 0) {
+      toast.warning(`${skippedCount} item${skippedCount === 1 ? "" : "s"} skipped due to duplicate item code.`)
+    }
   }
 
   const removeItem = (itemId: string) => {
@@ -303,7 +405,7 @@ export function MaterialRequestDraftFormClient({
   }
 
   const validateAndBuildItemPayload = (): Array<{
-    source: "MANUAL" | "CATALOG"
+    source: MaterialRequestItemSource
     itemCode?: string
     description: string
     uom: string
@@ -312,7 +414,7 @@ export function MaterialRequestDraftFormClient({
     remarks?: string
   }> | null => {
     const payloadItems: Array<{
-      source: "MANUAL" | "CATALOG"
+      source: MaterialRequestItemSource
       itemCode?: string
       description: string
       uom: string
@@ -352,7 +454,7 @@ export function MaterialRequestDraftFormClient({
       const remarks = item.remarks.trim()
 
       payloadItems.push({
-        source: itemCode ? "CATALOG" : "MANUAL",
+        source: item.source,
         ...(itemCode ? { itemCode } : {}),
         description,
         uom,
@@ -367,7 +469,7 @@ export function MaterialRequestDraftFormClient({
 
   const buildDraftPayload = (
     itemsPayload: Array<{
-      source: "MANUAL" | "CATALOG"
+      source: MaterialRequestItemSource
       itemCode?: string
       description: string
       uom: string
@@ -842,6 +944,116 @@ export function MaterialRequestDraftFormClient({
               </div>
             </div>
 
+            <div className="overflow-hidden border-y border-border/60">
+              <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <IconPackage className="h-4 w-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground">Request Items</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg"
+                    onClick={() => setIsExistingItemsDialogOpen(true)}
+                  >
+                    <IconPlus className="mr-1 h-3.5 w-3.5" />
+                    Add Existing Items
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={addItem}>
+                    <IconPlus className="mr-1 h-3.5 w-3.5" />
+                    Add Item
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-border/60">
+                <div className="overflow-x-auto">
+                  <div className="grid min-w-[920px] grid-cols-[2.25rem_7.5rem_minmax(0,1.2fr)_4.75rem_5.25rem_6.5rem_minmax(0,1fr)_4rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <p>#</p>
+                    <p>Item Code</p>
+                    <p>
+                      Description <span className="text-destructive">*</span>
+                    </p>
+                    <p>
+                      UOM <span className="text-destructive">*</span>
+                    </p>
+                    <p className="text-right">
+                      Qty <span className="text-destructive">*</span>
+                    </p>
+                    <p className="text-right">Unit Price</p>
+                    <p>Remarks</p>
+                    <p className="text-right">Action</p>
+                  </div>
+                  <div className="max-h-[22rem] overflow-y-auto">
+                    {form.items.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="grid min-w-[920px] grid-cols-[2.25rem_7.5rem_minmax(0,1.2fr)_4.75rem_5.25rem_6.5rem_minmax(0,1fr)_4rem] items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0"
+                      >
+                        <p className="text-muted-foreground">{index + 1}</p>
+                        <Input
+                          value={item.itemCode}
+                          readOnly
+                          placeholder="Auto-generated"
+                          className="h-8 bg-muted/40 text-xs text-muted-foreground"
+                        />
+                        <Input
+                          value={item.description}
+                          onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                          placeholder="Item description"
+                          className="h-8 text-xs"
+                        />
+                        <Input
+                          value={item.uom}
+                          onChange={(event) => updateItem(item.id, { uom: event.target.value })}
+                          placeholder="PCS"
+                          className="h-8 text-xs"
+                        />
+                        <Input
+                          type="number"
+                          min="0.001"
+                          step="0.001"
+                          value={item.quantity}
+                          onChange={(event) => updateItem(item.id, { quantity: event.target.value })}
+                          className="h-8 text-right text-xs tabular-nums"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unitPrice}
+                          onChange={(event) => updateItem(item.id, { unitPrice: event.target.value })}
+                          className="h-8 text-right text-xs tabular-nums"
+                        />
+                        <div>
+                          <Input
+                            value={item.remarks}
+                            onChange={(event) => updateItem(item.id, { remarks: event.target.value })}
+                            placeholder="Optional line note"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="h-8 px-2 text-xs"
+                            onClick={() => removeItem(item.id)}
+                            disabled={form.items.length === 1}
+                          >
+                            <IconTrash className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label className="text-xs text-foreground">Freight</Label>
@@ -884,112 +1096,6 @@ export function MaterialRequestDraftFormClient({
               </div>
             </div>
 
-            <div className="overflow-hidden border-y border-border/60">
-              <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <IconPackage className="h-4 w-4 text-primary" />
-                  <h3 className="text-sm font-semibold text-foreground">Request Items</h3>
-                </div>
-                <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={addItem}>
-                  <IconPlus className="mr-1 h-3.5 w-3.5" />
-                  Add Item
-                </Button>
-              </div>
-
-              <div className="p-3">
-                {form.items.map((item, index) => (
-                  <div key={item.id} className="border-t border-border/60 py-3 first:border-t-0">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-foreground">Line {index + 1}</p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 rounded-md px-2 text-xs"
-                        onClick={() => removeItem(item.id)}
-                        disabled={form.items.length === 1}
-                      >
-                        <IconTrash className="mr-1 h-3 w-3" />
-                        Remove
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
-                      <div className="space-y-1 lg:col-span-1">
-                        <Label className="text-[11px] text-muted-foreground">Item Code</Label>
-                        <Input
-                          value={item.itemCode}
-                          onChange={(event) => updateItem(item.id, { itemCode: event.target.value })}
-                          placeholder="Optional"
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 lg:col-span-2">
-                        <Label className="text-[11px] text-muted-foreground">
-                          Description <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          value={item.description}
-                          onChange={(event) => updateItem(item.id, { description: event.target.value })}
-                          placeholder="Item description"
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 lg:col-span-1">
-                        <Label className="text-[11px] text-muted-foreground">
-                          UOM <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          value={item.uom}
-                          onChange={(event) => updateItem(item.id, { uom: event.target.value })}
-                          placeholder="PCS"
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 lg:col-span-1">
-                        <Label className="text-[11px] text-muted-foreground">
-                          Quantity <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          min="0.001"
-                          step="0.001"
-                          value={item.quantity}
-                          onChange={(event) => updateItem(item.id, { quantity: event.target.value })}
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 lg:col-span-1">
-                        <Label className="text-[11px] text-muted-foreground">Unit Price</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unitPrice}
-                          onChange={(event) => updateItem(item.id, { unitPrice: event.target.value })}
-                          className="text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1 lg:col-span-6">
-                        <Label className="text-[11px] text-muted-foreground">Remarks</Label>
-                        <Input
-                          value={item.remarks}
-                          onChange={(event) => updateItem(item.id, { remarks: event.target.value })}
-                          placeholder="Optional line note"
-                          className="text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
               <div className="px-1 py-2">
                 <p className="text-[11px] text-muted-foreground">Subtotal</p>
@@ -1012,6 +1118,12 @@ export function MaterialRequestDraftFormClient({
 
         </div>
       </div>
+
+      <MaterialRequestExistingItemsDialog
+        open={isExistingItemsDialogOpen}
+        onOpenChange={setIsExistingItemsDialogOpen}
+        onItemsSelected={addExistingItems}
+      />
     </div>
   )
 }

@@ -22,7 +22,7 @@ export default async function MaterialRequestProcessingDetailRoute({
     context.companyRole === "COMPANY_ADMIN" ||
     context.companyRole === "HR_ADMIN" ||
     context.companyRole === "PAYROLL_ADMIN"
-  const canProcess = Boolean(context.employee?.user?.isMaterialRequestPurchaser) || isHR
+  const canProcess = context.isMaterialRequestPurchaser || isHR
 
   if (!canProcess) {
     redirect(`/${context.companyId}/employee-portal`)

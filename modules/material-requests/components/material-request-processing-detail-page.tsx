@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { updateMaterialRequestProcessingStatusAction } from "@/modules/material-requests/actions/material-request-processing-actions"
 import { MaterialRequestPrintButton } from "@/modules/material-requests/components/material-request-print-button"
+import { MaterialRequestSupplierInput } from "@/modules/material-requests/components/material-request-supplier-input"
 import type { EmployeePortalMaterialRequestProcessingDetail } from "@/modules/material-requests/types/employee-portal-material-request-types"
 
 type MaterialRequestProcessingDetailPageProps = {
@@ -571,7 +572,7 @@ export function MaterialRequestProcessingDetailPage({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <div className="space-y-3">
               <div className="rounded-lg border border-border/60 bg-muted/20">
                 <div className="border-b border-border/60 px-3 py-2">
@@ -606,65 +607,64 @@ export function MaterialRequestProcessingDetailPage({
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-foreground">Items to Serve</p>
                 <div className="overflow-hidden rounded-lg border border-border/60">
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[760px]">
-                      <div className="grid grid-cols-14 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        <p className="col-span-1">#</p>
-                        <p className="col-span-4">Description</p>
-                        <p className="col-span-2 text-right">Req.</p>
-                        <p className="col-span-2 text-right">Prev.</p>
-                        <p className="col-span-2 text-right">Rem.</p>
-                        <p className="col-span-3 text-right">Serve</p>
+                  <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem_4.75rem_4.75rem_6.5rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <p>#</p>
+                    <p>Description</p>
+                    <p className="text-right">Req.</p>
+                    <p className="text-right">Prev.</p>
+                    <p className="text-right">Rem.</p>
+                    <p className="text-right">Serve</p>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {detail.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem_4.75rem_4.75rem_6.5rem] items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0"
+                      >
+                        <p className="text-muted-foreground">{item.lineNumber}</p>
+                        <div className="min-w-0">
+                          <p className="break-words text-foreground">{item.description}</p>
+                          <p className="text-[11px] text-muted-foreground">{item.uom}</p>
+                        </div>
+                        <p className="text-right font-medium text-foreground tabular-nums">{item.quantity.toFixed(3)}</p>
+                        <p className="text-right font-medium text-muted-foreground tabular-nums">{item.servedQuantity.toFixed(3)}</p>
+                        <p className="text-right font-medium text-amber-600 tabular-nums dark:text-amber-400">
+                          {item.remainingQuantity.toFixed(3)}
+                        </p>
+                        <div className="min-w-0">
+                          {action.type === "IN_PROGRESS" ? (
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              max={item.remainingQuantity}
+                              step="0.001"
+                              value={serveQuantities[item.id] ?? ""}
+                              onChange={(event) =>
+                                setServeQuantities((current) => ({
+                                  ...current,
+                                  [item.id]: event.target.value,
+                                }))
+                              }
+                              onBlur={(event) => {
+                                const normalizedValue = normalizeServeQuantityInput(
+                                  event.target.value,
+                                  item.remainingQuantity
+                                )
+                                setServeQuantities((current) => ({
+                                  ...current,
+                                  [item.id]: normalizedValue,
+                                }))
+                              }}
+                              disabled={isPending || item.remainingQuantity <= QUANTITY_TOLERANCE}
+                              className="h-8 w-full min-w-0 text-right font-medium tabular-nums"
+                            />
+                          ) : (
+                            <p className="text-right font-medium text-foreground">-</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="max-h-56 overflow-y-auto">
-                        {detail.items.map((item) => (
-                          <div key={item.id} className="grid grid-cols-14 items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                            <p className="col-span-1 text-muted-foreground">{item.lineNumber}</p>
-                            <div className="col-span-4">
-                              <p className="text-foreground">{item.description}</p>
-                              <p className="text-[11px] text-muted-foreground">{item.uom}</p>
-                            </div>
-                            <p className="col-span-2 text-right font-medium text-foreground">{item.quantity.toFixed(3)}</p>
-                            <p className="col-span-2 text-right font-medium text-muted-foreground">{item.servedQuantity.toFixed(3)}</p>
-                            <p className="col-span-2 text-right font-medium text-amber-600 dark:text-amber-400">
-                              {item.remainingQuantity.toFixed(3)}
-                            </p>
-                            <div className="col-span-3">
-                              {action.type === "IN_PROGRESS" ? (
-                                <Input
-                                  type="number"
-                                  inputMode="decimal"
-                                  min={0}
-                                  max={item.remainingQuantity}
-                                  step="0.001"
-                                  value={serveQuantities[item.id] ?? ""}
-                                  onChange={(event) =>
-                                    setServeQuantities((current) => ({
-                                      ...current,
-                                      [item.id]: event.target.value,
-                                    }))
-                                  }
-                                  onBlur={(event) => {
-                                    const normalizedValue = normalizeServeQuantityInput(
-                                      event.target.value,
-                                      item.remainingQuantity
-                                    )
-                                    setServeQuantities((current) => ({
-                                      ...current,
-                                      [item.id]: normalizedValue,
-                                    }))
-                                  }}
-                                  disabled={isPending || item.remainingQuantity <= QUANTITY_TOLERANCE}
-                                  className="w-full text-right font-medium tabular-nums"
-                                />
-                              ) : (
-                                <p className="text-right font-medium text-foreground">-</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -675,10 +675,9 @@ export function MaterialRequestProcessingDetailPage({
                 <Label>
                   Supplier <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <MaterialRequestSupplierInput
                   value={supplierName}
-                  onChange={(event) => setSupplierName(event.target.value)}
-                  placeholder="Supplier name"
+                  onChange={setSupplierName}
                   maxLength={160}
                   disabled={isPending}
                 />

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { Card, CardContent } from "@/components/ui/card"
 import {
   LeaveApprovalClient,
 } from "@/modules/employee-portal/components/leave-approval-client"
@@ -23,30 +22,28 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
   }
 
   const isHR = context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = Boolean(context.employee?.user?.isRequestApprover)
-
-  if (!isHR && !canApprove) {
-    redirect(`/${context.companyId}/employee-portal`)
-  }
-
-  if (!isHR && !context.employee) {
-    return (
-      <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          Your user account is not linked to an employee record. Please contact HR to link your account.
-        </CardContent>
-      </Card>
+  const canApprove = context.isRequestApprover || isHR
+  const approverCompanyIds = context.companies.map((company) => company.companyId)
+  const hrApproverCompanyIds = context.companies
+    .filter(
+      (company) =>
+        company.role === "COMPANY_ADMIN" || company.role === "HR_ADMIN" || company.role === "PAYROLL_ADMIN"
     )
+    .map((company) => company.companyId)
+  const scopedApprovalCompanyIds = isHR ? hrApproverCompanyIds : approverCompanyIds
+
+  if (!canApprove) {
+    redirect(`/${context.companyId}/employee-portal`)
   }
 
   const [leaveApprovalData, departmentOptions] = await Promise.all([
     getEmployeePortalLeaveApprovalReadModel({
-      companyId: context.companyId,
+      companyIds: scopedApprovalCompanyIds,
       isHR,
-      approverEmployeeId: context.employee?.id,
+      approverUserId: context.userId,
     }),
     getEmployeePortalLeaveApprovalDepartmentOptions({
-      companyId: context.companyId,
+      companyIds: scopedApprovalCompanyIds,
     }),
   ])
 
@@ -54,6 +51,12 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
     <LeaveApprovalClient
       companyId={context.companyId}
       isHR={isHR}
+      companyOptions={context.companies
+        .filter((company) => scopedApprovalCompanyIds.includes(company.companyId))
+        .map((company) => ({
+          id: company.companyId,
+          name: company.companyName,
+        }))}
       departmentOptions={departmentOptions}
       rows={leaveApprovalData.rows}
       initialQueueTotal={leaveApprovalData.queueTotal}

@@ -13,6 +13,7 @@ type MaterialRequestApprovalHistoryDetailPageProps = {
   companyId: string
   companyName: string
   requestId: string
+  requestCompanyId?: string
   detail: EmployeePortalMaterialRequestApprovalHistoryDetail
   pageTitle?: string
   primaryBackHref?: string
@@ -48,6 +49,7 @@ export function MaterialRequestApprovalHistoryDetailPage({
   companyId,
   companyName,
   requestId,
+  requestCompanyId,
   detail,
   pageTitle = "Material Request History Detail",
   primaryBackHref,
@@ -84,7 +86,7 @@ export function MaterialRequestApprovalHistoryDetailPage({
           <div className="flex flex-wrap items-center gap-2">
             {showDecisionActions ? (
               <MaterialRequestApprovalDetailActions
-                companyId={companyId}
+                companyId={requestCompanyId ?? companyId}
                 requestId={requestId}
                 backToQueueHref={`/${companyId}/employee-portal/material-request-approvals`}
               />

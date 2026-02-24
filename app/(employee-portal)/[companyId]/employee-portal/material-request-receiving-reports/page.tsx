@@ -27,8 +27,8 @@ export default async function MaterialRequestReceivingReportsPage({
     context.companyRole === "PAYROLL_ADMIN"
   const canViewCompanyWide =
     isHR ||
-    Boolean(context.employee?.user?.isMaterialRequestPurchaser) ||
-    Boolean(context.employee?.user?.isMaterialRequestPoster)
+    context.isMaterialRequestPurchaser ||
+    context.isMaterialRequestPoster
 
   const [receivingPage, departmentOptions] = await Promise.all([
     getEmployeePortalMaterialRequestReceivingReportPageReadModel({

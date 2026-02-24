@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import { LeaveApprovalHistoryDetailPage } from "@/modules/leave/components/leave-approval-history-detail-page"
 import { getEmployeePortalLeaveApprovalHistoryDetailReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
@@ -46,20 +45,10 @@ export default async function ApprovalHistoryRequestDetailPage({
     context.companyRole === "COMPANY_ADMIN" ||
     context.companyRole === "HR_ADMIN" ||
     context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = isHR || Boolean(context.employee?.user?.isRequestApprover)
+  const canApprove = isHR || context.isRequestApprover
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)
-  }
-
-  if (!isHR && !context.employee) {
-    return (
-      <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          Your user account is not linked to an employee record. Please contact HR to link your account.
-        </CardContent>
-      </Card>
-    )
   }
 
   if (approvalType === "material") {
@@ -86,7 +75,7 @@ export default async function ApprovalHistoryRequestDetailPage({
     const leaveDetail = await getEmployeePortalLeaveApprovalHistoryDetailReadModel({
       companyId: context.companyId,
       isHR,
-      approverEmployeeId: context.employee?.id,
+      approverUserId: context.userId,
       requestId,
     })
 
@@ -106,7 +95,7 @@ export default async function ApprovalHistoryRequestDetailPage({
   const overtimeDetail = await getEmployeePortalOvertimeApprovalHistoryDetailReadModel({
     companyId: context.companyId,
     isHR,
-    approverEmployeeId: context.employee?.id,
+    approverUserId: context.userId,
     requestId,
   })
 

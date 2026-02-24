@@ -485,20 +485,50 @@ export async function getEmployeePortalMaterialRequestFormOptions(params: {
 }
 
 export async function getEmployeePortalMaterialRequestDepartmentOptions(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
 }): Promise<EmployeePortalMaterialRequestDepartmentOption[]> {
-  return db.department.findMany({
+  const normalizedCompanyIds = Array.from(
+    new Set(
+      (params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []).filter(
+        (companyId) => companyId.trim().length > 0
+      )
+    )
+  )
+
+  if (normalizedCompanyIds.length === 0) {
+    return []
+  }
+
+  const departments = await db.department.findMany({
     where: {
-      companyId: params.companyId,
+      companyId: {
+        in: normalizedCompanyIds,
+      },
     },
-    orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
+    orderBy: [{ isActive: "desc" }, { company: { name: "asc" } }, { displayOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,
+      companyId: true,
       code: true,
       name: true,
       isActive: true,
+      company: {
+        select: {
+          name: true,
+        },
+      },
     },
   })
+
+  return departments.map((department) => ({
+    id: department.id,
+    companyId: department.companyId,
+    code: department.code,
+    name: department.name,
+    isActive: department.isActive,
+    companyName: department.company.name,
+  }))
 }
 
 export async function getEmployeePortalMaterialRequestNumberPreview(params: {
@@ -535,6 +565,7 @@ export async function getEmployeePortalMaterialRequestNumberPreview(params: {
 
 const toQueueRow = (request: {
   id: string
+  companyId: string
   requestNumber: string
   departmentId: string
   datePrepared: Date
@@ -552,9 +583,14 @@ const toQueueRow = (request: {
   department: {
     name: string
   }
+  company: {
+    name: string
+  }
 }): EmployeePortalMaterialRequestApprovalQueueRow => {
   return {
     id: request.id,
+    companyId: request.companyId,
+    companyName: request.company.name,
     requestNumber: request.requestNumber,
     requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
     requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
@@ -571,13 +607,16 @@ const toQueueRow = (request: {
 }
 
 const buildMaterialRequestApprovalQueueWhere = (params: {
-  companyId: string
+  companyIds: string[]
   approverUserId: string
   search: string
+  filterCompanyId?: string
   departmentId?: string
 }): Prisma.MaterialRequestWhereInput => {
   const where: Prisma.MaterialRequestWhereInput = {
-    companyId: params.companyId,
+    companyId: {
+      in: params.companyIds,
+    },
     status: MaterialRequestStatus.PENDING_APPROVAL,
     OR: [1, 2, 3, 4].map((stepNumber) => ({
       currentStep: stepNumber,
@@ -592,6 +631,12 @@ const buildMaterialRequestApprovalQueueWhere = (params: {
   }
 
   const andFilters: Prisma.MaterialRequestWhereInput[] = []
+
+  if (params.filterCompanyId) {
+    andFilters.push({
+      companyId: params.filterCompanyId,
+    })
+  }
 
   if (params.departmentId) {
     andFilters.push({
@@ -653,14 +698,47 @@ const buildMaterialRequestApprovalQueueWhere = (params: {
 }
 
 export async function getEmployeePortalMaterialRequestApprovalQueuePageReadModel(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
   approverUserId: string
   page: number
   pageSize: number
   search: string
+  filterCompanyId?: string
   departmentId?: string
 }): Promise<EmployeePortalMaterialRequestApprovalQueuePage> {
-  const where = buildMaterialRequestApprovalQueueWhere(params)
+  const normalizedCompanyIds = Array.from(
+    new Set(
+      (params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []).filter(
+        (companyId) => companyId.trim().length > 0
+      )
+    )
+  )
+  if (normalizedCompanyIds.length === 0) {
+    return {
+      rows: [],
+      total: 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    }
+  }
+
+  if (params.filterCompanyId && !normalizedCompanyIds.includes(params.filterCompanyId)) {
+    return {
+      rows: [],
+      total: 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    }
+  }
+
+  const where = buildMaterialRequestApprovalQueueWhere({
+    companyIds: normalizedCompanyIds,
+    approverUserId: params.approverUserId,
+    search: params.search,
+    filterCompanyId: params.filterCompanyId,
+    departmentId: params.departmentId,
+  })
   const skip = (params.page - 1) * params.pageSize
 
   const [total, queueRequests] = await db.$transaction([
@@ -674,6 +752,7 @@ export async function getEmployeePortalMaterialRequestApprovalQueuePageReadModel
       take: params.pageSize,
       select: {
         id: true,
+        companyId: true,
         requestNumber: true,
         departmentId: true,
         datePrepared: true,
@@ -695,6 +774,11 @@ export async function getEmployeePortalMaterialRequestApprovalQueuePageReadModel
             name: true,
           },
         },
+        company: {
+          select: {
+            name: true,
+          },
+        },
       },
     }),
   ])
@@ -710,22 +794,46 @@ export async function getEmployeePortalMaterialRequestApprovalQueuePageReadModel
 type MaterialRequestApprovalHistoryStatusFilter = "ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED"
 
 const buildMaterialRequestApprovalHistoryWhere = (params: {
-  companyId: string
+  companyIds: string[]
   approverUserId: string
-  isHR: boolean
+  hrCompanyIds: string[]
   search: string
   status: MaterialRequestApprovalHistoryStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Prisma.MaterialRequestWhereInput => {
-  const where: Prisma.MaterialRequestWhereInput = params.isHR
+  const normalizedHrCompanyIds = params.hrCompanyIds.filter((companyId) => params.companyIds.includes(companyId))
+  const hasHrScope = normalizedHrCompanyIds.length > 0
+  const where: Prisma.MaterialRequestWhereInput = hasHrScope
     ? {
-        companyId: params.companyId,
-        status: {
-          in: [MaterialRequestStatus.APPROVED, MaterialRequestStatus.REJECTED],
-        },
+        OR: [
+          {
+            companyId: {
+              in: normalizedHrCompanyIds,
+            },
+            status: {
+              in: [MaterialRequestStatus.APPROVED, MaterialRequestStatus.REJECTED],
+            },
+          },
+          {
+            companyId: {
+              in: params.companyIds,
+            },
+            steps: {
+              some: {
+                actedByUserId: params.approverUserId,
+                actedAt: {
+                  not: null,
+                },
+              },
+            },
+          },
+        ],
       }
     : {
-        companyId: params.companyId,
+        companyId: {
+          in: params.companyIds,
+        },
         steps: {
           some: {
             actedByUserId: params.approverUserId,
@@ -740,13 +848,20 @@ const buildMaterialRequestApprovalHistoryWhere = (params: {
     where.status = params.status
   }
 
+  if (params.filterCompanyId) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : []
+    where.AND = [...existingAnd, { companyId: params.filterCompanyId }]
+  }
+
   if (params.departmentId) {
     where.departmentId = params.departmentId
   }
 
   const query = params.search.trim()
   if (query.length > 0) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : []
     where.AND = [
+      ...existingAnd,
       {
         OR: [
           {
@@ -813,6 +928,7 @@ const buildMaterialRequestApprovalHistoryWhere = (params: {
 
 const toHistoryRow = (params: {
   id: string
+  companyId: string
   requestNumber: string
   datePrepared: Date
   dateRequired: Date
@@ -834,6 +950,9 @@ const toHistoryRow = (params: {
   department: {
     name: string
   }
+  company: {
+    name: string
+  }
   steps: Array<{
     stepNumber: number
     stepName: string | null
@@ -852,6 +971,8 @@ const toHistoryRow = (params: {
 
   return {
     id: params.id,
+    companyId: params.companyId,
+    companyName: params.company.name,
     requestNumber: params.requestNumber,
     requesterName: `${params.requesterEmployee.firstName} ${params.requesterEmployee.lastName}`,
     requesterEmployeeNumber: params.requesterEmployee.employeeNumber,
@@ -877,16 +998,52 @@ const toHistoryRow = (params: {
 }
 
 export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadModel(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
   approverUserId: string
-  isHR: boolean
+  isHR?: boolean
+  hrCompanyIds?: string[]
   page: number
   pageSize: number
   search: string
   status: MaterialRequestApprovalHistoryStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Promise<EmployeePortalMaterialRequestApprovalHistoryPage> {
-  const where = buildMaterialRequestApprovalHistoryWhere(params)
+  const normalizedCompanyIds = Array.from(
+    new Set(
+      (params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []).filter(
+        (companyId) => companyId.trim().length > 0
+      )
+    )
+  )
+  if (normalizedCompanyIds.length === 0) {
+    return {
+      rows: [],
+      total: 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    }
+  }
+
+  if (params.filterCompanyId && !normalizedCompanyIds.includes(params.filterCompanyId)) {
+    return {
+      rows: [],
+      total: 0,
+      page: params.page,
+      pageSize: params.pageSize,
+    }
+  }
+
+  const where = buildMaterialRequestApprovalHistoryWhere({
+    companyIds: normalizedCompanyIds,
+    approverUserId: params.approverUserId,
+    hrCompanyIds: params.hrCompanyIds ?? (params.isHR ? normalizedCompanyIds : []),
+    search: params.search,
+    status: params.status,
+    filterCompanyId: params.filterCompanyId,
+    departmentId: params.departmentId,
+  })
   const skip = (params.page - 1) * params.pageSize
 
   const [total, historyRequests] = await db.$transaction([
@@ -898,6 +1055,7 @@ export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadMod
       take: params.pageSize,
       select: {
         id: true,
+        companyId: true,
         requestNumber: true,
         datePrepared: true,
         dateRequired: true,
@@ -923,6 +1081,11 @@ export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadMod
             name: true,
           },
         },
+      company: {
+        select: {
+          name: true,
+        },
+      },
       steps: {
         where: {
           actedByUserId: params.approverUserId,
@@ -955,12 +1118,22 @@ export async function getEmployeePortalMaterialRequestApprovalHistoryPageReadMod
 }
 
 export async function getEmployeePortalMaterialRequestApprovalReadModel(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
   approverUserId: string
-  isHR: boolean
+  isHR?: boolean
+  hrCompanyIds?: string[]
 }): Promise<EmployeePortalMaterialRequestApprovalReadModel> {
+  const normalizedCompanyIds = Array.from(
+    new Set(
+      (params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []).filter(
+        (companyId) => companyId.trim().length > 0
+      )
+    )
+  )
+
   const queuePromise = getEmployeePortalMaterialRequestApprovalQueuePageReadModel({
-    companyId: params.companyId,
+    companyIds: normalizedCompanyIds,
     approverUserId: params.approverUserId,
     page: 1,
     pageSize: 10,
@@ -969,9 +1142,9 @@ export async function getEmployeePortalMaterialRequestApprovalReadModel(params: 
   })
 
   const historyPromise = getEmployeePortalMaterialRequestApprovalHistoryPageReadModel({
-    companyId: params.companyId,
+    companyIds: normalizedCompanyIds,
     approverUserId: params.approverUserId,
-    isHR: params.isHR,
+    hrCompanyIds: params.hrCompanyIds ?? (params.isHR ? normalizedCompanyIds : []),
     page: 1,
     pageSize: 10,
     search: "",

@@ -43,8 +43,10 @@ export default async function EmployeePortalLayout({ children, params }: Employe
     (context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN") &&
     Boolean(context.employee?.id)
   const userName =
-    (`${context.employee?.firstName ?? ""} ${context.employee?.lastName ?? ""}`.trim() || "User")
-  const userEmail = context.employee?.user?.email ?? ""
+    (`${context.employee?.firstName ?? ""} ${context.employee?.lastName ?? ""}`.trim() ||
+      `${context.user?.firstName ?? ""} ${context.user?.lastName ?? ""}`.trim() ||
+      "User")
+  const userEmail = context.employee?.user?.email ?? context.user?.email ?? ""
   const userAvatar = context.employee?.photoUrl ?? null
 
   return (
@@ -55,9 +57,9 @@ export default async function EmployeePortalLayout({ children, params }: Employe
           companies={context.companies}
           activeCompanyId={context.companyId}
           companyRole={context.companyRole}
-          canApproveRequests={Boolean(context.employee?.user?.isRequestApprover)}
-          canProcessMaterialRequests={Boolean(context.employee?.user?.isMaterialRequestPurchaser)}
-          canPostMaterialRequests={Boolean(context.employee?.user?.isMaterialRequestPoster)}
+          canApproveRequests={context.isRequestApprover}
+          canProcessMaterialRequests={context.isMaterialRequestPurchaser}
+          canPostMaterialRequests={context.isMaterialRequestPoster}
           taskCounts={context.taskCounts}
         />
         <SidebarInset>

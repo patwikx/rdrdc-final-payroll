@@ -249,6 +249,7 @@ model MaterialRequestItem {
   receivingReportItems MaterialRequestReceivingReportItem[]
 
   @@unique([materialRequestId, lineNumber])
+  @@unique([materialRequestId, itemCode])
   @@index([materialRequestId])
   @@index([itemCode])
 }

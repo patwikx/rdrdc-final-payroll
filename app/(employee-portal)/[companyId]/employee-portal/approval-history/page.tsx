@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { ApprovalHistoryClient } from "@/modules/employee-portal/components/approval-history-client"
 import { getEmployeePortalConsolidatedApprovalHistoryPageReadModel } from "@/modules/employee-portal/utils/approval-history-read-model"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
@@ -21,27 +20,16 @@ export default async function ApprovalHistoryPage({ params }: ApprovalHistoryPag
     context.companyRole === "COMPANY_ADMIN" ||
     context.companyRole === "HR_ADMIN" ||
     context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = isHR || Boolean(context.employee?.user?.isRequestApprover)
+  const canApprove = isHR || context.isRequestApprover
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)
-  }
-
-  if (!isHR && !context.employee) {
-    return (
-      <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          Your user account is not linked to an employee record. Please contact HR to link your account.
-        </CardContent>
-      </Card>
-    )
   }
 
   const initialHistoryPage = await getEmployeePortalConsolidatedApprovalHistoryPageReadModel({
     companyId: context.companyId,
     approverUserId: context.userId,
     isHR,
-    approverEmployeeId: context.employee?.id,
     page: 1,
     pageSize: 20,
     search: "",

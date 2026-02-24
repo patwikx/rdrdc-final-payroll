@@ -151,7 +151,6 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
   companyId: string
   approverUserId: string
   isHR: boolean
-  approverEmployeeId?: string
   page: number
   pageSize: number
   search: string
@@ -171,13 +170,14 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
   const leavePromise = shouldQueryLeave
     ? isLeaveOvertimeStatus(params.status)
       ? getEmployeePortalLeaveApprovalHistoryPageReadModel({
-          companyId: params.companyId,
+          companyIds: [params.companyId],
           isHR: params.isHR,
-          approverEmployeeId: params.approverEmployeeId,
+          approverUserId: params.approverUserId,
           page: perTypePage,
           pageSize: perTypePageSize,
           search: params.search,
           status: params.status,
+          filterCompanyId: undefined,
           fromDate: "",
           toDate: "",
           departmentId: undefined,
@@ -188,13 +188,14 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
   const overtimePromise = shouldQueryOvertime
     ? isLeaveOvertimeStatus(params.status)
       ? getEmployeePortalOvertimeApprovalHistoryPageReadModel({
-          companyId: params.companyId,
+          companyIds: [params.companyId],
           isHR: params.isHR,
-          approverEmployeeId: params.approverEmployeeId,
+          approverUserId: params.approverUserId,
           page: perTypePage,
           pageSize: perTypePageSize,
           search: params.search,
           status: params.status,
+          filterCompanyId: undefined,
           departmentId: undefined,
           fromDate: "",
           toDate: "",

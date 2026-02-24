@@ -38,6 +38,7 @@ const historyPageSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "APPROVED", "REJECTED", "SUPERVISOR_APPROVED"]).default("ALL"),
+  filterCompanyId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).default(""),
@@ -49,6 +50,7 @@ const queuePageSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "PENDING", "SUPERVISOR_APPROVED"]).default("ALL"),
+  filterCompanyId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
 })
 
@@ -56,7 +58,32 @@ const hasHrPrivileges = (role: CompanyRole): boolean => {
   return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
 }
 
-const findActorEmployee = async (userId: string, companyId: string): Promise<{ id: string } | null> => {
+const getActiveCompanyScopesForUser = async (userId: string): Promise<Array<{ companyId: string; role: string }>> => {
+  const accessRows = await db.userCompanyAccess.findMany({
+    where: {
+      userId,
+      isActive: true,
+      company: {
+        isActive: true,
+      },
+    },
+    select: {
+      companyId: true,
+      role: true,
+    },
+  })
+
+  const uniqueByCompanyId = new Map<string, { companyId: string; role: string }>()
+  for (const row of accessRows) {
+    if (!uniqueByCompanyId.has(row.companyId)) {
+      uniqueByCompanyId.set(row.companyId, { companyId: row.companyId, role: row.role })
+    }
+  }
+
+  return Array.from(uniqueByCompanyId.values())
+}
+
+const findActorEmployeeInCompany = async (userId: string, companyId: string): Promise<{ id: string } | null> => {
   return db.employee.findFirst({
     where: {
       userId,
@@ -74,11 +101,15 @@ export async function getLeaveRequestsForApprovalAction(input: z.input<typeof pa
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const actor = await findActorEmployee(context.userId, context.companyId)
-  if (!actor) return { ok: false as const, error: "Employee profile not found." }
 
   const where = {
-    supervisorApproverId: actor.id,
+    supervisorApprover: {
+      is: {
+        userId: context.userId,
+        deletedAt: null,
+        isActive: true,
+      },
+    },
     statusCode: RequestStatus.PENDING,
     employee: { companyId: context.companyId },
   }
@@ -193,20 +224,26 @@ export async function getLeaveApprovalHistoryPageAction(
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
   const isHR = hasHrPrivileges(context.companyRole as CompanyRole)
-  const actor = await findActorEmployee(context.userId, context.companyId)
+  const companyScopes = await getActiveCompanyScopesForUser(context.userId)
+  const approverCompanyIds = companyScopes.map((scope) => scope.companyId)
+  const hrCompanyIds = companyScopes
+    .filter((scope) => hasHrPrivileges(scope.role as CompanyRole))
+    .map((scope) => scope.companyId)
+  const scopedCompanyIds = isHR ? hrCompanyIds : approverCompanyIds
 
-  if (!isHR && !actor) {
-    return { ok: false, error: "Employee profile not found." }
+  if (payload.filterCompanyId && !scopedCompanyIds.includes(payload.filterCompanyId)) {
+    return { ok: false, error: "Invalid company filter for this approver context." }
   }
 
   const historyPage = await getEmployeePortalLeaveApprovalHistoryPageReadModel({
-    companyId: context.companyId,
+    companyIds: scopedCompanyIds,
     isHR,
-    approverEmployeeId: actor?.id,
+    approverUserId: context.userId,
     page: payload.page,
     pageSize: payload.pageSize,
     search: payload.search,
     status: payload.status,
+    filterCompanyId: payload.filterCompanyId,
     fromDate: payload.fromDate,
     toDate: payload.toDate,
     departmentId: payload.departmentId,
@@ -227,20 +264,26 @@ export async function getLeaveApprovalQueuePageAction(
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
   const isHR = hasHrPrivileges(context.companyRole as CompanyRole)
-  const actor = await findActorEmployee(context.userId, context.companyId)
+  const companyScopes = await getActiveCompanyScopesForUser(context.userId)
+  const approverCompanyIds = companyScopes.map((scope) => scope.companyId)
+  const hrCompanyIds = companyScopes
+    .filter((scope) => hasHrPrivileges(scope.role as CompanyRole))
+    .map((scope) => scope.companyId)
+  const scopedCompanyIds = isHR ? hrCompanyIds : approverCompanyIds
 
-  if (!isHR && !actor) {
-    return { ok: false, error: "Employee profile not found." }
+  if (payload.filterCompanyId && !scopedCompanyIds.includes(payload.filterCompanyId)) {
+    return { ok: false, error: "Invalid company filter for this approver context." }
   }
 
   const queuePage = await getEmployeePortalLeaveApprovalQueuePageReadModel({
-    companyId: context.companyId,
+    companyIds: scopedCompanyIds,
     isHR,
-    approverEmployeeId: actor?.id,
+    approverUserId: context.userId,
     page: payload.page,
     pageSize: payload.pageSize,
     search: payload.search,
     status: payload.status,
+    filterCompanyId: payload.filterCompanyId,
     departmentId: payload.departmentId,
   })
 
@@ -256,17 +299,21 @@ export async function approveLeaveBySupervisorAction(input: z.input<typeof decis
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const actor = await findActorEmployee(context.userId, context.companyId)
-  if (!actor) return { ok: false, error: "Employee profile not found." }
 
   const request = await db.leaveRequest.findFirst({
     where: {
       id: payload.requestId,
-      supervisorApproverId: actor.id,
+      supervisorApprover: {
+        is: {
+          userId: context.userId,
+          deletedAt: null,
+          isActive: true,
+        },
+      },
       statusCode: RequestStatus.PENDING,
       employee: { companyId: context.companyId },
     },
-    select: { id: true },
+    select: { id: true, supervisorApproverId: true },
   })
 
   if (!request) return { ok: false, error: "Leave request not found or no longer pending." }
@@ -277,7 +324,7 @@ export async function approveLeaveBySupervisorAction(input: z.input<typeof decis
       statusCode: RequestStatus.SUPERVISOR_APPROVED,
       supervisorApprovedAt: new Date(),
       supervisorApprovalRemarks: payload.remarks?.trim() || null,
-      approverId: actor.id,
+      approverId: request.supervisorApproverId ?? null,
       approvedAt: new Date(),
       approvalRemarks: payload.remarks?.trim() || null,
     },
@@ -292,18 +339,23 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const actor = await findActorEmployee(context.userId, context.companyId)
-  if (!actor) return { ok: false, error: "Employee profile not found." }
 
   const request = await db.leaveRequest.findFirst({
     where: {
       id: payload.requestId,
-      supervisorApproverId: actor.id,
+      supervisorApprover: {
+        is: {
+          userId: context.userId,
+          deletedAt: null,
+          isActive: true,
+        },
+      },
       statusCode: RequestStatus.PENDING,
       employee: { companyId: context.companyId },
     },
     select: {
       id: true,
+      supervisorApproverId: true,
       requestNumber: true,
       employeeId: true,
       leaveTypeId: true,
@@ -334,7 +386,7 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
         where: { id: request.id },
         data: {
           statusCode: RequestStatus.REJECTED,
-          approverId: actor.id,
+          approverId: request.supervisorApproverId ?? null,
           rejectedAt: new Date(),
           rejectionReason: payload.remarks?.trim() || "Rejected by supervisor",
         },
@@ -358,7 +410,7 @@ export async function approveLeaveByHrAction(input: z.input<typeof decisionSchem
     return { ok: false, error: "Only HR or admins can approve this request." }
   }
 
-  const actor = await findActorEmployee(context.userId, context.companyId)
+  const actor = await findActorEmployeeInCompany(context.userId, context.companyId)
   const request = await db.leaveRequest.findFirst({
     where: {
       id: payload.requestId,
@@ -423,7 +475,7 @@ export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema
     return { ok: false, error: "Only HR or admins can reject this request." }
   }
 
-  const actor = await findActorEmployee(context.userId, context.companyId)
+  const actor = await findActorEmployeeInCompany(context.userId, context.companyId)
   const request = await db.leaveRequest.findFirst({
     where: {
       id: payload.requestId,

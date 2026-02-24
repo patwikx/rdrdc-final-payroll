@@ -10,12 +10,15 @@ import {
   IconAward,
   IconBriefcase,
   IconCalendar,
+  IconCheck,
+  IconChevronsDown,
   IconCreditCard,
   IconFileText,
   IconFingerprint,
   IconHeart,
   IconHistory,
   IconPlus,
+  IconUpload,
   IconUser,
   IconLayoutGrid,
   IconUsers,
@@ -26,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import {
   Dialog,
   DialogContent,
@@ -45,6 +49,10 @@ import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
+import {
+  removeEmployeePhotoAction,
+  updateEmployeePhotoAction,
+} from "@/modules/employees/profile/actions/update-employee-photo-action"
 import { createEmployeeSignatureUploadUrlAction } from "@/modules/employees/profile/actions/create-employee-signature-upload-url-action"
 import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
@@ -336,6 +344,20 @@ const formatRateDisplay = (value: string): string => {
   })
 }
 
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("INVALID_FILE_RESULT"))
+    }
+    reader.onerror = () => reject(new Error("FILE_READ_FAILED"))
+    reader.readAsDataURL(file)
+  })
+
 const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDraft => {
   const monthlyRate = toPositiveNumber(draft.monthlyRate)
   if (!monthlyRate) {
@@ -372,6 +394,7 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const [isSaving, startSaving] = useTransition()
   const [isLifecyclePending, startLifecycleTransition] = useTransition()
   const [isCreatingOption, startCreateOption] = useTransition()
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false)
   const [isSignatureUploading, setIsSignatureUploading] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>("overview")
   const [isEditing, setIsEditing] = useState(false)
@@ -397,6 +420,8 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
   const [lifecycleDraft, setLifecycleDraft] = useState<EmployeeLifecycleDraft>(
     buildInitialLifecycleDraft("DEACTIVATE")
   )
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(employee.photoUrl ?? "")
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
   const signatureInputRef = useRef<HTMLInputElement | null>(null)
 
   const onCancelEdit = () => {
@@ -510,6 +535,64 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
     } finally {
       setIsSignatureUploading(false)
     }
+  }
+
+  const handlePhotoFileUpload = async (file: File | undefined) => {
+    if (!file) return
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPG, PNG, and WEBP image files are allowed.")
+      return
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Profile photo must be 2 MB or below.")
+      return
+    }
+
+    setIsPhotoUploading(true)
+    try {
+      const photoDataUrl = await readFileAsDataUrl(file)
+      const result = await updateEmployeePhotoAction({
+        companyId: data.companyId,
+        employeeId: employee.id,
+        photoDataUrl,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setPhotoPreviewUrl(result.photoUrl)
+      toast.success(result.message)
+    } catch {
+      toast.error("Failed to upload employee photo.")
+    } finally {
+      setIsPhotoUploading(false)
+    }
+  }
+
+  const handleRemovePhoto = () => {
+    if (!photoPreviewUrl || isPhotoUploading) return
+
+    setIsPhotoUploading(true)
+    void (async () => {
+      const result = await removeEmployeePhotoAction({
+        companyId: data.companyId,
+        employeeId: employee.id,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        setIsPhotoUploading(false)
+        return
+      }
+
+      setPhotoPreviewUrl("")
+      toast.success(result.message)
+      setIsPhotoUploading(false)
+    })()
   }
 
   const onSaveEdit = () => {
@@ -739,14 +822,60 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
         <aside className="xl:col-span-2 space-y-4">
           <div className="border border-border/60 p-1">
-            <div className="aspect-square overflow-hidden bg-muted/20">
+            <div className="relative aspect-square overflow-hidden bg-muted/20">
               <Avatar className="size-full !rounded-none after:!rounded-none">
-                <AvatarImage src={employee.photoUrl ?? undefined} alt={employee.fullName} className="!rounded-none object-cover" />
+                <AvatarImage src={photoPreviewUrl || undefined} alt={employee.fullName} className="!rounded-none object-cover" />
                 <AvatarFallback className="!rounded-none text-4xl font-semibold">
                   {employee.firstName[0]}
                   {employee.lastName[0]}
                 </AvatarFallback>
               </Avatar>
+              {!photoPreviewUrl ? (
+                <div className="pointer-events-none absolute inset-x-2 bottom-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="pointer-events-auto h-8 w-full justify-center gap-1.5"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={isPhotoUploading}
+                  >
+                    <IconUpload className="size-3.5" />
+                    {isPhotoUploading ? "Uploading..." : "Upload Photo"}
+                  </Button>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0]
+                      void handlePhotoFileUpload(file)
+                      if (photoInputRef.current) {
+                        photoInputRef.current.value = ""
+                      }
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="px-2 py-2">
+              {photoPreviewUrl ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-full"
+                  onClick={handleRemovePhoto}
+                  disabled={isPhotoUploading}
+                >
+                  {isPhotoUploading ? "Removing..." : "Remove Photo"}
+                </Button>
+              ) : (
+                <p className="px-1 text-center text-[11px] text-muted-foreground">
+                  JPG, PNG, or WEBP up to 2MB. Saves automatically after upload.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-px bg-border/60">
               <div className="bg-background p-3 text-center">
@@ -1248,7 +1377,15 @@ function EmploymentTab({
           createLabel="Add rank"
           onCreateRequested={() => onCreateRequested("ranks")}
         />
-        <SelectField label="Reporting Manager" value={employee.reportingManager} editable={isEditing} selectedValue={draft.reportingManagerId} options={options.managers} placeholder="Select manager" onValueChange={(value) => setDraft((prev) => ({ ...prev, reportingManagerId: value }))} />
+        <ManagerComboboxField
+          label="Reporting Manager"
+          value={employee.reportingManager}
+          editable={isEditing}
+          selectedValue={draft.reportingManagerId}
+          options={options.managers}
+          placeholder="Select manager"
+          onValueChange={(value) => setDraft((prev) => ({ ...prev, reportingManagerId: value }))}
+        />
       </FieldGrid>
 
       <SectionHeader title="Important Dates" number="02" icon={IconCalendar} />
@@ -1620,6 +1757,79 @@ function SelectField({
             ))}
           </SelectContent>
         </Select>
+      ) : (
+        <p className="min-h-6 border-b border-transparent pb-1 text-sm font-medium text-foreground">{value || "-"}</p>
+      )}
+    </div>
+  )
+}
+
+function ManagerComboboxField({
+  label,
+  value,
+  editable,
+  selectedValue,
+  options,
+  onValueChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  editable: boolean
+  selectedValue: string
+  options: Array<{ id: string; code: string; name: string }>
+  onValueChange: (value: string) => void
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedOption = options.find((option) => option.id === selectedValue)
+  const displayValue = selectedOption?.name ?? placeholder
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      {editable ? (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
+              <span className="truncate">{displayValue}</span>
+              <IconChevronsDown className="ml-2 size-4 shrink-0 opacity-60" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search manager..." className="h-9" />
+              <CommandList>
+                <CommandEmpty>No eligible managers found.</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    value="none"
+                    onSelect={() => {
+                      onValueChange("")
+                      setOpen(false)
+                    }}
+                  >
+                    <IconCheck className={cn("mr-2 size-4", selectedValue ? "opacity-0" : "opacity-100")} />
+                    None
+                  </CommandItem>
+                  {options.map((option) => (
+                    <CommandItem
+                      key={option.id}
+                      value={`${option.name} ${option.code}`}
+                      onSelect={() => {
+                        onValueChange(option.id)
+                        setOpen(false)
+                      }}
+                    >
+                      <IconCheck className={cn("mr-2 size-4", selectedValue === option.id ? "opacity-100" : "opacity-0")} />
+                      {option.name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       ) : (
         <p className="min-h-6 border-b border-transparent pb-1 text-sm font-medium text-foreground">{value || "-"}</p>
       )}

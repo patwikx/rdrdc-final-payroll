@@ -23,7 +23,7 @@ export default async function MaterialRequestPostingPage({ params }: MaterialReq
     context.companyRole === "COMPANY_ADMIN" ||
     context.companyRole === "HR_ADMIN" ||
     context.companyRole === "PAYROLL_ADMIN"
-  const canPost = Boolean(context.employee?.user?.isMaterialRequestPoster) || isHR
+  const canPost = context.isMaterialRequestPoster || isHR
 
   if (!canPost) {
     redirect(`/${context.companyId}/employee-portal`)

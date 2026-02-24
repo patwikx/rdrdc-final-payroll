@@ -7,6 +7,7 @@ import {
   IconBriefcase,
   IconBuilding,
   IconCheck,
+  IconChevronsDown,
   IconChevronLeft,
   IconChevronRight,
   IconCurrencyPeso,
@@ -36,6 +37,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -704,7 +706,12 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                     <OptionSelect label="Position" required value={form.employment.positionId} options={dynamicOptions.positions} onChange={(value) => updateSection("employment", "positionId", value)} allowCreate createLabel="Add position" onCreateRequested={() => openCreateDialog("positions")} />
                     <OptionSelect label="Rank" value={form.employment.rankId ?? ""} options={dynamicOptions.ranks} onChange={(value) => updateSection("employment", "rankId", value || undefined)} allowEmpty allowCreate createLabel="Add rank" onCreateRequested={() => openCreateDialog("ranks")} />
                     <OptionSelect label="Branch" value={form.employment.branchId ?? ""} options={dynamicOptions.branches} onChange={(value) => updateSection("employment", "branchId", value || undefined)} allowEmpty allowCreate createLabel="Add branch" onCreateRequested={() => openCreateDialog("branches")} />
-                    <OptionSelect label="Reporting Manager" value={form.employment.reportingManagerId ?? ""} options={options.managers} onChange={(value) => updateSection("employment", "reportingManagerId", value || undefined)} allowEmpty />
+                    <ManagerCombobox
+                      label="Reporting Manager"
+                      value={form.employment.reportingManagerId ?? ""}
+                      options={options.managers}
+                      onChange={(value) => updateSection("employment", "reportingManagerId", value || undefined)}
+                    />
                     <DateField label="Probation End" value={form.employment.probationEndDate ?? ""} onChange={(value) => updateSection("employment", "probationEndDate", value || undefined)} />
                     <DateField label="Regularization Date" value={form.employment.regularizationDate ?? ""} onChange={(value) => updateSection("employment", "regularizationDate", value || undefined)} />
               </div>
@@ -843,6 +850,67 @@ function OptionSelect({
           {options.map((option) => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}
         </SelectContent>
       </Select>
+    </Field>
+  )
+}
+
+function ManagerCombobox({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: Option[]
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedOption = options.find((option) => option.id === value)
+
+  return (
+    <Field label={label}>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
+            <span className="truncate">{selectedOption?.name ?? "Select manager"}</span>
+            <IconChevronsDown className="ml-2 size-4 shrink-0 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search manager..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>No eligible managers found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  value="none"
+                  onSelect={() => {
+                    onChange("")
+                    setOpen(false)
+                  }}
+                >
+                  <IconCheck className={`mr-2 size-4 ${value ? "opacity-0" : "opacity-100"}`} />
+                  None
+                </CommandItem>
+                {options.map((option) => (
+                  <CommandItem
+                    key={option.id}
+                    value={`${option.name} ${option.code}`}
+                    onSelect={() => {
+                      onChange(option.id)
+                      setOpen(false)
+                    }}
+                  >
+                    <IconCheck className={`mr-2 size-4 ${value === option.id ? "opacity-100" : "opacity-0"}`} />
+                    {option.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </Field>
   )
 }

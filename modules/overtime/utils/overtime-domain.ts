@@ -89,13 +89,15 @@ const dateTimeLabel = new Intl.DateTimeFormat("en-PH", {
 type OvertimeApprovalHistoryStatusFilter = "ALL" | "APPROVED" | "REJECTED" | "SUPERVISOR_APPROVED"
 type OvertimeApprovalQueueStatusFilter = "ALL" | "PENDING" | "SUPERVISOR_APPROVED"
 
-const getDirectReportCountByManagerId = async (companyId: string, managerIds: string[]): Promise<Map<string, number>> => {
+const getDirectReportCountByManagerId = async (companyIds: string[], managerIds: string[]): Promise<Map<string, number>> => {
   const directReportCounts =
-    managerIds.length > 0
+    companyIds.length > 0 && managerIds.length > 0
       ? await db.employee.groupBy({
           by: ["reportingManagerId"],
           where: {
-            companyId,
+            companyId: {
+              in: companyIds,
+            },
             deletedAt: null,
             isActive: true,
             reportingManagerId: { in: managerIds },
@@ -124,6 +126,10 @@ const toOvertimeApprovalRow = (
     statusCode: RequestStatus
     employee: {
       id: string
+      companyId: string
+      company: {
+        name: string
+      } | null
       firstName: string
       lastName: string
       employeeNumber: string
@@ -139,6 +145,8 @@ const toOvertimeApprovalRow = (
 ): EmployeePortalOvertimeApprovalRow => {
   return {
     id: item.id,
+    companyId: item.employee.companyId,
+    companyName: item.employee.company?.name ?? "Unknown Company",
     requestNumber: item.requestNumber,
     overtimeDate: dateLabel.format(item.overtimeDate),
     hours: Number(item.hours),
@@ -170,6 +178,10 @@ const toOvertimeApprovalHistoryRow = (
     hrRejectedAt: Date | null
     employee: {
       id: string
+      companyId: string
+      company: {
+        name: string
+      } | null
       firstName: string
       lastName: string
       employeeNumber: string
@@ -196,21 +208,36 @@ const toOvertimeApprovalHistoryRow = (
 }
 
 const buildOvertimeApprovalQueueWhere = (params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   search: string
   status: OvertimeApprovalQueueStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Prisma.OvertimeRequestWhereInput => {
   const where: Prisma.OvertimeRequestWhereInput = params.isHR
     ? {
-        employee: { companyId: params.companyId },
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
         statusCode: RequestStatus.SUPERVISOR_APPROVED,
       }
     : {
-        employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: RequestStatus.PENDING,
       }
 
@@ -219,6 +246,14 @@ const buildOvertimeApprovalQueueWhere = (params: {
   }
 
   const andFilters: Prisma.OvertimeRequestWhereInput[] = []
+
+  if (params.filterCompanyId) {
+    andFilters.push({
+      employee: {
+        companyId: params.filterCompanyId,
+      },
+    })
+  }
 
   if (params.departmentId) {
     andFilters.push({
@@ -290,13 +325,14 @@ const buildOvertimeApprovalQueueWhere = (params: {
 }
 
 export async function getEmployeePortalOvertimeApprovalQueuePageReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   page: number
   pageSize: number
   search: string
   status: OvertimeApprovalQueueStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Promise<EmployeePortalOvertimeApprovalQueuePage> {
   const where = buildOvertimeApprovalQueueWhere(params)
@@ -313,6 +349,12 @@ export async function getEmployeePortalOvertimeApprovalQueuePageReadModel(params
         employee: {
           select: {
             id: true,
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+              },
+            },
             firstName: true,
             lastName: true,
             employeeNumber: true,
@@ -331,7 +373,7 @@ export async function getEmployeePortalOvertimeApprovalQueuePageReadModel(params
   ])
 
   const directReportCountByManagerId = await getDirectReportCountByManagerId(
-    params.companyId,
+    params.companyIds,
     requests.map((item) => item.employee.id)
   )
 
@@ -344,24 +386,45 @@ export async function getEmployeePortalOvertimeApprovalQueuePageReadModel(params
 }
 
 const buildOvertimeApprovalHistoryWhere = (params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   search: string
   status: OvertimeApprovalHistoryStatusFilter
   departmentId?: string
   fromDate: string
   toDate: string
+  filterCompanyId?: string
 }): Prisma.OvertimeRequestWhereInput => {
   const where: Prisma.OvertimeRequestWhereInput = params.isHR
     ? {
-        employee: { companyId: params.companyId },
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
         statusCode: { in: [RequestStatus.APPROVED, RequestStatus.REJECTED] },
-        ...(params.approverEmployeeId ? { hrApproverId: params.approverEmployeeId } : {}),
+        hrApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
       }
     : {
-        employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: {
           in: [RequestStatus.SUPERVISOR_APPROVED, RequestStatus.APPROVED, RequestStatus.REJECTED],
         },
@@ -373,6 +436,14 @@ const buildOvertimeApprovalHistoryWhere = (params: {
 
   const search = params.search.trim()
   const andFilters: Prisma.OvertimeRequestWhereInput[] = []
+
+  if (params.filterCompanyId) {
+    andFilters.push({
+      employee: {
+        companyId: params.filterCompanyId,
+      },
+    })
+  }
 
   if (params.departmentId) {
     andFilters.push({
@@ -467,9 +538,9 @@ const buildOvertimeApprovalHistoryWhere = (params: {
 }
 
 export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   page: number
   pageSize: number
   search: string
@@ -477,6 +548,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
   departmentId?: string
   fromDate: string
   toDate: string
+  filterCompanyId?: string
 }): Promise<EmployeePortalOvertimeApprovalHistoryPage> {
   const where = buildOvertimeApprovalHistoryWhere(params)
   const skip = (params.page - 1) * params.pageSize
@@ -492,6 +564,12 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
         employee: {
           select: {
             id: true,
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+              },
+            },
             firstName: true,
             lastName: true,
             employeeNumber: true,
@@ -510,7 +588,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
   ])
 
   const directReportCountByManagerId = await getDirectReportCountByManagerId(
-    params.companyId,
+    params.companyIds,
     historyRequests.map((item) => item.employee.id)
   )
 
@@ -525,7 +603,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryPageReadModel(para
 export async function getEmployeePortalOvertimeApprovalHistoryDetailReadModel(params: {
   companyId: string
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   requestId: string
 }): Promise<EmployeePortalOvertimeApprovalHistoryDetail | null> {
   const where: Prisma.OvertimeRequestWhereInput = params.isHR
@@ -533,12 +611,24 @@ export async function getEmployeePortalOvertimeApprovalHistoryDetailReadModel(pa
         id: params.requestId,
         employee: { companyId: params.companyId },
         statusCode: { in: [RequestStatus.APPROVED, RequestStatus.REJECTED] },
-        ...(params.approverEmployeeId ? { hrApproverId: params.approverEmployeeId } : {}),
+        hrApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
       }
     : {
         id: params.requestId,
         employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: {
           in: [RequestStatus.SUPERVISOR_APPROVED, RequestStatus.APPROVED, RequestStatus.REJECTED],
         },
@@ -597,7 +687,7 @@ export async function getEmployeePortalOvertimeApprovalHistoryDetailReadModel(pa
     return null
   }
 
-  const directReportCountByManagerId = await getDirectReportCountByManagerId(params.companyId, [request.employee.id])
+  const directReportCountByManagerId = await getDirectReportCountByManagerId([params.companyId], [request.employee.id])
   const ctoConversionPreview =
     !request.employee.isOvertimeEligible || (directReportCountByManagerId.get(request.employee.id) ?? 0) > 0
 
@@ -743,31 +833,33 @@ export async function getEmployeePortalOvertimeRequestsReadModel(params: {
 }
 
 export async function getEmployeePortalOvertimeApprovalReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
 }) {
   const [queuePage, historyPage] = await Promise.all([
     getEmployeePortalOvertimeApprovalQueuePageReadModel({
-      companyId: params.companyId,
+      companyIds: params.companyIds,
       isHR: params.isHR,
-      approverEmployeeId: params.approverEmployeeId,
+      approverUserId: params.approverUserId,
       page: 1,
       pageSize: 10,
       search: "",
       status: "ALL",
+      filterCompanyId: undefined,
       departmentId: undefined,
     }),
     getEmployeePortalOvertimeApprovalHistoryPageReadModel({
-      companyId: params.companyId,
+      companyIds: params.companyIds,
       isHR: params.isHR,
-      approverEmployeeId: params.approverEmployeeId,
+      approverUserId: params.approverUserId,
       page: 1,
       pageSize: 10,
       search: "",
       status: "ALL",
       fromDate: "",
       toDate: "",
+      filterCompanyId: undefined,
       departmentId: undefined,
     }),
   ])
@@ -785,15 +877,27 @@ export async function getEmployeePortalOvertimeApprovalReadModel(params: {
 }
 
 export async function getEmployeePortalOvertimeApprovalDepartmentOptions(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
 }): Promise<EmployeePortalOvertimeApprovalDepartmentOption[]> {
+  const normalizedCompanyIds = (
+    params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []
+  ).filter((companyId) => companyId.trim().length > 0)
+
+  if (normalizedCompanyIds.length === 0) {
+    return []
+  }
+
   return db.department.findMany({
     where: {
-      companyId: params.companyId,
+      companyId: {
+        in: normalizedCompanyIds,
+      },
     },
     orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,
+      companyId: true,
       name: true,
       isActive: true,
     },

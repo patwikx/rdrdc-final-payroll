@@ -44,6 +44,10 @@ import type {
 type MaterialRequestApprovalClientProps = {
   companyId: string
   isHR: boolean
+  companyOptions: Array<{
+    id: string
+    name: string
+  }>
   departmentOptions: EmployeePortalMaterialRequestDepartmentOption[]
   rows: EmployeePortalMaterialRequestApprovalQueueRow[]
   initialQueueTotal: number
@@ -88,6 +92,7 @@ const getNameInitials = (fullName: string): string => {
 export function MaterialRequestApprovalClient({
   companyId,
   isHR,
+  companyOptions,
   departmentOptions,
   rows,
   initialQueueTotal,
@@ -107,11 +112,14 @@ export function MaterialRequestApprovalClient({
   const [open, setOpen] = useState(false)
   const [decisionType, setDecisionType] = useState<"approve" | "reject">("approve")
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
+  const [selectedRequestCompanyId, setSelectedRequestCompanyId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
   const [queueSearch, setQueueSearch] = useState("")
+  const [queueCompanyId, setQueueCompanyId] = useState<string>("ALL")
   const [queueDepartmentId, setQueueDepartmentId] = useState<string>("ALL")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
+  const [historyCompanyId, setHistoryCompanyId] = useState<string>("ALL")
   const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [isPending, startTransition] = useTransition()
   const [isQueuePending, startQueueTransition] = useTransition()
@@ -138,6 +146,20 @@ export function MaterialRequestApprovalClient({
   const historyItemsPerPage = Number(historyPageSize)
   const DECISION_ITEMS_PAGE_SIZE = 8
   const selectedRequest = useMemo(() => queueRowsState.find((row) => row.id === selectedRequestId) ?? null, [queueRowsState, selectedRequestId])
+  const queueDepartmentOptions = useMemo(
+    () =>
+      queueCompanyId === "ALL"
+        ? departmentOptions
+        : departmentOptions.filter((department) => department.companyId === queueCompanyId),
+    [departmentOptions, queueCompanyId]
+  )
+  const historyDepartmentOptions = useMemo(
+    () =>
+      historyCompanyId === "ALL"
+        ? departmentOptions
+        : departmentOptions.filter((department) => department.companyId === historyCompanyId),
+    [departmentOptions, historyCompanyId]
+  )
 
   const queueStats = useMemo(() => {
     const summary = queueRowsState.reduce(
@@ -163,9 +185,12 @@ export function MaterialRequestApprovalClient({
   const activeQueuePage = Math.min(queuePage, queueTotalPages)
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
-  const hasQueueFilters = queueSearch.trim().length > 0 || queueDepartmentId !== "ALL"
   const showQueueSection = view !== "history"
   const showHistorySection = view !== "queue"
+  const getApprovalDetailHref = (requestId: string, requestCompanyId: string): string => {
+    const query = new URLSearchParams({ requestCompanyId })
+    return `/${companyId}/employee-portal/material-request-approvals/${requestId}?${query.toString()}`
+  }
 
   const clearHistorySearchDebounceTimeout = () => {
     if (!historySearchDebounceTimeoutRef.current) {
@@ -199,6 +224,7 @@ export function MaterialRequestApprovalClient({
   const loadQueuePage = (params: {
     page: number
     search: string
+    companyId: string
     departmentId: string
   }) => {
     const token = queueRequestTokenRef.current + 1
@@ -211,6 +237,7 @@ export function MaterialRequestApprovalClient({
         page: params.page,
         pageSize: queueItemsPerPage,
         search: params.search,
+        filterCompanyId: params.companyId === "ALL" ? undefined : params.companyId,
         departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
       })
 
@@ -234,6 +261,7 @@ export function MaterialRequestApprovalClient({
     pageSize: number
     search: string
     status: HistoryStatusFilter
+    companyId: string
     departmentId: string
   }) => {
     const token = historyRequestTokenRef.current + 1
@@ -247,6 +275,7 @@ export function MaterialRequestApprovalClient({
         pageSize: params.pageSize,
         search: params.search,
         status: params.status,
+        filterCompanyId: params.companyId === "ALL" ? undefined : params.companyId,
         departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
       })
 
@@ -273,16 +302,17 @@ export function MaterialRequestApprovalClient({
       loadQueuePage({
         page: 1,
         search: nextSearch,
+        companyId: queueCompanyId,
         departmentId: queueDepartmentId,
       })
     }, 250)
   }
 
-  const loadDecisionDetail = (requestId: string, page: number) => {
+  const loadDecisionDetail = (requestId: string, requestCompanyId: string, page: number) => {
     setDecisionDetailError(null)
     startDetailTransition(async () => {
       const response = await getMaterialRequestApprovalDecisionDetailsAction({
-        companyId,
+        companyId: requestCompanyId,
         requestId,
         page,
         pageSize: DECISION_ITEMS_PAGE_SIZE,
@@ -297,58 +327,59 @@ export function MaterialRequestApprovalClient({
     })
   }
 
-  const openDecisionDialog = (requestId: string, type: "approve" | "reject") => {
-    setSelectedRequestId(requestId)
+  const openDecisionDialog = (request: EmployeePortalMaterialRequestApprovalQueueRow, type: "approve" | "reject") => {
+    setSelectedRequestId(request.id)
+    setSelectedRequestCompanyId(request.companyId)
     setDecisionType(type)
     setRemarks("")
     setDecisionDetail(null)
     setDecisionDetailError(null)
     setOpen(true)
-    loadDecisionDetail(requestId, 1)
+    loadDecisionDetail(request.id, request.companyId, 1)
   }
 
-  const toggleHistoryDetails = (requestId: string) => {
-    if (expandedHistoryRequestId === requestId) {
+  const toggleHistoryDetails = (request: EmployeePortalMaterialRequestApprovalHistoryRow) => {
+    if (expandedHistoryRequestId === request.id) {
       setExpandedHistoryRequestId(null)
       return
     }
 
-    setExpandedHistoryRequestId(requestId)
-    if (historyDetailsById[requestId] || historyDetailLoadingId === requestId) {
+    setExpandedHistoryRequestId(request.id)
+    if (historyDetailsById[request.id] || historyDetailLoadingId === request.id) {
       return
     }
 
-    setHistoryDetailLoadingId(requestId)
+    setHistoryDetailLoadingId(request.id)
     startHistoryDetailTransition(async () => {
       const response = await getMaterialRequestApprovalHistoryDetailsAction({
-        companyId,
-        requestId,
+        companyId: request.companyId,
+        requestId: request.id,
       })
 
-      setHistoryDetailLoadingId((current) => (current === requestId ? null : current))
+      setHistoryDetailLoadingId((current) => (current === request.id ? null : current))
 
       if (!response.ok) {
         setHistoryDetailErrorById((previous) => ({
           ...previous,
-          [requestId]: response.error,
+          [request.id]: response.error,
         }))
         return
       }
 
       setHistoryDetailErrorById((previous) => {
         const next = { ...previous }
-        delete next[requestId]
+        delete next[request.id]
         return next
       })
       setHistoryDetailsById((previous) => ({
         ...previous,
-        [requestId]: response.data,
+        [request.id]: response.data,
       }))
     })
   }
 
   const submitDecision = () => {
-    if (!selectedRequestId) {
+    if (!selectedRequestId || !selectedRequestCompanyId) {
       return
     }
 
@@ -356,12 +387,12 @@ export function MaterialRequestApprovalClient({
       const response =
         decisionType === "approve"
           ? await approveMaterialRequestStepAction({
-              companyId,
+              companyId: selectedRequestCompanyId,
               requestId: selectedRequestId,
               remarks,
             })
           : await rejectMaterialRequestStepAction({
-              companyId,
+              companyId: selectedRequestCompanyId,
               requestId: selectedRequestId,
               remarks,
             })
@@ -377,8 +408,12 @@ export function MaterialRequestApprovalClient({
     })
   }
 
+  const hasQueueFilters = queueSearch.trim().length > 0 || queueCompanyId !== "ALL" || queueDepartmentId !== "ALL"
   const hasHistoryFilters =
-    historySearch.trim().length > 0 || historyStatus !== "ALL" || historyDepartmentId !== "ALL"
+    historySearch.trim().length > 0 ||
+    historyStatus !== "ALL" ||
+    historyCompanyId !== "ALL" ||
+    historyDepartmentId !== "ALL"
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
@@ -439,7 +474,7 @@ export function MaterialRequestApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <div className="relative col-span-3 sm:w-[360px]">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -451,7 +486,35 @@ export function MaterialRequestApprovalClient({
                 className="rounded-lg pl-8"
               />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 sm:w-[220px]">
+              <Select
+                value={queueCompanyId}
+                onValueChange={(value) => {
+                  setQueueCompanyId(value)
+                  setQueueDepartmentId("ALL")
+                  clearQueueSearchDebounceTimeout()
+                  loadQueuePage({
+                    page: 1,
+                    search: queueSearch,
+                    companyId: value,
+                    departmentId: "ALL",
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="Company" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All companies</SelectItem>
+                  {companyOptions.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2 sm:w-[220px]">
               <Select
                 value={queueDepartmentId}
                 onValueChange={(value) => {
@@ -460,16 +523,17 @@ export function MaterialRequestApprovalClient({
                   loadQueuePage({
                     page: 1,
                     search: queueSearch,
+                    companyId: queueCompanyId,
                     departmentId: value,
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+                <SelectTrigger className="w-full rounded-lg">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
                   <SelectItem value="ALL">All departments</SelectItem>
-                  {departmentOptions.map((department) => (
+                  {queueDepartmentOptions.map((department) => (
                     <SelectItem key={department.id} value={department.id}>
                       {department.name}
                       {!department.isActive ? " (Inactive)" : ""}
@@ -480,14 +544,16 @@ export function MaterialRequestApprovalClient({
             </div>
             <Button
               variant="outline"
-              className="col-span-1 w-full rounded-lg text-xs sm:w-auto sm:text-sm"
+              className="col-span-1 w-full rounded-lg text-xs sm:text-sm"
               onClick={() => {
                 setQueueSearch("")
+                setQueueCompanyId("ALL")
                 setQueueDepartmentId("ALL")
                 clearQueueSearchDebounceTimeout()
                 loadQueuePage({
                   page: 1,
                   search: "",
+                  companyId: "ALL",
                   departmentId: "ALL",
                 })
               }}
@@ -525,7 +591,7 @@ export function MaterialRequestApprovalClient({
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept / Company</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prepared / Required</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Step</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
@@ -569,7 +635,7 @@ export function MaterialRequestApprovalClient({
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold text-foreground">{row.requesterName}</p>
                                 <p className="truncate text-[11px] text-muted-foreground">
-                                  {row.requesterEmployeeNumber} • {row.departmentName}
+                                  {row.requesterEmployeeNumber} • {row.departmentName} • {row.companyName}
                                 </p>
                               </div>
                             </div>
@@ -599,7 +665,7 @@ export function MaterialRequestApprovalClient({
                               size="sm"
                               className="rounded-lg text-xs"
                               disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row.id, "reject")}
+                              onClick={() => openDecisionDialog(row, "reject")}
                             >
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
@@ -609,13 +675,13 @@ export function MaterialRequestApprovalClient({
                               size="sm"
                               className="rounded-lg bg-green-600 text-xs hover:bg-green-700"
                               disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row.id, "approve")}
+                              onClick={() => openDecisionDialog(row, "approve")}
                             >
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
                             <Button asChild type="button" variant="outline" size="sm" className="rounded-lg text-xs">
-                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                              <Link href={getApprovalDetailHref(row.id, row.companyId)}>
                                 <IconExternalLink className="mr-1 h-3.5 w-3.5" />
                                 View
                               </Link>
@@ -653,8 +719,13 @@ export function MaterialRequestApprovalClient({
                               <p className="truncate text-xs text-foreground">{row.requesterName}</p>
                             </div>
                           </div>
-                          <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
-                            {row.departmentName}
+                          <div className="col-span-1 text-xs text-foreground">
+                            <p className="truncate whitespace-nowrap" title={row.departmentName}>
+                              {row.departmentName}
+                            </p>
+                            <p className="truncate whitespace-nowrap text-[10px] text-muted-foreground" title={row.companyName}>
+                              {row.companyName}
+                            </p>
                           </div>
                           <div className="col-span-2 text-xs text-foreground">
                             <p>{row.datePreparedLabel}</p>
@@ -670,7 +741,7 @@ export function MaterialRequestApprovalClient({
                               size="sm"
                               className="rounded-lg"
                               disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row.id, "reject")}
+                              onClick={() => openDecisionDialog(row, "reject")}
                             >
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
@@ -680,13 +751,13 @@ export function MaterialRequestApprovalClient({
                               size="sm"
                               className="rounded-lg bg-green-600 hover:bg-green-700"
                               disabled={isPending || isDetailPending}
-                              onClick={() => openDecisionDialog(row.id, "approve")}
+                              onClick={() => openDecisionDialog(row, "approve")}
                             >
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
                             <Button asChild type="button" variant="outline" size="sm" className="rounded-lg">
-                              <Link href={`/${companyId}/employee-portal/material-request-approvals/${row.id}`}>
+                              <Link href={getApprovalDetailHref(row.id, row.companyId)}>
                                 <IconExternalLink className="h-3.5 w-3.5" />
                                 <span className="sr-only">View Details</span>
                               </Link>
@@ -711,6 +782,7 @@ export function MaterialRequestApprovalClient({
                           loadQueuePage({
                             page: activeQueuePage - 1,
                             search: queueSearch,
+                            companyId: queueCompanyId,
                             departmentId: queueDepartmentId,
                           })
                         }
@@ -726,6 +798,7 @@ export function MaterialRequestApprovalClient({
                           loadQueuePage({
                             page: activeQueuePage + 1,
                             search: queueSearch,
+                            companyId: queueCompanyId,
                             departmentId: queueDepartmentId,
                           })
                         }
@@ -750,7 +823,7 @@ export function MaterialRequestApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-3">
             <div className="relative col-span-3 sm:col-span-3">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -767,6 +840,7 @@ export function MaterialRequestApprovalClient({
                       pageSize: historyItemsPerPage,
                       search: nextSearch,
                       status: historyStatus,
+                      companyId: historyCompanyId,
                       departmentId: historyDepartmentId,
                     })
                   }, HISTORY_SEARCH_DEBOUNCE_MS)
@@ -784,10 +858,42 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: historyStatus,
+                    companyId: historyCompanyId,
                     departmentId: historyDepartmentId,
                   })
                 }}
               />
+            </div>
+            <div className="col-span-1 sm:col-span-2">
+              <Select
+                value={historyCompanyId}
+                onValueChange={(value) => {
+                  setHistoryCompanyId(value)
+                  setHistoryDepartmentId("ALL")
+                  setExpandedHistoryRequestId(null)
+                  clearHistorySearchDebounceTimeout()
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: historySearch,
+                    status: historyStatus,
+                    companyId: value,
+                    departmentId: "ALL",
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="Company" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All companies</SelectItem>
+                  {companyOptions.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="col-span-1 sm:col-span-1">
               <Select
@@ -802,6 +908,7 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: nextStatus,
+                    companyId: historyCompanyId,
                     departmentId: historyDepartmentId,
                   })
                 }}
@@ -830,6 +937,7 @@ export function MaterialRequestApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: historyStatus,
+                    companyId: historyCompanyId,
                     departmentId: value,
                   })
                 }}
@@ -839,7 +947,7 @@ export function MaterialRequestApprovalClient({
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
                   <SelectItem value="ALL">All departments</SelectItem>
-                  {departmentOptions.map((department) => (
+                  {historyDepartmentOptions.map((department) => (
                     <SelectItem key={department.id} value={department.id}>
                       {department.name}
                       {!department.isActive ? " (Inactive)" : ""}
@@ -854,6 +962,7 @@ export function MaterialRequestApprovalClient({
               onClick={() => {
                 setHistorySearch("")
                 setHistoryStatus("ALL")
+                setHistoryCompanyId("ALL")
                 setHistoryDepartmentId("ALL")
                 setExpandedHistoryRequestId(null)
                 clearHistorySearchDebounceTimeout()
@@ -862,6 +971,7 @@ export function MaterialRequestApprovalClient({
                   pageSize: historyItemsPerPage,
                   search: "",
                   status: "ALL",
+                  companyId: "ALL",
                   departmentId: "ALL",
                 })
               }}
@@ -888,7 +998,7 @@ export function MaterialRequestApprovalClient({
               <div className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-2 lg:grid">
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Requester</p>
-                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept</p>
+                <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dept / Company</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Required</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
                 <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
@@ -915,7 +1025,7 @@ export function MaterialRequestApprovalClient({
                           <button
                             type="button"
                             className="w-full px-3 py-3 text-left hover:bg-muted/20 lg:hidden"
-                            onClick={() => toggleHistoryDetails(row.id)}
+                            onClick={() => toggleHistoryDetails(row)}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
@@ -944,8 +1054,9 @@ export function MaterialRequestApprovalClient({
                                 </div>
                               </div>
                               <div>
-                                <p className="text-[11px] text-muted-foreground">Department</p>
+                                <p className="text-[11px] text-muted-foreground">Department / Company</p>
                                 <p className="text-foreground">{row.departmentName}</p>
+                                <p className="text-[11px] text-muted-foreground">{row.companyName}</p>
                               </div>
                               <div>
                                 <p className="text-[11px] text-muted-foreground">Date Required</p>
@@ -959,7 +1070,7 @@ export function MaterialRequestApprovalClient({
                           </button>
                           <div
                             className="hidden cursor-pointer grid-cols-12 items-start gap-3 px-3 py-2 hover:bg-muted/20 lg:grid"
-                            onClick={() => toggleHistoryDetails(row.id)}
+                            onClick={() => toggleHistoryDetails(row)}
                           >
                             <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground" title={row.requestNumber}>
                               {row.requestNumber}
@@ -979,8 +1090,13 @@ export function MaterialRequestApprovalClient({
                                 <p className="truncate text-xs text-foreground">{row.requesterName}</p>
                               </div>
                             </div>
-                            <div className="col-span-2 truncate whitespace-nowrap text-xs text-foreground" title={row.departmentName}>
-                              {row.departmentName}
+                            <div className="col-span-2 text-xs text-foreground">
+                              <p className="truncate whitespace-nowrap" title={row.departmentName}>
+                                {row.departmentName}
+                              </p>
+                              <p className="truncate whitespace-nowrap text-[10px] text-muted-foreground" title={row.companyName}>
+                                {row.companyName}
+                              </p>
                             </div>
                             <div className="col-span-2 text-xs text-foreground">{row.dateRequiredLabel}</div>
                             <div className="col-span-1 text-xs text-foreground">PHP {currency.format(row.grandTotal)}</div>
@@ -1144,6 +1260,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: nextPageSize,
                               search: historySearch,
                               status: historyStatus,
+                              companyId: historyCompanyId,
                               departmentId: historyDepartmentId,
                             })
                           }}
@@ -1172,6 +1289,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: historyItemsPerPage,
                               search: historySearch,
                               status: historyStatus,
+                              companyId: historyCompanyId,
                               departmentId: historyDepartmentId,
                             })
                           }}
@@ -1191,6 +1309,7 @@ export function MaterialRequestApprovalClient({
                               pageSize: historyItemsPerPage,
                               search: historySearch,
                               status: historyStatus,
+                              companyId: historyCompanyId,
                               departmentId: historyDepartmentId,
                             })
                           }}
@@ -1208,7 +1327,19 @@ export function MaterialRequestApprovalClient({
         ) : null}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen)
+          if (!nextOpen) {
+            setSelectedRequestId(null)
+            setSelectedRequestCompanyId(null)
+            setDecisionDetail(null)
+            setDecisionDetailError(null)
+            setRemarks("")
+          }
+        }}
+      >
         <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-none sm:max-w-2xl">
           <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
             <DialogTitle className="text-base font-semibold">
@@ -1332,12 +1463,12 @@ export function MaterialRequestApprovalClient({
                           variant="outline"
                           size="sm"
                           className="h-7 rounded-lg text-xs"
-                          disabled={isDetailPending || decisionDetail.page <= 1 || !selectedRequestId}
+                          disabled={isDetailPending || decisionDetail.page <= 1 || !selectedRequestId || !selectedRequestCompanyId}
                           onClick={() => {
-                            if (!selectedRequestId) {
+                            if (!selectedRequestId || !selectedRequestCompanyId) {
                               return
                             }
-                            loadDecisionDetail(selectedRequestId, decisionDetail.page - 1)
+                            loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, decisionDetail.page - 1)
                           }}
                         >
                           Previous
@@ -1350,13 +1481,14 @@ export function MaterialRequestApprovalClient({
                           disabled={
                             isDetailPending ||
                             decisionDetail.page >= Math.ceil(decisionDetail.totalItems / decisionDetail.pageSize) ||
-                            !selectedRequestId
+                            !selectedRequestId ||
+                            !selectedRequestCompanyId
                           }
                           onClick={() => {
-                            if (!selectedRequestId) {
+                            if (!selectedRequestId || !selectedRequestCompanyId) {
                               return
                             }
-                            loadDecisionDetail(selectedRequestId, decisionDetail.page + 1)
+                            loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, decisionDetail.page + 1)
                           }}
                         >
                           Next

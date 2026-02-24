@@ -16,6 +16,8 @@ type UpdateEmployeeProfileActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string }
 
+const reportingManagerRankCodes = ["S1", "S2", "S3", "M1", "M2", "M3", "EXE", "EXECUTIVE"] as const
+
 const toNullable = (value: string | undefined): string | null => {
   if (!value) return null
   const trimmed = value.trim()
@@ -158,6 +160,50 @@ export async function updateEmployeeProfileAction(
       const nextBranchId = toNullableId(payload.branchId)
       const nextRankId = toNullableId(payload.rankId)
       const nextWorkScheduleId = toNullableId(payload.workScheduleId)
+      const nextReportingManagerId = toNullableId(payload.reportingManagerId)
+
+      if (nextReportingManagerId) {
+        if (nextReportingManagerId === employee.id) {
+          throw new Error("INVALID_REPORTING_MANAGER_SELF")
+        }
+
+        const validReportingManager = await tx.employee.findFirst({
+          where: {
+            id: nextReportingManagerId,
+            isActive: true,
+            deletedAt: null,
+            rank: {
+              is: {
+                isActive: true,
+                code: {
+                  in: [...reportingManagerRankCodes],
+                },
+              },
+            },
+            OR: [
+              { companyId: context.companyId },
+              {
+                user: {
+                  is: {
+                    isActive: true,
+                    companyAccess: {
+                      some: {
+                        companyId: context.companyId,
+                        isActive: true,
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          select: { id: true },
+        })
+
+        if (!validReportingManager) {
+          throw new Error("INVALID_REPORTING_MANAGER")
+        }
+      }
 
       if (nextEmploymentStatusId !== employee.employmentStatusId) {
         await tx.employeeStatusHistory.create({
@@ -266,7 +312,7 @@ export async function updateEmployeeProfileAction(
           positionId: nextPositionId,
           rankId: nextRankId,
           branchId: nextBranchId,
-          reportingManagerId: toNullableId(payload.reportingManagerId),
+          reportingManagerId: nextReportingManagerId,
           workScheduleId: nextWorkScheduleId,
           payPeriodPatternId: toNullableId(payload.payPeriodPatternId),
           taxStatusId: toTaxStatusEnum(payload.taxStatusId),
@@ -539,6 +585,14 @@ export async function updateEmployeeProfileAction(
   } catch (error) {
     if (error instanceof Error && error.message === "EMPLOYEE_NOT_FOUND") {
       return { ok: false, error: "Employee record was not found in the selected company." }
+    }
+
+    if (error instanceof Error && error.message === "INVALID_REPORTING_MANAGER_SELF") {
+      return { ok: false, error: "Employee cannot be assigned as their own reporting manager." }
+    }
+
+    if (error instanceof Error && error.message === "INVALID_REPORTING_MANAGER") {
+      return { ok: false, error: "Selected reporting manager is not eligible for this company." }
     }
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

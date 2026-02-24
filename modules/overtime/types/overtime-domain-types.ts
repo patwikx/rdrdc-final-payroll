@@ -20,6 +20,8 @@ export type EmployeePortalOvertimeRequestRow = {
 
 export type EmployeePortalOvertimeApprovalRow = {
   id: string
+  companyId: string
+  companyName: string
   requestNumber: string
   overtimeDate: string
   hours: number
@@ -79,6 +81,7 @@ export type EmployeePortalOvertimeApprovalHistoryDetail = {
 
 export type EmployeePortalOvertimeApprovalDepartmentOption = {
   id: string
+  companyId: string
   name: string
   isActive: boolean
 }

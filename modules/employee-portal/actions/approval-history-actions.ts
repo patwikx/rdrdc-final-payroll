@@ -2,7 +2,6 @@
 
 import { z } from "zod"
 
-import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
 import type {
@@ -27,18 +26,6 @@ const hasHrPrivileges = (role: CompanyRole): boolean => {
   return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
 }
 
-const findActorEmployee = async (userId: string, companyId: string): Promise<{ id: string } | null> => {
-  return db.employee.findFirst({
-    where: {
-      userId,
-      companyId,
-      deletedAt: null,
-      isActive: true,
-    },
-    select: { id: true },
-  })
-}
-
 export async function getConsolidatedApprovalHistoryPageAction(
   input: z.input<typeof consolidatedApprovalHistoryPageSchema>
 ): Promise<ActionDataResult<EmployeePortalConsolidatedApprovalHistoryPage>> {
@@ -48,17 +35,11 @@ export async function getConsolidatedApprovalHistoryPageAction(
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
   const isHR = hasHrPrivileges(context.companyRole as CompanyRole)
-  const actor = await findActorEmployee(context.userId, context.companyId)
-
-  if (!isHR && !actor) {
-    return { ok: false, error: "Employee profile not found." }
-  }
 
   const page = await getEmployeePortalConsolidatedApprovalHistoryPageReadModel({
     companyId: context.companyId,
     approverUserId: context.userId,
     isHR,
-    approverEmployeeId: actor?.id,
     page: payload.page,
     pageSize: payload.pageSize,
     search: payload.search,

@@ -93,9 +93,11 @@ export type EmployeePortalMaterialRequestRow = {
 
 export type EmployeePortalMaterialRequestDepartmentOption = {
   id: string
+  companyId?: string
   code: string
   name: string
   isActive: boolean
+  companyName?: string
 }
 
 export type EmployeePortalMaterialRequestDepartmentFlowPreview = {
@@ -114,6 +116,8 @@ export type EmployeePortalMaterialRequestDepartmentFlowPreview = {
 
 export type EmployeePortalMaterialRequestApprovalQueueRow = {
   id: string
+  companyId: string
+  companyName: string
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string
@@ -130,6 +134,8 @@ export type EmployeePortalMaterialRequestApprovalQueueRow = {
 
 export type EmployeePortalMaterialRequestApprovalHistoryRow = {
   id: string
+  companyId: string
+  companyName: string
   requestNumber: string
   requesterName: string
   requesterEmployeeNumber: string

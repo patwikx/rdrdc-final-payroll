@@ -48,6 +48,10 @@ import type {
 type LeaveApprovalClientProps = {
   companyId: string
   isHR: boolean
+  companyOptions: Array<{
+    id: string
+    name: string
+  }>
   departmentOptions: EmployeePortalLeaveApprovalDepartmentOption[]
   rows: EmployeePortalLeaveApprovalRow[]
   initialQueueTotal: number
@@ -84,6 +88,7 @@ const getNameInitials = (fullName: string): string => {
 export function LeaveApprovalClient({
   companyId,
   isHR,
+  companyOptions,
   departmentOptions,
   rows,
   initialQueueTotal,
@@ -103,12 +108,15 @@ export function LeaveApprovalClient({
   const [open, setOpen] = useState(false)
   const [actionType, setActionType] = useState<"approve" | "reject">("approve")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedRequestCompanyId, setSelectedRequestCompanyId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
   const [queueSearch, setQueueSearch] = useState("")
   const [queueStatus, setQueueStatus] = useState<QueueStatusFilter>("ALL")
+  const [queueCompanyId, setQueueCompanyId] = useState<string>("ALL")
   const [queueDepartmentId, setQueueDepartmentId] = useState<string>("ALL")
   const [historySearch, setHistorySearch] = useState("")
   const [historyStatus, setHistoryStatus] = useState<HistoryStatusFilter>("ALL")
+  const [historyCompanyId, setHistoryCompanyId] = useState<string>("ALL")
   const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
@@ -141,10 +149,26 @@ export function LeaveApprovalClient({
   const activeRowsPage = Math.min(rowsPage, queueTotalPages)
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / historyItemsPerPage))
   const activeHistoryPage = Math.min(historyPage, historyTotalPages)
-  const hasActiveQueueFilters = queueSearch.trim().length > 0 || queueStatus !== "ALL" || queueDepartmentId !== "ALL"
+  const queueDepartmentOptions = useMemo(
+    () =>
+      queueCompanyId === "ALL"
+        ? departmentOptions
+        : departmentOptions.filter((department) => department.companyId === queueCompanyId),
+    [departmentOptions, queueCompanyId]
+  )
+  const historyDepartmentOptions = useMemo(
+    () =>
+      historyCompanyId === "ALL"
+        ? departmentOptions
+        : departmentOptions.filter((department) => department.companyId === historyCompanyId),
+    [departmentOptions, historyCompanyId]
+  )
+  const hasActiveQueueFilters =
+    queueSearch.trim().length > 0 || queueStatus !== "ALL" || queueCompanyId !== "ALL" || queueDepartmentId !== "ALL"
   const hasActiveHistoryFilters =
     historySearch.trim().length > 0 ||
     historyStatus !== "ALL" ||
+    historyCompanyId !== "ALL" ||
     historyDepartmentId !== "ALL" ||
     Boolean(historyFromDate) ||
     Boolean(historyToDate)
@@ -167,6 +191,7 @@ export function LeaveApprovalClient({
     page: number
     search: string
     status: QueueStatusFilter
+    companyId: string
     departmentId: string
   }) => {
     const token = queueRequestTokenRef.current + 1
@@ -180,6 +205,7 @@ export function LeaveApprovalClient({
         pageSize: queueItemsPerPage,
         search: params.search,
         status: params.status,
+        filterCompanyId: params.companyId === "ALL" ? undefined : params.companyId,
         departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
       })
 
@@ -206,6 +232,7 @@ export function LeaveApprovalClient({
         page: 1,
         search: nextSearch,
         status: queueStatus,
+        companyId: queueCompanyId,
         departmentId: queueDepartmentId,
       })
     }, 250)
@@ -216,6 +243,7 @@ export function LeaveApprovalClient({
     pageSize: number
     search: string
     status: HistoryStatusFilter
+    companyId: string
     departmentId: string
     fromDate: string
     toDate: string
@@ -231,6 +259,7 @@ export function LeaveApprovalClient({
         pageSize: params.pageSize,
         search: params.search,
         status: params.status,
+        filterCompanyId: params.companyId === "ALL" ? undefined : params.companyId,
         departmentId: params.departmentId === "ALL" ? undefined : params.departmentId,
         fromDate: params.fromDate,
         toDate: params.toDate,
@@ -262,6 +291,7 @@ export function LeaveApprovalClient({
         pageSize: historyItemsPerPage,
         search: nextSearch,
         status: historyStatus,
+        companyId: historyCompanyId,
         departmentId: historyDepartmentId,
         fromDate: historyFromDate,
         toDate: historyToDate,
@@ -281,8 +311,9 @@ export function LeaveApprovalClient({
     }
   }, [])
 
-  const openDecision = (rowId: string, type: "approve" | "reject") => {
+  const openDecision = (rowId: string, requestCompanyId: string, type: "approve" | "reject") => {
     setSelectedId(rowId)
+    setSelectedRequestCompanyId(requestCompanyId)
     setActionType(type)
     setRemarks("")
     setOpen(true)
@@ -292,13 +323,14 @@ export function LeaveApprovalClient({
     if (!selectedId) return
 
     startTransition(async () => {
+      const requestCompanyId = selectedRequestCompanyId ?? companyId
       const response = isHR
         ? actionType === "approve"
-          ? await approveLeaveByHrAction({ companyId, requestId: selectedId, remarks })
-          : await rejectLeaveByHrAction({ companyId, requestId: selectedId, remarks })
+          ? await approveLeaveByHrAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
+          : await rejectLeaveByHrAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
         : actionType === "approve"
-          ? await approveLeaveBySupervisorAction({ companyId, requestId: selectedId, remarks })
-          : await rejectLeaveBySupervisorAction({ companyId, requestId: selectedId, remarks })
+          ? await approveLeaveBySupervisorAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
+          : await rejectLeaveBySupervisorAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
 
       if (!response.ok) {
         toast.error(response.error)
@@ -392,6 +424,7 @@ export function LeaveApprovalClient({
                   page: 1,
                   search: queueSearch,
                   status: nextStatus,
+                  companyId: queueCompanyId,
                   departmentId: queueDepartmentId,
                 })
               }}
@@ -406,6 +439,33 @@ export function LeaveApprovalClient({
               </SelectContent>
             </Select>
             <Select
+              value={queueCompanyId}
+              onValueChange={(value) => {
+                setQueueCompanyId(value)
+                setQueueDepartmentId("ALL")
+                clearQueueSearchTimer()
+                loadQueuePage({
+                  page: 1,
+                  search: queueSearch,
+                  status: queueStatus,
+                  companyId: value,
+                  departmentId: "ALL",
+                })
+              }}
+            >
+              <SelectTrigger className="w-full rounded-lg sm:w-[200px]">
+                <SelectValue placeholder="Company" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                <SelectItem value="ALL">All companies</SelectItem>
+                {companyOptions.map((company) => (
+                  <SelectItem key={company.id} value={company.id}>
+                    {company.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
               value={queueDepartmentId}
               onValueChange={(value) => {
                 setQueueDepartmentId(value)
@@ -414,6 +474,7 @@ export function LeaveApprovalClient({
                   page: 1,
                   search: queueSearch,
                   status: queueStatus,
+                  companyId: queueCompanyId,
                   departmentId: value,
                 })
               }}
@@ -423,7 +484,7 @@ export function LeaveApprovalClient({
               </SelectTrigger>
               <SelectContent className="rounded-lg">
                 <SelectItem value="ALL">All departments</SelectItem>
-                {departmentOptions.map((department) => (
+                {queueDepartmentOptions.map((department) => (
                   <SelectItem key={department.id} value={department.id}>
                     {department.name}
                     {!department.isActive ? " (Inactive)" : ""}
@@ -438,12 +499,14 @@ export function LeaveApprovalClient({
               onClick={() => {
                 setQueueSearch("")
                 setQueueStatus("ALL")
+                setQueueCompanyId("ALL")
                 setQueueDepartmentId("ALL")
                 clearQueueSearchTimer()
                 loadQueuePage({
                   page: 1,
                   search: "",
                   status: "ALL",
+                  companyId: "ALL",
                   departmentId: "ALL",
                 })
               }}
@@ -541,11 +604,11 @@ export function LeaveApprovalClient({
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, "reject")} disabled={isPending}>
+                            <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
                             </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, "approve")} disabled={isPending}>
+                            <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
@@ -587,11 +650,11 @@ export function LeaveApprovalClient({
                             </Badge>
                           </div>
                           <div className="col-span-2 flex justify-end gap-2">
-                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, "reject")} disabled={isPending}>
+                            <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
                               <IconX className="mr-1 h-3.5 w-3.5" />
                               Reject
                             </Button>
-                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, "approve")} disabled={isPending}>
+                            <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
                               <IconCheck className="mr-1 h-3.5 w-3.5" />
                               Approve
                             </Button>
@@ -615,6 +678,7 @@ export function LeaveApprovalClient({
                             page: activeRowsPage - 1,
                             search: queueSearch,
                             status: queueStatus,
+                            companyId: queueCompanyId,
                             departmentId: queueDepartmentId,
                           })
                         }
@@ -631,6 +695,7 @@ export function LeaveApprovalClient({
                             page: activeRowsPage + 1,
                             search: queueSearch,
                             status: queueStatus,
+                            companyId: queueCompanyId,
                             departmentId: queueDepartmentId,
                           })
                         }
@@ -655,7 +720,7 @@ export function LeaveApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 sm:gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-7 sm:gap-3">
             <div className="relative col-span-3 sm:col-span-1">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
               <Input
@@ -680,6 +745,7 @@ export function LeaveApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: nextStatus,
+                    companyId: historyCompanyId,
                     departmentId: historyDepartmentId,
                     fromDate: historyFromDate,
                     toDate: historyToDate,
@@ -699,6 +765,39 @@ export function LeaveApprovalClient({
             </div>
             <div className="col-span-1">
               <Select
+                value={historyCompanyId}
+                onValueChange={(value) => {
+                  setHistoryCompanyId(value)
+                  setHistoryDepartmentId("ALL")
+                  setExpandedHistoryRequestId(null)
+                  clearHistorySearchTimer()
+                  loadHistoryPage({
+                    page: 1,
+                    pageSize: historyItemsPerPage,
+                    search: historySearch,
+                    status: historyStatus,
+                    companyId: value,
+                    departmentId: "ALL",
+                    fromDate: historyFromDate,
+                    toDate: historyToDate,
+                  })
+                }}
+              >
+                <SelectTrigger className="w-full rounded-lg">
+                  <SelectValue placeholder="Company" />
+                </SelectTrigger>
+                <SelectContent className="rounded-lg">
+                  <SelectItem value="ALL">All companies</SelectItem>
+                  {companyOptions.map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-1">
+              <Select
                 value={historyDepartmentId}
                 onValueChange={(value) => {
                   setHistoryDepartmentId(value)
@@ -709,6 +808,7 @@ export function LeaveApprovalClient({
                     pageSize: historyItemsPerPage,
                     search: historySearch,
                     status: historyStatus,
+                    companyId: historyCompanyId,
                     departmentId: value,
                     fromDate: historyFromDate,
                     toDate: historyToDate,
@@ -720,7 +820,7 @@ export function LeaveApprovalClient({
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
                   <SelectItem value="ALL">All departments</SelectItem>
-                  {departmentOptions.map((department) => (
+                  {historyDepartmentOptions.map((department) => (
                     <SelectItem key={department.id} value={department.id}>
                       {department.name}
                       {!department.isActive ? " (Inactive)" : ""}
@@ -736,6 +836,7 @@ export function LeaveApprovalClient({
               onClick={() => {
                 setHistorySearch("")
                 setHistoryStatus("ALL")
+                setHistoryCompanyId("ALL")
                 setHistoryDepartmentId("ALL")
                 setHistoryFromDate("")
                 setHistoryToDate("")
@@ -746,6 +847,7 @@ export function LeaveApprovalClient({
                   pageSize: historyItemsPerPage,
                   search: "",
                   status: "ALL",
+                  companyId: "ALL",
                   departmentId: "ALL",
                   fromDate: "",
                   toDate: "",
@@ -783,6 +885,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        companyId: historyCompanyId,
                         departmentId: historyDepartmentId,
                         fromDate: nextFrom,
                         toDate: nextTo,
@@ -815,6 +918,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        companyId: historyCompanyId,
                         departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: nextTo,
@@ -1026,6 +1130,7 @@ export function LeaveApprovalClient({
                         pageSize: Number(value),
                         search: historySearch,
                         status: historyStatus,
+                        companyId: historyCompanyId,
                         departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,
@@ -1056,6 +1161,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        companyId: historyCompanyId,
                         departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,
@@ -1077,6 +1183,7 @@ export function LeaveApprovalClient({
                         pageSize: historyItemsPerPage,
                         search: historySearch,
                         status: historyStatus,
+                        companyId: historyCompanyId,
                         departmentId: historyDepartmentId,
                         fromDate: historyFromDate,
                         toDate: historyToDate,

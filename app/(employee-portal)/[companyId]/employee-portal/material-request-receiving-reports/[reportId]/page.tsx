@@ -24,8 +24,8 @@ export default async function MaterialRequestReceivingReportDetailRoute({
     context.companyRole === "PAYROLL_ADMIN"
   const canViewCompanyWide =
     isHR ||
-    Boolean(context.employee?.user?.isMaterialRequestPurchaser) ||
-    Boolean(context.employee?.user?.isMaterialRequestPoster)
+    context.isMaterialRequestPurchaser ||
+    context.isMaterialRequestPoster
 
   const detail = await getEmployeePortalMaterialRequestReceivingReportDetailReadModel({
     companyId: context.companyId,

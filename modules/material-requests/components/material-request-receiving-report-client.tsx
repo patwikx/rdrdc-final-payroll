@@ -5,6 +5,7 @@ import Link from "next/link"
 import { motion } from "framer-motion"
 import {
   IconChecklist,
+  IconExternalLink,
   IconFileCheck,
   IconFilterOff,
   IconReceipt2,
@@ -17,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   getMaterialRequestReceivingReportPageAction,
 } from "@/modules/material-requests/actions/material-request-receiving-actions"
@@ -344,21 +346,25 @@ export function MaterialRequestReceivingReportClient({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
-                      className="border-b border-border/40 hover:bg-muted/20"
+                      className="group"
                     >
-                      <td className="px-3 py-3">
+                      <td className="border-y border-l border-border/60 bg-background px-3 py-3 transition-colors group-hover:bg-muted/20">
                         <p className="font-medium text-foreground">{row.reportNumber}</p>
                         <p className="text-xs text-muted-foreground">{row.itemCount} item(s)</p>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="border-y border-border/60 bg-background px-3 py-3 transition-colors group-hover:bg-muted/20">
                         <p className="font-medium text-foreground">{row.requestNumber}</p>
                         <p className="text-xs text-muted-foreground">{row.datePreparedLabel} - {row.dateRequiredLabel}</p>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="border-y border-border/60 bg-background px-3 py-3 transition-colors group-hover:bg-muted/20">
                         <div className="flex items-center gap-2">
-                          <Avatar className="h-7 w-7 rounded-full border border-border/60">
-                            <AvatarImage src={row.requesterPhotoUrl ?? undefined} alt={row.requesterName} />
-                            <AvatarFallback className="rounded-full bg-muted text-[10px] text-muted-foreground">
+                          <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                            <AvatarImage
+                              src={row.requesterPhotoUrl ?? undefined}
+                              alt={row.requesterName}
+                              className="!rounded-md object-cover"
+                            />
+                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
                               {getNameInitials(row.requesterName)}
                             </AvatarFallback>
                           </Avatar>
@@ -368,24 +374,38 @@ export function MaterialRequestReceivingReportClient({
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-foreground">{row.departmentName}</td>
-                      <td className="px-3 py-3">
+                      <td className="border-y border-border/60 bg-background px-3 py-3 text-foreground transition-colors group-hover:bg-muted/20">
+                        {row.departmentName}
+                      </td>
+                      <td className="border-y border-border/60 bg-background px-3 py-3 transition-colors group-hover:bg-muted/20">
                         <p className="text-sm text-foreground">{row.receivedAtLabel}</p>
                         <p className="text-xs text-muted-foreground">By {row.receivedByName}</p>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="border-y border-border/60 bg-background px-3 py-3 transition-colors group-hover:bg-muted/20">
                         <Badge variant={postingStatusVariant(row.postingStatus)} className="rounded-full border px-2 py-0.5 text-[10px]">
                           {postingStatusLabel(row.postingStatus)}
                         </Badge>
                         <p className="mt-1 text-xs text-muted-foreground">{row.postingReference ?? "-"}</p>
                       </td>
-                      <td className="px-3 py-3 text-right font-medium text-foreground">PHP {currency.format(row.grandTotal)}</td>
-                      <td className="px-3 py-3 text-right">
-                        <Button type="button" variant="outline" size="sm" asChild>
-                          <Link href={`/${companyId}/employee-portal/material-request-receiving-reports/${row.id}`}>
-                            View
-                          </Link>
-                        </Button>
+                      <td className="border-y border-border/60 bg-background px-3 py-3 text-right font-medium text-foreground transition-colors group-hover:bg-muted/20">
+                        PHP {currency.format(row.grandTotal)}
+                      </td>
+                      <td className="border-y border-r border-border/60 bg-background px-3 py-3 text-right transition-colors group-hover:bg-muted/20">
+                        <div className="flex justify-end">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button type="button" size="icon" className="h-8 w-8 rounded-md" asChild>
+                                <Link href={`/${companyId}/employee-portal/material-request-receiving-reports/${row.id}`}>
+                                  <IconExternalLink className="h-3.5 w-3.5" />
+                                  <span className="sr-only">View Receiving Report</span>
+                                </Link>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={6}>
+                              View Receiving Report
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
                       </td>
                     </motion.tr>
                   ))}

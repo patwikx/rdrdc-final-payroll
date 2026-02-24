@@ -5,6 +5,7 @@ export const getMaterialRequestsForMyApprovalInputSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
+  filterCompanyId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
 })
 
@@ -32,6 +33,7 @@ export const getMaterialRequestApprovalHistoryPageInputSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().max(120).default(""),
   status: z.enum(["ALL", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"]).default("ALL"),
+  filterCompanyId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
 })
 

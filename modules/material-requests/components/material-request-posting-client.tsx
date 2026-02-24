@@ -648,7 +648,7 @@ export function MaterialRequestPostingClient({
           ) : detailError ? (
             <div className="py-3 text-sm text-destructive">{detailError}</div>
           ) : detail ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <div className="space-y-3">
                 <div className="rounded-lg border border-border/60 bg-muted/20">
                   <div className="border-b border-border/60 px-3 py-2">
@@ -667,32 +667,31 @@ export function MaterialRequestPostingClient({
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-foreground">Served Items</p>
                   <div className="overflow-hidden rounded-lg border border-border/60">
-                    <div className="overflow-x-auto">
-                      <div className="min-w-[680px]">
-                        <div className="grid grid-cols-12 items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          <p className="col-span-1">#</p>
-                          <p className="col-span-5">Description</p>
-                          <p className="col-span-2 text-right">Req.</p>
-                          <p className="col-span-2 text-right">Served</p>
-                          <p className="col-span-2 text-right">Rem.</p>
+                    <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem_4.75rem_4.75rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <p>#</p>
+                      <p>Description</p>
+                      <p className="text-right">Req.</p>
+                      <p className="text-right">Served</p>
+                      <p className="text-right">Rem.</p>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto">
+                      {detail.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-[2.25rem_minmax(0,1fr)_4.75rem_4.75rem_4.75rem] items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0"
+                        >
+                          <p className="text-muted-foreground">{item.lineNumber}</p>
+                          <div className="min-w-0">
+                            <p className="break-words text-foreground">{item.description}</p>
+                            <p className="text-[11px] text-muted-foreground">{item.uom}</p>
+                          </div>
+                          <p className="text-right font-medium text-foreground tabular-nums">{item.quantity.toFixed(3)}</p>
+                          <p className="text-right font-medium text-muted-foreground tabular-nums">{item.servedQuantity.toFixed(3)}</p>
+                          <p className="text-right font-medium text-amber-600 tabular-nums dark:text-amber-400">
+                            {item.remainingQuantity.toFixed(3)}
+                          </p>
                         </div>
-                        <div className="max-h-56 overflow-y-auto">
-                          {detail.items.map((item) => (
-                            <div key={item.id} className="grid grid-cols-12 items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0">
-                              <p className="col-span-1 text-muted-foreground">{item.lineNumber}</p>
-                              <div className="col-span-5">
-                                <p className="text-foreground">{item.description}</p>
-                                <p className="text-[11px] text-muted-foreground">{item.uom}</p>
-                              </div>
-                              <p className="col-span-2 text-right font-medium text-foreground">{item.quantity.toFixed(3)}</p>
-                              <p className="col-span-2 text-right font-medium text-muted-foreground">{item.servedQuantity.toFixed(3)}</p>
-                              <p className="col-span-2 text-right font-medium text-amber-600 dark:text-amber-400">
-                                {item.remainingQuantity.toFixed(3)}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 </div>

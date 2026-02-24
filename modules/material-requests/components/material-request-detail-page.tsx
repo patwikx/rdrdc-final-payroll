@@ -251,44 +251,6 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
         </div>
 
         <div className="border-t border-border/60 pt-4 sm:pt-5">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-foreground">KPI Tracking</h2>
-            <IconChartBar className="h-4 w-4 text-primary" />
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Approval Lead Time</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{request.approvalLeadTimeLabel ?? "-"}</p>
-              <p className="text-[11px] text-muted-foreground">Submitted to final approval</p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Queue Time</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserQueueTimeLabel ?? "-"}</p>
-              <p className="text-[11px] text-muted-foreground">Approved to processing start</p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Processing Time</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserProcessingTimeLabel ?? "-"}</p>
-              <p className="text-[11px] text-muted-foreground">Processing start to completed serve</p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fulfillment Lead Time</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{request.fulfillmentLeadTimeLabel ?? "-"}</p>
-              <p className="text-[11px] text-muted-foreground">Submitted to processing completed</p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-card p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Acknowledgment Time</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{request.acknowledgmentLeadTimeLabel ?? "-"}</p>
-              <p className="text-[11px] text-muted-foreground">Processing completed to requester confirmation</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-border/60 pt-4 sm:pt-5">
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-foreground">Requested Items</h2>
           </div>
@@ -377,6 +339,44 @@ export function MaterialRequestDetailPage({ companyId, companyName, request }: M
             </div>
           </div>
         ) : null}
+
+        <div className="border-t border-border/60 pt-4 sm:pt-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">KPI Tracking</h2>
+            <IconChartBar className="h-4 w-4 text-primary" />
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Approval Lead Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.approvalLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Submitted to final approval</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Queue Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserQueueTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Approved to processing start</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Purchaser Processing Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.purchaserProcessingTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Processing start to completed serve</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fulfillment Lead Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.fulfillmentLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Submitted to processing completed</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Acknowledgment Time</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">{request.acknowledgmentLeadTimeLabel ?? "-"}</p>
+              <p className="text-[11px] text-muted-foreground">Processing completed to requester confirmation</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

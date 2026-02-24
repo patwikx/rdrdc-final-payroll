@@ -16,6 +16,8 @@ type CreateEmployeeOnboardingActionResult =
   | { ok: true; message: string; employeeId: string }
   | { ok: false; error: string }
 
+const reportingManagerRankCodes = ["S1", "S2", "S3", "M1", "M2", "M3", "EXE", "EXECUTIVE"] as const
+
 const fieldLabelMap: Record<string, string> = {
   "identity.employeeNumber": "Employee Number",
   "identity.firstName": "First Name",
@@ -154,6 +156,47 @@ export async function createEmployeeOnboardingAction(
 
   try {
     const employeeId = await db.$transaction(async (tx) => {
+      const reportingManagerId = payload.employment.reportingManagerId ?? null
+
+      if (reportingManagerId) {
+        const validReportingManager = await tx.employee.findFirst({
+          where: {
+            id: reportingManagerId,
+            isActive: true,
+            deletedAt: null,
+            rank: {
+              is: {
+                isActive: true,
+                code: {
+                  in: [...reportingManagerRankCodes],
+                },
+              },
+            },
+            OR: [
+              { companyId: context.companyId },
+              {
+                user: {
+                  is: {
+                    isActive: true,
+                    companyAccess: {
+                      some: {
+                        companyId: context.companyId,
+                        isActive: true,
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          select: { id: true },
+        })
+
+        if (!validReportingManager) {
+          throw new Error("INVALID_REPORTING_MANAGER")
+        }
+      }
+
       const employee = await tx.employee.create({
         data: {
           companyId: context.companyId,
@@ -180,7 +223,7 @@ export async function createEmployeeOnboardingAction(
           positionId: payload.employment.positionId,
           rankId: payload.employment.rankId ?? null,
           branchId: payload.employment.branchId ?? null,
-          reportingManagerId: payload.employment.reportingManagerId ?? null,
+          reportingManagerId,
           probationEndDate: payload.employment.probationEndDate ? parsePhDate(payload.employment.probationEndDate) : null,
           regularizationDate: payload.employment.regularizationDate ? parsePhDate(payload.employment.regularizationDate) : null,
 
@@ -357,6 +400,10 @@ export async function createEmployeeOnboardingAction(
       employeeId,
     }
   } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_REPORTING_MANAGER") {
+      return { ok: false, error: "Selected reporting manager is not eligible for this company." }
+    }
+
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { ok: false, error: "Employee Number already exists. Please use a different Employee Number." }
     }

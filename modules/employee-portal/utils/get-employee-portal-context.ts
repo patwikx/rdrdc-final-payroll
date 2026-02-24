@@ -16,6 +16,14 @@ export type EmployeePortalContext = {
   companyId: string
   companyName: string
   companyRole: CompanyRole
+  user: {
+    firstName: string
+    lastName: string
+    email: string
+  } | null
+  isRequestApprover: boolean
+  isMaterialRequestPurchaser: boolean
+  isMaterialRequestPoster: boolean
   companies: Awaited<ReturnType<typeof getUserCompanyOptions>>
   employee: {
     id: string
@@ -56,44 +64,58 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     getUserCompanyOptions(session.user.id),
   ])
 
-  const employeeRecord = await db.employee.findFirst({
-    where: {
-      userId: session.user.id,
-      companyId: activeCompany.companyId,
-      deletedAt: null,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      employeeNumber: true,
-      photoUrl: true,
-      firstName: true,
-      lastName: true,
-      hireDate: true,
-      regularizationDate: true,
-      department: { select: { name: true } },
-      position: { select: { name: true } },
-      employmentStatus: { select: { name: true } },
-      employmentType: { select: { name: true } },
-      user: {
-        select: {
-          email: true,
-          isRequestApprover: true,
-          companyAccess: {
-            where: {
-              companyId: activeCompany.companyId,
-              isActive: true,
-            },
-            select: {
-              isMaterialRequestPurchaser: true,
-              isMaterialRequestPoster: true,
-            },
-            take: 1,
+  const [employeeRecord, userRecord, activeCompanyAccess] = await Promise.all([
+    db.employee.findFirst({
+      where: {
+        userId: session.user.id,
+        companyId: activeCompany.companyId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        employeeNumber: true,
+        photoUrl: true,
+        firstName: true,
+        lastName: true,
+        hireDate: true,
+        regularizationDate: true,
+        department: { select: { name: true } },
+        position: { select: { name: true } },
+        employmentStatus: { select: { name: true } },
+        employmentType: { select: { name: true } },
+        user: {
+          select: {
+            email: true,
           },
         },
       },
-    },
-  })
+    }),
+    db.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        isRequestApprover: true,
+      },
+    }),
+    db.userCompanyAccess.findFirst({
+      where: {
+        userId: session.user.id,
+        companyId: activeCompany.companyId,
+        isActive: true,
+      },
+      select: {
+        isMaterialRequestPurchaser: true,
+        isMaterialRequestPoster: true,
+      },
+    }),
+  ])
+
+  const isRequestApprover = Boolean(userRecord?.isRequestApprover)
+  const isMaterialRequestPurchaser = Boolean(activeCompanyAccess?.isMaterialRequestPurchaser)
+  const isMaterialRequestPoster = Boolean(activeCompanyAccess?.isMaterialRequestPoster)
 
   const employee = employeeRecord
     ? {
@@ -101,10 +123,9 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
         user: employeeRecord.user
           ? {
               email: employeeRecord.user.email,
-              isRequestApprover: employeeRecord.user.isRequestApprover,
-              isMaterialRequestPurchaser:
-                employeeRecord.user.companyAccess[0]?.isMaterialRequestPurchaser ?? false,
-              isMaterialRequestPoster: employeeRecord.user.companyAccess[0]?.isMaterialRequestPoster ?? false,
+              isRequestApprover,
+              isMaterialRequestPurchaser,
+              isMaterialRequestPoster,
             }
           : null,
       }
@@ -112,9 +133,10 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
 
   const companyRole = activeCompany.companyRole as CompanyRole
   const isHR = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN"
-  const canApprove = isHR || Boolean(employee?.user?.isRequestApprover)
-  const canProcess = isHR || Boolean(employee?.user?.isMaterialRequestPurchaser)
-  const canPost = isHR || Boolean(employee?.user?.isMaterialRequestPoster)
+  const canApprove = isHR || isRequestApprover
+  const canProcess = isHR || isMaterialRequestPurchaser
+  const canPost = isHR || isMaterialRequestPoster
+  const accessibleCompanyIds = companies.map((company) => company.companyId)
 
   const [
     leaveApprovalPending,
@@ -130,15 +152,17 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
                 statusCode: RequestStatus.SUPERVISOR_APPROVED,
                 employee: { companyId: activeCompany.companyId },
               }
-            : employee
-              ? {
-                  statusCode: RequestStatus.PENDING,
-                  supervisorApproverId: employee.id,
-                  employee: { companyId: activeCompany.companyId },
-                }
-              : {
-                  id: "__none__",
+            : {
+                statusCode: RequestStatus.PENDING,
+                employee: { companyId: activeCompany.companyId },
+                supervisorApprover: {
+                  is: {
+                    userId: session.user.id,
+                    deletedAt: null,
+                    isActive: true,
+                  },
                 },
+              },
         })
       : Promise.resolve(0),
     canApprove
@@ -148,21 +172,25 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
                 statusCode: RequestStatus.SUPERVISOR_APPROVED,
                 employee: { companyId: activeCompany.companyId },
               }
-            : employee
-              ? {
-                  statusCode: RequestStatus.PENDING,
-                  supervisorApproverId: employee.id,
-                  employee: { companyId: activeCompany.companyId },
-                }
-              : {
-                  id: "__none__",
+            : {
+                statusCode: RequestStatus.PENDING,
+                employee: { companyId: activeCompany.companyId },
+                supervisorApprover: {
+                  is: {
+                    userId: session.user.id,
+                    deletedAt: null,
+                    isActive: true,
+                  },
                 },
+              },
         })
       : Promise.resolve(0),
     canApprove
       ? db.materialRequest.count({
           where: {
-            companyId: activeCompany.companyId,
+            companyId: {
+              in: accessibleCompanyIds,
+            },
             status: MaterialRequestStatus.PENDING_APPROVAL,
             OR: [1, 2, 3, 4].map((stepNumber) => ({
               currentStep: stepNumber,
@@ -235,6 +263,16 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     companyId: activeCompany.companyId,
     companyName: activeCompany.companyName,
     companyRole,
+    user: userRecord
+      ? {
+          firstName: userRecord.firstName,
+          lastName: userRecord.lastName,
+          email: userRecord.email,
+        }
+      : null,
+    isRequestApprover,
+    isMaterialRequestPurchaser,
+    isMaterialRequestPoster,
     companies,
     employee,
     taskCounts: {

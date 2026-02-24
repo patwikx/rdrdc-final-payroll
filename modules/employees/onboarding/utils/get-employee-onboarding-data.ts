@@ -8,6 +8,8 @@ import {
   taxStatusOptions,
 } from "@/modules/employees/onboarding/schemas/employee-onboarding-schema"
 
+const reportingManagerRankCodes = ["S1", "S2", "S3", "M1", "M2", "M3", "EXE", "EXECUTIVE"] as const
+
 type Option = {
   id: string
   code: string
@@ -94,9 +96,47 @@ export async function getEmployeeOnboardingViewModel(companyId: string): Promise
       db.rank.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.branch.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.employee.findMany({
-        where: { companyId: context.companyId, isActive: true },
+        where: {
+          isActive: true,
+          deletedAt: null,
+          rank: {
+            is: {
+              isActive: true,
+              code: {
+                in: [...reportingManagerRankCodes],
+              },
+            },
+          },
+          OR: [
+            { companyId: context.companyId },
+            {
+              user: {
+                is: {
+                  isActive: true,
+                  companyAccess: {
+                    some: {
+                      companyId: context.companyId,
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-        select: { id: true, employeeNumber: true, firstName: true, lastName: true },
+        select: {
+          id: true,
+          employeeNumber: true,
+          firstName: true,
+          lastName: true,
+          companyId: true,
+          company: {
+            select: {
+              name: true,
+            },
+          },
+        },
         take: 200,
       }),
       db.workSchedule.findMany({
@@ -135,7 +175,10 @@ export async function getEmployeeOnboardingViewModel(companyId: string): Promise
       managers: managers.map((row) => ({
         id: row.id,
         code: row.employeeNumber,
-        name: `${row.lastName}, ${row.firstName}`,
+        name:
+          row.companyId === context.companyId
+            ? `${row.lastName}, ${row.firstName} (${row.employeeNumber})`
+            : `${row.lastName}, ${row.firstName} (${row.employeeNumber}) - ${row.company?.name ?? "Other Company"}`,
       })),
       workSchedules: map(workSchedules),
       payPeriodPatterns: map(payPeriodPatterns),

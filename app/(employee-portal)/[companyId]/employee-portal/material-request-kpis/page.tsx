@@ -35,9 +35,9 @@ export default async function MaterialRequestKpiPage({ params, searchParams }: M
     context.companyRole === "PAYROLL_ADMIN"
   const canViewCompanyWide =
     isHR ||
-    Boolean(context.employee?.user?.isRequestApprover) ||
-    Boolean(context.employee?.user?.isMaterialRequestPurchaser) ||
-    Boolean(context.employee?.user?.isMaterialRequestPoster)
+    context.isRequestApprover ||
+    context.isMaterialRequestPurchaser ||
+    context.isMaterialRequestPoster
 
   const rangeCandidate = query.range
   const range = KPI_RANGE_VALUES.includes(rangeCandidate as EmployeePortalMaterialRequestKpiRange)

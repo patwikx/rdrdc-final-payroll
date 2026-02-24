@@ -169,6 +169,10 @@ const toLeaveApprovalRow = (item: {
   reason: string | null
   statusCode: RequestStatus
   employee: {
+    companyId: string
+    company: {
+      name: string
+    } | null
     firstName: string
     lastName: string
     employeeNumber: string
@@ -184,6 +188,8 @@ const toLeaveApprovalRow = (item: {
 }): EmployeePortalLeaveApprovalRow => {
   return {
     id: item.id,
+    companyId: item.employee.companyId,
+    companyName: item.employee.company?.name ?? "Unknown Company",
     requestNumber: item.requestNumber,
     startDate: dateLabel.format(item.startDate),
     endDate: dateLabel.format(item.endDate),
@@ -215,6 +221,10 @@ const toLeaveApprovalHistoryRow = (
     hrApprovedAt: Date | null
     hrRejectedAt: Date | null
     employee: {
+      companyId: string
+      company: {
+        name: string
+      } | null
       firstName: string
       lastName: string
       employeeNumber: string
@@ -235,40 +245,43 @@ const toLeaveApprovalHistoryRow = (
     : item.supervisorApprovedAt ?? item.rejectedAt ?? item.updatedAt
 
   return {
-    id: item.id,
-    requestNumber: item.requestNumber,
-    startDate: dateLabel.format(item.startDate),
-    endDate: dateLabel.format(item.endDate),
-    numberOfDays: Number(item.numberOfDays),
-    reason: item.reason,
-    statusCode: item.statusCode,
-    employeeName: `${item.employee.firstName} ${item.employee.lastName}`,
-    employeeNumber: item.employee.employeeNumber,
-    employeePhotoUrl: item.employee.photoUrl,
-    departmentId: item.employee.departmentId,
-    departmentName: item.employee.department?.name ?? "Unassigned",
-    leaveTypeName: item.leaveType.name,
+    ...toLeaveApprovalRow(item),
     decidedAtIso: decidedAt.toISOString(),
     decidedAtLabel: dateTimeLabel.format(decidedAt),
   }
 }
 
 const buildLeaveApprovalQueueWhere = (params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   search: string
   status: LeaveApprovalQueueStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Prisma.LeaveRequestWhereInput => {
   const where: Prisma.LeaveRequestWhereInput = params.isHR
     ? {
-        employee: { companyId: params.companyId },
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
         statusCode: RequestStatus.SUPERVISOR_APPROVED,
       }
     : {
-        employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: RequestStatus.PENDING,
       }
 
@@ -277,6 +290,14 @@ const buildLeaveApprovalQueueWhere = (params: {
   }
 
   const andFilters: Prisma.LeaveRequestWhereInput[] = []
+
+  if (params.filterCompanyId) {
+    andFilters.push({
+      employee: {
+        companyId: params.filterCompanyId,
+      },
+    })
+  }
 
   if (params.departmentId) {
     andFilters.push({
@@ -356,13 +377,14 @@ const buildLeaveApprovalQueueWhere = (params: {
 }
 
 export async function getEmployeePortalLeaveApprovalQueuePageReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   page: number
   pageSize: number
   search: string
   status: LeaveApprovalQueueStatusFilter
+  filterCompanyId?: string
   departmentId?: string
 }): Promise<EmployeePortalLeaveApprovalQueuePage> {
   const where = buildLeaveApprovalQueueWhere(params)
@@ -378,6 +400,12 @@ export async function getEmployeePortalLeaveApprovalQueuePageReadModel(params: {
       include: {
         employee: {
           select: {
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+              },
+            },
             firstName: true,
             lastName: true,
             employeeNumber: true,
@@ -408,24 +436,45 @@ export async function getEmployeePortalLeaveApprovalQueuePageReadModel(params: {
 }
 
 const buildLeaveApprovalHistoryWhere = (params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   search: string
   status: LeaveApprovalHistoryStatusFilter
   fromDate: string
   toDate: string
+  filterCompanyId?: string
   departmentId?: string
 }): Prisma.LeaveRequestWhereInput => {
   const where: Prisma.LeaveRequestWhereInput = params.isHR
     ? {
-        employee: { companyId: params.companyId },
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
         statusCode: { in: [RequestStatus.APPROVED, RequestStatus.REJECTED] },
-        ...(params.approverEmployeeId ? { hrApproverId: params.approverEmployeeId } : {}),
+        hrApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
       }
     : {
-        employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        employee: {
+          companyId: {
+            in: params.companyIds,
+          },
+        },
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: {
           in: [RequestStatus.SUPERVISOR_APPROVED, RequestStatus.APPROVED, RequestStatus.REJECTED],
         },
@@ -437,6 +486,14 @@ const buildLeaveApprovalHistoryWhere = (params: {
 
   const search = params.search.trim()
   const andFilters: Prisma.LeaveRequestWhereInput[] = []
+
+  if (params.filterCompanyId) {
+    andFilters.push({
+      employee: {
+        companyId: params.filterCompanyId,
+      },
+    })
+  }
 
   if (params.departmentId) {
     andFilters.push({
@@ -539,15 +596,16 @@ const buildLeaveApprovalHistoryWhere = (params: {
 }
 
 export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   page: number
   pageSize: number
   search: string
   status: LeaveApprovalHistoryStatusFilter
   fromDate: string
   toDate: string
+  filterCompanyId?: string
   departmentId?: string
 }): Promise<EmployeePortalLeaveApprovalHistoryPage> {
   const where = buildLeaveApprovalHistoryWhere(params)
@@ -563,6 +621,12 @@ export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params:
       include: {
         employee: {
           select: {
+            companyId: true,
+            company: {
+              select: {
+                name: true,
+              },
+            },
             firstName: true,
             lastName: true,
             employeeNumber: true,
@@ -595,7 +659,7 @@ export async function getEmployeePortalLeaveApprovalHistoryPageReadModel(params:
 export async function getEmployeePortalLeaveApprovalHistoryDetailReadModel(params: {
   companyId: string
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
   requestId: string
 }): Promise<EmployeePortalLeaveApprovalHistoryDetail | null> {
   const where: Prisma.LeaveRequestWhereInput = params.isHR
@@ -603,12 +667,24 @@ export async function getEmployeePortalLeaveApprovalHistoryDetailReadModel(param
         id: params.requestId,
         employee: { companyId: params.companyId },
         statusCode: { in: [RequestStatus.APPROVED, RequestStatus.REJECTED] },
-        ...(params.approverEmployeeId ? { hrApproverId: params.approverEmployeeId } : {}),
+        hrApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
       }
     : {
         id: params.requestId,
         employee: { companyId: params.companyId },
-        supervisorApproverId: params.approverEmployeeId,
+        supervisorApprover: {
+          is: {
+            userId: params.approverUserId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
         statusCode: {
           in: [RequestStatus.SUPERVISOR_APPROVED, RequestStatus.APPROVED, RequestStatus.REJECTED],
         },
@@ -756,31 +832,33 @@ export async function getEmployeePortalLeaveApprovalHistoryDetailReadModel(param
 }
 
 export async function getEmployeePortalLeaveApprovalReadModel(params: {
-  companyId: string
+  companyIds: string[]
   isHR: boolean
-  approverEmployeeId?: string
+  approverUserId: string
 }) {
   const [queuePage, historyPage] = await Promise.all([
     getEmployeePortalLeaveApprovalQueuePageReadModel({
-      companyId: params.companyId,
+      companyIds: params.companyIds,
       isHR: params.isHR,
-      approverEmployeeId: params.approverEmployeeId,
+      approverUserId: params.approverUserId,
       page: 1,
       pageSize: 10,
       search: "",
       status: "ALL",
+      filterCompanyId: undefined,
       departmentId: undefined,
     }),
     getEmployeePortalLeaveApprovalHistoryPageReadModel({
-      companyId: params.companyId,
+      companyIds: params.companyIds,
       isHR: params.isHR,
-      approverEmployeeId: params.approverEmployeeId,
+      approverUserId: params.approverUserId,
       page: 1,
       pageSize: 10,
       search: "",
       status: "ALL",
       fromDate: "",
       toDate: "",
+      filterCompanyId: undefined,
       departmentId: undefined,
     }),
   ])
@@ -798,15 +876,27 @@ export async function getEmployeePortalLeaveApprovalReadModel(params: {
 }
 
 export async function getEmployeePortalLeaveApprovalDepartmentOptions(params: {
-  companyId: string
+  companyId?: string
+  companyIds?: string[]
 }): Promise<EmployeePortalLeaveApprovalDepartmentOption[]> {
+  const normalizedCompanyIds = (
+    params.companyIds?.length ? params.companyIds : params.companyId ? [params.companyId] : []
+  ).filter((companyId) => companyId.trim().length > 0)
+
+  if (normalizedCompanyIds.length === 0) {
+    return []
+  }
+
   return db.department.findMany({
     where: {
-      companyId: params.companyId,
+      companyId: {
+        in: normalizedCompanyIds,
+      },
     },
     orderBy: [{ isActive: "desc" }, { displayOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,
+      companyId: true,
       name: true,
       isActive: true,
     },

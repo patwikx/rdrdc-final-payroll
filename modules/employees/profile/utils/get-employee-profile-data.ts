@@ -7,6 +7,8 @@ import {
   taxStatusOptions,
 } from "@/modules/employees/onboarding/schemas/employee-onboarding-schema"
 
+const reportingManagerRankCodes = ["S1", "S2", "S3", "M1", "M2", "M3", "EXE", "EXECUTIVE"] as const
+
 type Option = {
   id: string
   code: string
@@ -395,9 +397,47 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       db.rank.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.branch.findMany({ where: { companyId: context.companyId, isActive: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }] }),
       db.employee.findMany({
-        where: { companyId: context.companyId, isActive: true, deletedAt: null },
+        where: {
+          isActive: true,
+          deletedAt: null,
+          rank: {
+            is: {
+              isActive: true,
+              code: {
+                in: [...reportingManagerRankCodes],
+              },
+            },
+          },
+          OR: [
+            { companyId: context.companyId },
+            {
+              user: {
+                is: {
+                  isActive: true,
+                  companyAccess: {
+                    some: {
+                      companyId: context.companyId,
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-        select: { id: true, employeeNumber: true, firstName: true, lastName: true },
+        select: {
+          id: true,
+          employeeNumber: true,
+          firstName: true,
+          lastName: true,
+          companyId: true,
+          company: {
+            select: {
+              name: true,
+            },
+          },
+        },
         take: 300,
       }),
       db.workSchedule.findMany({
@@ -671,7 +711,14 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       positions: mapOptions(positions),
       ranks: mapOptions(ranks),
       branches: mapOptions(branches),
-      managers: managers.map((row) => ({ id: row.id, code: row.employeeNumber, name: `${row.lastName}, ${row.firstName}` })),
+      managers: managers.map((row) => ({
+        id: row.id,
+        code: row.employeeNumber,
+        name:
+          row.companyId === context.companyId
+            ? `${row.lastName}, ${row.firstName} (${row.employeeNumber})`
+            : `${row.lastName}, ${row.firstName} (${row.employeeNumber}) - ${row.company?.name ?? "Other Company"}`,
+      })),
       workSchedules: workSchedules.map((schedule) => ({
         id: schedule.id,
         code: schedule.code,

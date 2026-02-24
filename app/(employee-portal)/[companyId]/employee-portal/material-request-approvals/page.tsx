@@ -23,7 +23,14 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
     context.companyRole === "COMPANY_ADMIN" ||
     context.companyRole === "HR_ADMIN" ||
     context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = Boolean(context.employee?.user?.isRequestApprover) || isHR
+  const approverCompanyIds = context.companies.map((company) => company.companyId)
+  const hrApproverCompanyIds = context.companies
+    .filter(
+      (company) =>
+        company.role === "COMPANY_ADMIN" || company.role === "HR_ADMIN" || company.role === "PAYROLL_ADMIN"
+    )
+    .map((company) => company.companyId)
+  const canApprove = context.isRequestApprover || isHR
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)
@@ -31,12 +38,12 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
 
   const [approvalData, departmentOptions] = await Promise.all([
     getEmployeePortalMaterialRequestApprovalReadModel({
-      companyId: context.companyId,
+      companyIds: approverCompanyIds,
       approverUserId: context.userId,
-      isHR,
+      hrCompanyIds: hrApproverCompanyIds,
     }),
     getEmployeePortalMaterialRequestDepartmentOptions({
-      companyId: context.companyId,
+      companyIds: approverCompanyIds,
     }),
   ])
 
@@ -44,6 +51,10 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
     <MaterialRequestApprovalClient
       companyId={context.companyId}
       isHR={isHR}
+      companyOptions={context.companies.map((company) => ({
+        id: company.companyId,
+        name: company.companyName,
+      }))}
       departmentOptions={departmentOptions}
       rows={approvalData.rows}
       initialQueueTotal={approvalData.queueTotal}

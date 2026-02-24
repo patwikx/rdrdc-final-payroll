@@ -210,8 +210,10 @@ export async function updateMaterialRequestProcessingStatusAction(
     | {
         requestNumber: string
         previousStatus: MaterialRequestProcessingStatus
+        finalStatus: MaterialRequestProcessingStatus
+        autoCompletedOnServe: boolean
         alreadyCompleted: boolean
-        inProgressUpdateMode: "SERVED" | "METADATA_ONLY" | "STARTED" | "NO_CHANGES" | null
+        inProgressUpdateMode: "SERVED" | "METADATA_ONLY" | "STARTED" | "NO_CHANGES" | "SERVED_AND_COMPLETED" | null
       }
     | null = null
 
@@ -293,6 +295,8 @@ export async function updateMaterialRequestProcessingStatusAction(
             return {
               requestNumber: request.requestNumber,
               previousStatus,
+              finalStatus: MaterialRequestProcessingStatus.COMPLETED,
+              autoCompletedOnServe: false,
               alreadyCompleted: true,
               inProgressUpdateMode: null,
             }
@@ -350,6 +354,13 @@ export async function updateMaterialRequestProcessingStatusAction(
           ([itemId, requestedQuantity]) =>
             requestedQuantity - (servedQuantityByItemId.get(itemId) ?? 0) > QUANTITY_TOLERANCE
         )
+        const shouldAutoCompleteFromServe =
+          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS &&
+          batchItemsToCreate.length > 0 &&
+          !hasRemainingQuantities
+        const finalStatus = shouldAutoCompleteFromServe
+          ? MaterialRequestProcessingStatus.COMPLETED
+          : payload.status
 
         if (payload.status === MaterialRequestProcessingStatus.COMPLETED && hasRemainingQuantities) {
           throw new MaterialRequestProcessingValidationError(
@@ -393,13 +404,15 @@ export async function updateMaterialRequestProcessingStatusAction(
           return {
             requestNumber: request.requestNumber,
             previousStatus,
+            finalStatus: MaterialRequestProcessingStatus.IN_PROGRESS,
+            autoCompletedOnServe: false,
             alreadyCompleted: false,
             inProgressUpdateMode: "NO_CHANGES" as const,
           }
         }
 
         const updateData: Prisma.MaterialRequestUpdateInput =
-          payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
+          finalStatus === MaterialRequestProcessingStatus.IN_PROGRESS
             ? {
                 processingStatus: MaterialRequestProcessingStatus.IN_PROGRESS,
                 processingStartedAt: request.processingStartedAt ?? actedAt,
@@ -451,7 +464,7 @@ export async function updateMaterialRequestProcessingStatusAction(
               poNumber: processingPoNumber,
               supplierName: processingSupplierName,
               notes: remarks,
-              isFinalServe: payload.status === MaterialRequestProcessingStatus.COMPLETED,
+              isFinalServe: finalStatus === MaterialRequestProcessingStatus.COMPLETED,
               servedAt: actedAt,
               servedByUserId: context.userId,
               items: {
@@ -479,7 +492,7 @@ export async function updateMaterialRequestProcessingStatusAction(
             },
           })
         } else if (
-          payload.status === MaterialRequestProcessingStatus.COMPLETED &&
+          finalStatus === MaterialRequestProcessingStatus.COMPLETED &&
           latestServeBatch?.id
         ) {
           await tx.materialRequestServeBatch.update({
@@ -503,7 +516,7 @@ export async function updateMaterialRequestProcessingStatusAction(
               {
                 fieldName: "processingStatus",
                 oldValue: previousStatus,
-                newValue: payload.status,
+                newValue: finalStatus,
               },
               {
                 fieldName: "processingRemarks",
@@ -555,9 +568,11 @@ export async function updateMaterialRequestProcessingStatusAction(
         return {
           requestNumber: request.requestNumber,
           previousStatus,
+          finalStatus,
+          autoCompletedOnServe: shouldAutoCompleteFromServe,
           alreadyCompleted: false,
           inProgressUpdateMode:
-            payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
+            finalStatus === MaterialRequestProcessingStatus.IN_PROGRESS
               ? shouldCreateServeBatch
                 ? "SERVED"
                 : previousStatus === MaterialRequestProcessingStatus.PENDING_PURCHASER
@@ -565,6 +580,8 @@ export async function updateMaterialRequestProcessingStatusAction(
                   : shouldUpdateLatestServeBatchMetadata || remarks !== request.processingRemarks
                     ? "METADATA_ONLY"
                     : "NO_CHANGES"
+              : shouldAutoCompleteFromServe
+                ? "SERVED_AND_COMPLETED"
               : null,
         }
       }, {
@@ -601,7 +618,7 @@ export async function updateMaterialRequestProcessingStatusAction(
   return {
     ok: true,
     message:
-      payload.status === MaterialRequestProcessingStatus.IN_PROGRESS
+      outcome.finalStatus === MaterialRequestProcessingStatus.IN_PROGRESS
         ? outcome.inProgressUpdateMode === "SERVED"
           ? outcome.previousStatus === MaterialRequestProcessingStatus.IN_PROGRESS
             ? `Material request ${outcome.requestNumber} updated with served quantities.`
@@ -611,6 +628,8 @@ export async function updateMaterialRequestProcessingStatusAction(
             : outcome.inProgressUpdateMode === "METADATA_ONLY"
               ? `Material request ${outcome.requestNumber} processing details updated.`
               : `No processing changes were applied to material request ${outcome.requestNumber}.`
+        : outcome.autoCompletedOnServe
+          ? `Material request ${outcome.requestNumber} served quantities completed the request automatically.`
         : `Material request ${outcome.requestNumber} marked as completed.`,
   }
 }

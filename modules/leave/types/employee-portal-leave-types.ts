@@ -61,6 +61,8 @@ export type EmployeePortalLeaveDashboardReadModel = {
 
 export type EmployeePortalLeaveApprovalRow = {
   id: string
+  companyId: string
+  companyName: string
   requestNumber: string
   startDate: string
   endDate: string
@@ -122,6 +124,7 @@ export type EmployeePortalLeaveApprovalHistoryDetail = {
 
 export type EmployeePortalLeaveApprovalDepartmentOption = {
   id: string
+  companyId: string
   name: string
   isActive: boolean
 }

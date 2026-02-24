@@ -231,7 +231,39 @@ const getRequesterEmployeeForCompanyAccess = async (params: {
   })
 
   if (!companyEmployee) {
-    return null
+    const fallbackEmployee = await db.employee.findFirst({
+      where: {
+        userId: params.userId,
+        companyId: {
+          not: params.companyId,
+        },
+        deletedAt: null,
+        isActive: true,
+        company: {
+          isActive: true,
+          userCompanyAccess: {
+            some: {
+              userId: params.userId,
+              isActive: true,
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "asc" }],
+      select: {
+        id: true,
+        departmentId: true,
+      },
+    })
+
+    if (!fallbackEmployee) {
+      return null
+    }
+
+    return {
+      id: fallbackEmployee.id,
+      departmentId: fallbackEmployee.departmentId,
+    }
   }
 
   return {

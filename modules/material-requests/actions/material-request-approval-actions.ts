@@ -58,6 +58,12 @@ const revalidateMaterialApprovalPaths = (companyId: string): void => {
   }
 }
 
+const revalidateMaterialApprovalPathsForCompanyIds = (companyIds: string[]): void => {
+  for (const companyId of Array.from(new Set(companyIds))) {
+    revalidateMaterialApprovalPaths(companyId)
+  }
+}
+
 const dateTimeLabel = new Intl.DateTimeFormat("en-PH", {
   month: "short",
   day: "2-digit",
@@ -156,6 +162,31 @@ const resolveMaterialRequestPurchaserRecipients = async (
   return recipients
 }
 
+const getActiveCompanyScopesForUser = async (userId: string): Promise<Array<{ companyId: string; role: string }>> => {
+  const accessRows = await db.userCompanyAccess.findMany({
+    where: {
+      userId,
+      isActive: true,
+      company: {
+        isActive: true,
+      },
+    },
+    select: {
+      companyId: true,
+      role: true,
+    },
+  })
+
+  const uniqueByCompanyId = new Map<string, { companyId: string; role: string }>()
+  for (const row of accessRows) {
+    if (!uniqueByCompanyId.has(row.companyId)) {
+      uniqueByCompanyId.set(row.companyId, { companyId: row.companyId, role: row.role })
+    }
+  }
+
+  return Array.from(uniqueByCompanyId.values())
+}
+
 export async function getMaterialRequestsForMyApprovalAction(
   input: GetMaterialRequestsForMyApprovalInput
 ): Promise<MaterialRequestActionDataResult<EmployeePortalMaterialRequestApprovalQueuePage>> {
@@ -166,12 +197,15 @@ export async function getMaterialRequestsForMyApprovalAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const companyScopes = await getActiveCompanyScopesForUser(context.userId)
+  const companyIds = companyScopes.map((scope) => scope.companyId)
   const queuePage = await getEmployeePortalMaterialRequestApprovalQueuePageReadModel({
-    companyId: context.companyId,
+    companyIds,
     approverUserId: context.userId,
     page: payload.page,
     pageSize: payload.pageSize,
     search: payload.search,
+    filterCompanyId: payload.filterCompanyId,
     departmentId: payload.departmentId,
   })
 
@@ -191,16 +225,21 @@ export async function getMaterialRequestApprovalHistoryPageAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
+  const companyScopes = await getActiveCompanyScopesForUser(context.userId)
+  const companyIds = companyScopes.map((scope) => scope.companyId)
+  const hrCompanyIds = companyScopes
+    .filter((scope) => isHrRole(scope.role as CompanyRole))
+    .map((scope) => scope.companyId)
 
   const historyPage = await getEmployeePortalMaterialRequestApprovalHistoryPageReadModel({
-    companyId: context.companyId,
+    companyIds,
     approverUserId: context.userId,
-    isHR: isHrRole(companyRole),
+    hrCompanyIds,
     page: payload.page,
     pageSize: payload.pageSize,
     search: payload.search,
     status: payload.status,
+    filterCompanyId: payload.filterCompanyId,
     departmentId: payload.departmentId,
   })
 
@@ -845,7 +884,8 @@ export async function approveMaterialRequestStepAction(
     return { ok: false, error: `Failed to approve material request: ${message}` }
   }
 
-  revalidateMaterialApprovalPaths(context.companyId)
+  const actorCompanyIds = (await getActiveCompanyScopesForUser(context.userId)).map((scope) => scope.companyId)
+  revalidateMaterialApprovalPathsForCompanyIds(actorCompanyIds)
 
   if (isFinalStep) {
     const recipients = await resolveMaterialRequestPurchaserRecipients(context.companyId)
@@ -1121,7 +1161,8 @@ export async function rejectMaterialRequestStepAction(
     return { ok: false, error: `Failed to reject material request: ${message}` }
   }
 
-  revalidateMaterialApprovalPaths(context.companyId)
+  const actorCompanyIds = (await getActiveCompanyScopesForUser(context.userId)).map((scope) => scope.companyId)
+  revalidateMaterialApprovalPathsForCompanyIds(actorCompanyIds)
 
   return {
     ok: true,

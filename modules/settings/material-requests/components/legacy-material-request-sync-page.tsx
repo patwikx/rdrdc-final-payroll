@@ -72,6 +72,7 @@ type LegacyMaterialRequestSyncPageProps = {
 }
 
 type SyncResult = Awaited<ReturnType<typeof syncLegacyMaterialRequestsAction>>
+type SyncSuccessResult = Extract<SyncResult, { ok: true }>
 type UnmatchedEntry = Extract<SyncResult, { ok: true }>["unmatched"][number]
 type ManualOverridePayload = SyncLegacyMaterialRequestsInput["manualOverrides"][number]
 
@@ -726,6 +727,65 @@ export function LegacyMaterialRequestSyncPage({
     setSelectedLegacyRecordIds((previous) => [...new Set([...previous, ...departmentChangedRecordIds])])
   }
 
+  const resolveImportFailureFromApplyResponse = useCallback(
+    (params: { response: SyncSuccessResult; legacyRecordId: string; requestNumber: string }) => {
+      const { response, legacyRecordId, requestNumber } = params
+      const unmatchedRow = response.unmatched.find((row) => row.legacyRecordId === legacyRecordId)
+      if (unmatchedRow) {
+        return {
+          title: `Row not imported: ${unmatchedRow.reason}`,
+          description: `${requestNumber} • ${unmatchedRow.mappedStatus || "N/A"} • ${unmatchedRow.pendingStepName || "No pending step"}`,
+          debug: {
+            summary: response.summary,
+            unmatchedRow,
+            skippedRows: response.skipped.filter((row) => row.legacyRecordId === legacyRecordId),
+            errors: response.errors,
+          },
+        }
+      }
+
+      const skippedRow = response.skipped.find((row) => row.legacyRecordId === legacyRecordId)
+      if (skippedRow) {
+        return {
+          title: `Row skipped: ${skippedRow.reason}`,
+          description: `${requestNumber}${skippedRow.status ? ` • ${skippedRow.status}` : ""}`,
+          debug: {
+            summary: response.summary,
+            skippedRow,
+            unmatchedRows: response.unmatched.filter((row) => row.legacyRecordId === legacyRecordId),
+            errors: response.errors,
+          },
+        }
+      }
+
+      const firstError = response.errors[0]?.message ?? null
+      if (firstError) {
+        return {
+          title: "Row not imported due to sync error.",
+          description: firstError,
+          debug: {
+            summary: response.summary,
+            errors: response.errors,
+            unmatchedRows: response.unmatched,
+            skippedRows: response.skipped,
+          },
+        }
+      }
+
+      return {
+        title: "Row was not imported.",
+        description: `${requestNumber} • No detailed reason returned by sync response.`,
+        debug: {
+          summary: response.summary,
+          errors: response.errors,
+          unmatchedRows: response.unmatched,
+          skippedRows: response.skipped,
+        },
+      }
+    },
+    []
+  )
+
   const saveSelectedRows = () => {
     startTransition(async () => {
       if (selectedLegacyRecordIds.length === 0) {
@@ -772,7 +832,40 @@ export function LegacyMaterialRequestSyncPage({
           return
         }
 
-        toast.success(`Saved ${applyResponse.summary.processed.materialRequests} selected row(s). Refreshing unmatched rows...`)
+        const processedCount = applyResponse.summary.processed.materialRequests
+        const matchedLegacyRecordIdSet = new Set(applyResponse.matched.map((row) => row.legacyRecordId))
+        const failedSelectedRows = selectedRows.filter((row) => !matchedLegacyRecordIdSet.has(row.legacyRecordId))
+
+        if (processedCount > 0) {
+          toast.success(`Saved ${processedCount} selected row(s). Refreshing unmatched rows...`)
+        }
+
+        if (failedSelectedRows.length > 0) {
+          const firstFailed = failedSelectedRows[0]
+          const failure = resolveImportFailureFromApplyResponse({
+            response: applyResponse,
+            legacyRecordId: firstFailed.legacyRecordId,
+            requestNumber: firstFailed.requestNumber,
+          })
+          const failureDescription = failure.description
+            ? `${failure.title} • ${failure.description}`
+            : failure.title
+
+          toast.error(`${failedSelectedRows.length} selected row(s) were not imported.`, {
+            description: failureDescription,
+          })
+
+          // eslint-disable-next-line no-console
+          console.log("[Legacy MR Sync] Save selected rows failed details", {
+            failedCount: failedSelectedRows.length,
+            failedLegacyRecordIds: failedSelectedRows.map((row) => row.legacyRecordId),
+            applyResponseSummary: applyResponse.summary,
+            firstFailure: failure,
+            applyResponseUnmatched: applyResponse.unmatched,
+            applyResponseSkipped: applyResponse.skipped,
+            applyResponseErrors: applyResponse.errors,
+          })
+        }
 
         let refreshResponse: SyncResult
         try {
@@ -836,7 +929,26 @@ export function LegacyMaterialRequestSyncPage({
         if (applyResponse.summary.processed.materialRequests > 0) {
           toast.success(`Saved ${entry.requestNumber}. Refreshing unmatched rows...`)
         } else {
-          toast.error("Row was not imported. Check row reason, then try again.")
+          const failure = resolveImportFailureFromApplyResponse({
+            response: applyResponse,
+            legacyRecordId: entry.legacyRecordId,
+            requestNumber: entry.requestNumber,
+          })
+
+          toast.error(failure.title, {
+            description: failure.description || "Open browser console for full sync debug details.",
+          })
+
+          // eslint-disable-next-line no-console
+          console.log("[Legacy MR Sync] Save row failed details", {
+            requestNumber: entry.requestNumber,
+            legacyRecordId: entry.legacyRecordId,
+            failure,
+            applyResponseSummary: applyResponse.summary,
+            applyResponseUnmatched: applyResponse.unmatched,
+            applyResponseSkipped: applyResponse.skipped,
+            applyResponseErrors: applyResponse.errors,
+          })
         }
 
         let refreshResponse: SyncResult

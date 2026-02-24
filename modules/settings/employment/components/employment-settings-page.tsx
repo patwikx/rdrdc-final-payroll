@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { copyPositionsFromCompanyAction } from "@/modules/settings/employment/actions/copy-positions-from-company-action"
@@ -955,6 +956,17 @@ function CopyPositionsDialog({
   const selectedCount = sourcePositions.filter((item) => selectedPositionIdSet.has(item.id)).length
   const allSelected = sourcePositions.length > 0 && selectedCount === sourcePositions.length
   const someSelected = selectedCount > 0 && !allSelected
+  const isInteractiveRowClickTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='menuitem'], [data-slot='checkbox'], [data-slot='select-trigger'], [data-slot='popover-content']"
+      )
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -993,68 +1005,72 @@ function CopyPositionsDialog({
 
           {sourceCompanyId ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs">
-                <label
-                  className={cn(
-                    "inline-flex items-center gap-2",
-                    sourcePositionsLoading || sourcePositions.length === 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                  )}
-                >
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    onCheckedChange={(checked) => onToggleAllPositions(checked === true)}
-                    disabled={sourcePositionsLoading || sourcePositions.length === 0 || isPending}
-                    aria-label="Select all positions"
-                  />
-                  <span>Select all positions</span>
-                </label>
-                <span className="text-muted-foreground">
-                  {selectedCount} / {sourcePositions.length} selected
-                </span>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Click any table row to toggle selection.</span>
+                <span>{selectedCount} / {sourcePositions.length} selected</span>
               </div>
 
               <ScrollArea className="h-56 rounded-md border border-border/70">
-                <div className="space-y-1 p-2">
-                  {sourcePositionsLoading ? (
-                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">Loading source positions...</p>
-                  ) : sourcePositionsError ? (
-                    <p className="px-2 py-8 text-center text-xs text-destructive">{sourcePositionsError}</p>
-                  ) : sourcePositions.length === 0 ? (
-                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">No positions found in the selected source company.</p>
-                  ) : (
-                    sourcePositions.map((position) => {
-                      const isSelected = selectedPositionIdSet.has(position.id)
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-10 px-2">
+                        <Checkbox
+                          checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                          onCheckedChange={(checked) => onToggleAllPositions(checked === true)}
+                          disabled={sourcePositionsLoading || sourcePositions.length === 0 || isPending}
+                          aria-label="Select all positions"
+                        />
+                      </TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-20">Level</TableHead>
+                      <TableHead className="w-24">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sourcePositionsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-muted-foreground">
+                          Loading source positions...
+                        </TableCell>
+                      </TableRow>
+                    ) : sourcePositionsError ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-destructive">
+                          {sourcePositionsError}
+                        </TableCell>
+                      </TableRow>
+                    ) : sourcePositions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-muted-foreground">
+                          No positions found in the selected source company.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sourcePositions.map((position) => {
+                        const isSelected = selectedPositionIdSet.has(position.id)
 
-                      return (
-                        <div
-                          key={position.id}
-                          role="button"
-                          tabIndex={isPending ? -1 : 0}
-                          onClick={() => {
-                            if (isPending) {
-                              return
-                            }
+                        return (
+                          <TableRow
+                            key={position.id}
+                            className={cn(
+                              isSelected ? "bg-primary/10" : "hover:bg-muted/40",
+                              isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                            )}
+                            onClick={(event) => {
+                              if (isPending) {
+                                return
+                              }
 
-                            onTogglePosition(position.id, !isSelected)
-                          }}
-                          onKeyDown={(event) => {
-                            if (isPending) {
-                              return
-                            }
+                              if (isInteractiveRowClickTarget(event.target)) {
+                                return
+                              }
 
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault()
                               onTogglePosition(position.id, !isSelected)
-                            }
-                          }}
-                          className={cn(
-                            "w-full rounded-md border px-2 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isSelected ? "border-primary bg-primary/10 shadow-[inset_2px_0_0_theme(colors.primary)]" : "border-border/60 hover:bg-muted/40",
-                            isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="inline-flex items-center gap-2">
+                            }}
+                          >
+                            <TableCell className="px-2">
                               <Checkbox
                                 checked={isSelected}
                                 onPointerDown={(event) => {
@@ -1067,17 +1083,17 @@ function CopyPositionsDialog({
                                 aria-label={`Select ${position.code}`}
                                 disabled={isPending}
                               />
-                              <span className="font-medium text-foreground">{position.code}</span>
-                            </div>
-                            {renderActiveBadge(position.isActive)}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">{position.name}</p>
-                          <p className="text-[11px] text-muted-foreground">Level {position.level}</p>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-medium text-foreground">{position.code}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{position.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{position.level}</TableCell>
+                            <TableCell>{renderActiveBadge(position.isActive)}</TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
               </ScrollArea>
             </div>
           ) : null}

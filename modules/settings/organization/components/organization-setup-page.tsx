@@ -42,10 +42,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { copyDepartmentsFromCompanyAction } from "@/modules/settings/organization/actions/copy-departments-from-company-action"
+import { copyRanksFromCompanyAction } from "@/modules/settings/organization/actions/copy-ranks-from-company-action"
 import { getSourceDepartmentsFromCompanyAction } from "@/modules/settings/organization/actions/get-source-departments-from-company-action"
+import { getSourceRanksFromCompanyAction } from "@/modules/settings/organization/actions/get-source-ranks-from-company-action"
 import { upsertOrganizationEntityAction } from "@/modules/settings/organization/actions/upsert-organization-entity-action"
 import type { OrganizationOverviewData } from "@/modules/settings/organization/utils/get-organization-overview-data"
 
@@ -115,6 +118,16 @@ type CopySourceDepartmentItem = {
   id: string
   code: string
   name: string
+  parentLabel: string | null
+  isActive: boolean
+}
+
+type CopySourceRankItem = {
+  id: string
+  code: string
+  name: string
+  level: number
+  category: string | null
   parentLabel: string | null
   isActive: boolean
 }
@@ -189,10 +202,16 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
   const [branchDialogOpen, setBranchDialogOpen] = useState(false)
   const [copyDepartmentsDialogOpen, setCopyDepartmentsDialogOpen] = useState(false)
   const [copyDepartmentsSourceCompanyId, setCopyDepartmentsSourceCompanyId] = useState("")
+  const [copyRanksDialogOpen, setCopyRanksDialogOpen] = useState(false)
+  const [copyRanksSourceCompanyId, setCopyRanksSourceCompanyId] = useState("")
   const [copySourceDepartments, setCopySourceDepartments] = useState<CopySourceDepartmentItem[]>([])
   const [copySelectedDepartmentIds, setCopySelectedDepartmentIds] = useState<string[]>([])
   const [copySourceDepartmentsLoading, setCopySourceDepartmentsLoading] = useState(false)
   const [copySourceDepartmentsError, setCopySourceDepartmentsError] = useState<string | null>(null)
+  const [copySourceRanks, setCopySourceRanks] = useState<CopySourceRankItem[]>([])
+  const [copySelectedRankIds, setCopySelectedRankIds] = useState<string[]>([])
+  const [copySourceRanksLoading, setCopySourceRanksLoading] = useState(false)
+  const [copySourceRanksError, setCopySourceRanksError] = useState<string | null>(null)
 
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(createEmptyDepartmentForm())
   const [divisionForm, setDivisionForm] = useState<DivisionForm>(createEmptyDivisionForm())
@@ -202,11 +221,19 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
   useEffect(() => {
     if (data.copySourceCompanies.length === 0) {
       setCopyDepartmentsSourceCompanyId("")
+      setCopyRanksSourceCompanyId("")
       return
     }
 
     const firstSourceCompanyId = data.copySourceCompanies[0]?.companyId ?? ""
     setCopyDepartmentsSourceCompanyId((previous) => {
+      if (!previous || !data.copySourceCompanies.some((item) => item.companyId === previous)) {
+        return firstSourceCompanyId
+      }
+
+      return previous
+    })
+    setCopyRanksSourceCompanyId((previous) => {
       if (!previous || !data.copySourceCompanies.some((item) => item.companyId === previous)) {
         return firstSourceCompanyId
       }
@@ -261,6 +288,53 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
       cancelled = true
     }
   }, [copyDepartmentsDialogOpen, copyDepartmentsSourceCompanyId, data.companyId])
+
+  useEffect(() => {
+    if (!copyRanksDialogOpen) {
+      return
+    }
+
+    if (!copyRanksSourceCompanyId) {
+      setCopySourceRanks([])
+      setCopySelectedRankIds([])
+      setCopySourceRanksError(null)
+      return
+    }
+
+    let cancelled = false
+
+    setCopySourceRanksLoading(true)
+    setCopySourceRanksError(null)
+
+    void (async () => {
+      const result = await getSourceRanksFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyRanksSourceCompanyId,
+      })
+
+      if (cancelled) {
+        return
+      }
+
+      if (!result.ok) {
+        setCopySourceRanks([])
+        setCopySelectedRankIds([])
+        setCopySourceRanksError(result.error)
+        return
+      }
+
+      setCopySourceRanks(result.ranks)
+      setCopySelectedRankIds(result.ranks.map((item) => item.id))
+    })().finally(() => {
+      if (!cancelled) {
+        setCopySourceRanksLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [copyRanksDialogOpen, copyRanksSourceCompanyId, data.companyId])
 
   const resetForms = () => {
     setDepartmentForm(createEmptyDepartmentForm())
@@ -450,6 +524,61 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
       toast.success(result.message)
       setDivisionDialogOpen(false)
       resetForms()
+      router.refresh()
+    })
+  }
+
+  const handleToggleCopyRank = (rankId: string, checked: boolean) => {
+    setCopySelectedRankIds((previous) => {
+      if (checked) {
+        if (previous.includes(rankId)) {
+          return previous
+        }
+
+        return [...previous, rankId]
+      }
+
+      return previous.filter((id) => id !== rankId)
+    })
+  }
+
+  const handleToggleAllCopyRanks = (checked: boolean) => {
+    if (checked) {
+      setCopySelectedRankIds(copySourceRanks.map((item) => item.id))
+      return
+    }
+
+    setCopySelectedRankIds([])
+  }
+
+  const handleCopyRanks = () => {
+    if (!copyRanksSourceCompanyId) {
+      toast.error("Select a source company first.")
+      return
+    }
+
+    if (copySelectedRankIds.length === 0) {
+      toast.error("Select at least one rank to copy.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await copyRanksFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyRanksSourceCompanyId,
+        selectedSourceRankIds: copySelectedRankIds,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setCopyRanksDialogOpen(false)
+      setCopySourceRanks([])
+      setCopySelectedRankIds([])
+      setCopySourceRanksError(null)
       router.refresh()
     })
   }
@@ -653,16 +782,33 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           }))}
           onEdit={handleEditRank}
           dialog={
-            <RankDialog
-              open={rankDialogOpen}
-              onOpenChange={setRankDialogOpen}
-              form={rankForm}
-              setForm={setRankForm}
-              options={data.ranks.map((item) => ({ id: item.id, code: item.code, name: item.name }))}
-              onSubmit={handleSaveRank}
-              isPending={isPending}
-              onCreate={() => setRankForm(createEmptyRankForm())}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <CopyRanksDialog
+                open={copyRanksDialogOpen}
+                onOpenChange={setCopyRanksDialogOpen}
+                sourceCompanyId={copyRanksSourceCompanyId}
+                onSourceCompanyChange={setCopyRanksSourceCompanyId}
+                sourceCompanies={data.copySourceCompanies}
+                sourceRanks={copySourceRanks}
+                selectedRankIds={copySelectedRankIds}
+                onToggleRank={handleToggleCopyRank}
+                onToggleAllRanks={handleToggleAllCopyRanks}
+                sourceRanksLoading={copySourceRanksLoading}
+                sourceRanksError={copySourceRanksError}
+                onSubmit={handleCopyRanks}
+                isPending={isPending}
+              />
+              <RankDialog
+                open={rankDialogOpen}
+                onOpenChange={setRankDialogOpen}
+                form={rankForm}
+                setForm={setRankForm}
+                options={data.ranks.map((item) => ({ id: item.id, code: item.code, name: item.name }))}
+                onSubmit={handleSaveRank}
+                isPending={isPending}
+                onCreate={() => setRankForm(createEmptyRankForm())}
+              />
+            </div>
           }
         />
 
@@ -916,6 +1062,17 @@ function CopyDepartmentsDialog({
   const selectedCount = sourceDepartments.filter((item) => selectedDepartmentIdSet.has(item.id)).length
   const allSelected = sourceDepartments.length > 0 && selectedCount === sourceDepartments.length
   const someSelected = selectedCount > 0 && !allSelected
+  const isInteractiveRowClickTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='menuitem'], [data-slot='checkbox'], [data-slot='select-trigger'], [data-slot='popover-content']"
+      )
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -954,70 +1111,72 @@ function CopyDepartmentsDialog({
 
           {sourceCompanyId ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs">
-                <label
-                  className={cn(
-                    "inline-flex items-center gap-2",
-                    sourceDepartmentsLoading || sourceDepartments.length === 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                  )}
-                >
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    onCheckedChange={(checked) => onToggleAllDepartments(checked === true)}
-                    disabled={sourceDepartmentsLoading || sourceDepartments.length === 0 || isPending}
-                    aria-label="Select all departments"
-                  />
-                  <span>Select all departments</span>
-                </label>
-                <span className="text-muted-foreground">
-                  {selectedCount} / {sourceDepartments.length} selected
-                </span>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Click any table row to toggle selection.</span>
+                <span>{selectedCount} / {sourceDepartments.length} selected</span>
               </div>
 
               <ScrollArea className="h-56 rounded-md border border-border/70">
-                <div className="space-y-1 p-2">
-                  {sourceDepartmentsLoading ? (
-                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">Loading source departments...</p>
-                  ) : sourceDepartmentsError ? (
-                    <p className="px-2 py-8 text-center text-xs text-destructive">{sourceDepartmentsError}</p>
-                  ) : sourceDepartments.length === 0 ? (
-                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">
-                      No departments found in the selected source company.
-                    </p>
-                  ) : (
-                    sourceDepartments.map((department) => {
-                      const isSelected = selectedDepartmentIdSet.has(department.id)
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-10 px-2">
+                        <Checkbox
+                          checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                          onCheckedChange={(checked) => onToggleAllDepartments(checked === true)}
+                          disabled={sourceDepartmentsLoading || sourceDepartments.length === 0 || isPending}
+                          aria-label="Select all departments"
+                        />
+                      </TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Parent</TableHead>
+                      <TableHead className="w-24">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sourceDepartmentsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-muted-foreground">
+                          Loading source departments...
+                        </TableCell>
+                      </TableRow>
+                    ) : sourceDepartmentsError ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-destructive">
+                          {sourceDepartmentsError}
+                        </TableCell>
+                      </TableRow>
+                    ) : sourceDepartments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-20 text-center text-xs text-muted-foreground">
+                          No departments found in the selected source company.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sourceDepartments.map((department) => {
+                        const isSelected = selectedDepartmentIdSet.has(department.id)
 
-                      return (
-                        <div
-                          key={department.id}
-                          role="button"
-                          tabIndex={isPending ? -1 : 0}
-                          onClick={() => {
-                            if (isPending) {
-                              return
-                            }
+                        return (
+                          <TableRow
+                            key={department.id}
+                            className={cn(
+                              isSelected ? "bg-primary/10" : "hover:bg-muted/40",
+                              isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                            )}
+                            onClick={(event) => {
+                              if (isPending) {
+                                return
+                              }
 
-                            onToggleDepartment(department.id, !isSelected)
-                          }}
-                          onKeyDown={(event) => {
-                            if (isPending) {
-                              return
-                            }
+                              if (isInteractiveRowClickTarget(event.target)) {
+                                return
+                              }
 
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault()
                               onToggleDepartment(department.id, !isSelected)
-                            }
-                          }}
-                          className={cn(
-                            "w-full rounded-md border px-2 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isSelected ? "border-primary bg-primary/10 shadow-[inset_2px_0_0_theme(colors.primary)]" : "border-border/60 hover:bg-muted/40",
-                            isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="inline-flex items-center gap-2">
+                            }}
+                          >
+                            <TableCell className="px-2">
                               <Checkbox
                                 checked={isSelected}
                                 onPointerDown={(event) => {
@@ -1030,17 +1189,17 @@ function CopyDepartmentsDialog({
                                 aria-label={`Select ${department.code}`}
                                 disabled={isPending}
                               />
-                              <span className="font-medium text-foreground">{department.code}</span>
-                            </div>
-                            {renderActiveBadge(department.isActive)}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">{department.name}</p>
-                          <p className="text-[11px] text-muted-foreground">Parent: {department.parentLabel ?? "None"}</p>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
+                            </TableCell>
+                            <TableCell className="text-xs font-medium text-foreground">{department.code}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{department.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{department.parentLabel ?? "None"}</TableCell>
+                            <TableCell>{renderActiveBadge(department.isActive)}</TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
               </ScrollArea>
             </div>
           ) : null}
@@ -1059,6 +1218,206 @@ function CopyDepartmentsDialog({
             }
           >
             {isPending ? "Copying..." : "Copy Departments"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CopyRanksDialog({
+  open,
+  onOpenChange,
+  sourceCompanyId,
+  onSourceCompanyChange,
+  sourceCompanies,
+  sourceRanks,
+  selectedRankIds,
+  onToggleRank,
+  onToggleAllRanks,
+  sourceRanksLoading,
+  sourceRanksError,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sourceCompanyId: string
+  onSourceCompanyChange: (value: string) => void
+  sourceCompanies: OrganizationOverviewData["copySourceCompanies"]
+  sourceRanks: CopySourceRankItem[]
+  selectedRankIds: string[]
+  onToggleRank: (rankId: string, checked: boolean) => void
+  onToggleAllRanks: (checked: boolean) => void
+  sourceRanksLoading: boolean
+  sourceRanksError: string | null
+  onSubmit: () => void
+  isPending: boolean
+}) {
+  const selectedRankIdSet = new Set(selectedRankIds)
+  const selectedCount = sourceRanks.filter((item) => selectedRankIdSet.has(item.id)).length
+  const allSelected = sourceRanks.length > 0 && selectedCount === sourceRanks.length
+  const someSelected = selectedCount > 0 && !allSelected
+  const isInteractiveRowClickTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='menuitem'], [data-slot='checkbox'], [data-slot='select-trigger'], [data-slot='popover-content']"
+      )
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2" disabled={sourceCompanies.length === 0}>
+          <IconClipboardList className="size-3.5" />
+          Copy Ranks
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Copy Ranks From Company</DialogTitle>
+          <DialogDescription>
+            Select specific ranks to copy from another company. Existing codes will be updated, new codes will be created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Label htmlFor="copy-ranks-source-company">
+            Source Company<Required />
+          </Label>
+          <Select value={sourceCompanyId} onValueChange={onSourceCompanyChange}>
+            <SelectTrigger id="copy-ranks-source-company" className="w-full">
+              <SelectValue placeholder="Select source company" />
+            </SelectTrigger>
+            <SelectContent>
+              {sourceCompanies.map((company) => (
+                <SelectItem key={company.companyId} value={company.companyId}>
+                  {company.companyCode} - {company.companyName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sourceCompanies.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No eligible source companies available.</p>
+          ) : null}
+
+          {sourceCompanyId ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Click any table row to toggle selection.</span>
+                <span>{selectedCount} / {sourceRanks.length} selected</span>
+              </div>
+
+              <ScrollArea className="h-56 rounded-md border border-border/70">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="w-10 px-2">
+                        <Checkbox
+                          checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                          onCheckedChange={(checked) => onToggleAllRanks(checked === true)}
+                          disabled={sourceRanksLoading || sourceRanks.length === 0 || isPending}
+                          aria-label="Select all ranks"
+                        />
+                      </TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead className="w-20">Level</TableHead>
+                      <TableHead className="w-28">Category</TableHead>
+                      <TableHead>Parent</TableHead>
+                      <TableHead className="w-24">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sourceRanksLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-20 text-center text-xs text-muted-foreground">
+                          Loading source ranks...
+                        </TableCell>
+                      </TableRow>
+                    ) : sourceRanksError ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-20 text-center text-xs text-destructive">
+                          {sourceRanksError}
+                        </TableCell>
+                      </TableRow>
+                    ) : sourceRanks.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-20 text-center text-xs text-muted-foreground">
+                          No ranks found in the selected source company.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sourceRanks.map((rank) => {
+                        const isSelected = selectedRankIdSet.has(rank.id)
+
+                        return (
+                          <TableRow
+                            key={rank.id}
+                            className={cn(
+                              isSelected ? "bg-primary/10" : "hover:bg-muted/40",
+                              isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                            )}
+                            onClick={(event) => {
+                              if (isPending) {
+                                return
+                              }
+
+                              if (isInteractiveRowClickTarget(event.target)) {
+                                return
+                              }
+
+                              onToggleRank(rank.id, !isSelected)
+                            }}
+                          >
+                            <TableCell className="px-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onPointerDown={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onCheckedChange={(checked) => onToggleRank(rank.id, checked === true)}
+                                aria-label={`Select ${rank.code}`}
+                                disabled={isPending}
+                              />
+                            </TableCell>
+                            <TableCell className="text-xs font-medium text-foreground">{rank.code}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{rank.name}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{rank.level}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{rank.category ?? "-"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{rank.parentLabel ?? "None"}</TableCell>
+                            <TableCell>{renderActiveBadge(rank.isActive)}</TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={onSubmit}
+            disabled={
+              isPending ||
+              !sourceCompanyId ||
+              sourceCompanies.length === 0 ||
+              sourceRanksLoading ||
+              sourceRanks.length === 0 ||
+              selectedCount === 0
+            }
+          >
+            {isPending ? "Copying..." : "Copy Ranks"}
           </Button>
         </DialogFooter>
       </DialogContent>

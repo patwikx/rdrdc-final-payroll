@@ -234,13 +234,13 @@ export function EmployeePortalSidebar({
           isActive={isActive}
           tooltip={item.title}
           className={cn(
-            "h-9 rounded-none px-4 transition-all duration-200",
+            "h-8 rounded-none px-3 transition-all duration-200",
             isActive
               ? "bg-primary/10 text-primary font-mono font-bold border-l-2 border-primary"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium"
           )}
         >
-          <Link href={href} className="flex w-full items-center gap-3">
+          <Link href={href} className="flex w-full items-center gap-2.5">
             <item.icon className={cn("h-4 w-4 shrink-0 opacity-80", isActive && "opacity-100")} />
             <span>{item.title}</span>
             {taskCount > 0 ? (
@@ -258,60 +258,60 @@ export function EmployeePortalSidebar({
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border/40 bg-background shadow-none">
-      <SidebarHeader className="border-b border-border/40 px-2 pb-1 pt-2">
+      <SidebarHeader className="border-b border-border/40 px-2 pb-0.5 pt-1.5">
         <TeamSwitcher teams={teams} activeTeamId={activeCompanyId} onTeamChange={handleTeamChange} />
       </SidebarHeader>
 
-      <SidebarContent className="py-2">
-        <SidebarGroup className="mb-2 p-0">
-          <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+      <SidebarContent className="py-1.5">
+        <SidebarGroup className="mb-1.5 p-0">
+          <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
             Employee Portal
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="gap-1 px-2">{visibleMenuItems.map(renderItem)}</SidebarMenu>
+            <SidebarMenu className="gap-0.5 px-1.5">{visibleMenuItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
         {visibleApproverItems.length > 0 ? (
-          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
-            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
+            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
               Approvals
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1 px-2">{visibleApproverItems.map(renderItem)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5 px-1.5">{visibleApproverItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
 
         {visibleProcessingItems.length > 0 ? (
-          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
-            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
+            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
               Processing
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1 px-2">{visibleProcessingItems.map(renderItem)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5 px-1.5">{visibleProcessingItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
 
         {visiblePostingItems.length > 0 ? (
-          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
-            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
+            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
               Posting
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1 px-2">{visiblePostingItems.map(renderItem)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5 px-1.5">{visiblePostingItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
 
         {visibleAdminItems.length > 0 ? (
-          <SidebarGroup className="mb-2 border-t border-border/40 p-0 pt-2">
-            <SidebarGroupLabel className="px-6 pb-1 pt-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
+            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
               Administration
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1 px-2">{visibleAdminItems.map(renderItem)}</SidebarMenu>
+              <SidebarMenu className="gap-0.5 px-1.5">{visibleAdminItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}

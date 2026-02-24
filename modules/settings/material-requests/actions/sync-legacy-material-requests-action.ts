@@ -69,6 +69,7 @@ export async function syncLegacyMaterialRequestsAction(
     if (!payload.dryRun) {
       revalidatePath(`/${context.companyId}/settings/material-requests`)
       revalidatePath(`/${context.companyId}/settings/material-requests/legacy-sync`)
+      revalidatePath(`/${context.companyId}/settings/material-requests/legacy-cleanup`)
       revalidatePath(`/${context.companyId}/employee-portal/material-requests`)
       revalidatePath(`/${context.companyId}/employee-portal/material-request-approvals`)
       revalidatePath(`/${context.companyId}/employee-portal/material-request-processing`)

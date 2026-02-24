@@ -140,6 +140,7 @@ export const SIDEBAR_MODULES: readonly SidebarModule[] = [
       { id: "settings-material-requests", label: "Material Request Approvals", path: "/settings/material-requests" },
       { id: "settings-legacy-leave-ot-sync", label: "Legacy Leave/OT Sync", path: "/settings/leave-overtime/legacy-sync" },
       { id: "settings-legacy-material-requests-sync", label: "Legacy Material Request Sync", path: "/settings/material-requests/legacy-sync" },
+      { id: "settings-legacy-material-requests-cleanup", label: "Legacy Material Request Cleanup", path: "/settings/material-requests/legacy-cleanup" },
       { id: "settings-statutory", label: "Statutory Tables", path: "/settings/statutory" },
       { id: "settings-audit-logs", label: "Audit Logs", path: "/settings/audit-logs" },
     ],

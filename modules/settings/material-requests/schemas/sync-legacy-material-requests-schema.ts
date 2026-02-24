@@ -39,6 +39,12 @@ const manualOverrideSchema = z.object({
     .max(100, "Final approver employee number is too long.")
     .optional()
     .transform((value) => value || undefined),
+  legacyStatus: z
+    .string()
+    .trim()
+    .max(80, "Legacy status is too long.")
+    .optional()
+    .transform((value) => value || undefined),
   departmentCode: z
     .string()
     .trim()

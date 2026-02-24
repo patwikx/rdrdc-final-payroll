@@ -58,6 +58,7 @@ type UnmatchedEntry = Extract<SyncResult, { ok: true }>["unmatched"][number]
 type ManualOverridePayload = SyncLegacyMaterialRequestsInput["manualOverrides"][number]
 
 type ManualOverrideDraft = {
+  legacyStatus: string
   requesterEmployeeNumber: string
   requesterName: string
   pendingApproverEmployeeNumber: string
@@ -66,7 +67,6 @@ type ManualOverrideDraft = {
   departmentId: string
 }
 
-type SyncWizardStep = "edit" | "preview" | "confirm"
 type UnmatchedColumnKey =
   | "reason"
   | "request"
@@ -87,7 +87,6 @@ type UnmatchedColumnVisibility = Record<UnmatchedColumnKey, boolean>
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
 const normalizeInput = (value: string): string => value.trim()
-const normalizeKey = (value: string | null | undefined): string => (value ? value.trim().toLowerCase() : "")
 
 const UNMATCHED_COLUMN_OPTIONS: Array<{ key: UnmatchedColumnKey; label: string }> = [
   { key: "reason", label: "Reason" },
@@ -124,10 +123,31 @@ const DEFAULT_UNMATCHED_COLUMN_VISIBILITY: UnmatchedColumnVisibility = {
 }
 
 const UNMATCHED_PAGE_SIZE_OPTIONS = ["10", "20", "50"] as const
+const LEGACY_STATUS_OPTIONS = [
+  "DRAFT",
+  "FOR_REVIEW",
+  "PENDING_BUDGET_APPROVAL",
+  "FOR_REC_APPROVAL",
+  "REC_APPROVED",
+  "FOR_FINAL_APPROVAL",
+  "FINAL_APPROVED",
+  "FOR_POSTING",
+  "POSTED",
+  "FOR_SERVING",
+  "SERVED",
+  "RECEIVED",
+  "TRANSMITTED",
+  "CANCELLED",
+  "DISAPPROVED",
+  "FOR_EDIT",
+  "ACKNOWLEDGED",
+  "DEPLOYED",
+] as const
 const INTERACTIVE_ROW_ELEMENT_SELECTOR =
   "input,textarea,button,a,[role='button'],[role='combobox'],[role='menuitem'],[data-no-row-select='true']"
 
 const createDraftFromUnmatchedEntry = (entry: UnmatchedEntry, inferredDepartmentId: string): ManualOverrideDraft => ({
+  legacyStatus: entry.legacyStatus ?? "",
   requesterEmployeeNumber: entry.employeeNumber ?? "",
   requesterName: entry.requesterName ?? "",
   pendingApproverEmployeeNumber: entry.pendingApproverEmployeeNumber ?? "",
@@ -143,11 +163,13 @@ const buildManualOverridePayload = (
 ): ManualOverridePayload | null => {
   const requesterEmployeeNumber = normalizeInput(draft.requesterEmployeeNumber)
   const requesterName = normalizeInput(draft.requesterName)
+  const legacyStatus = normalizeInput(draft.legacyStatus).toUpperCase()
   const pendingApproverEmployeeNumber = normalizeInput(draft.pendingApproverEmployeeNumber)
   const recommendingApproverEmployeeNumber = normalizeInput(draft.recommendingApproverEmployeeNumber)
   const finalApproverEmployeeNumber = normalizeInput(draft.finalApproverEmployeeNumber)
   const departmentId = normalizeInput(draft.departmentId)
 
+  const sourceLegacyStatus = normalizeInput(entry.legacyStatus).toUpperCase()
   const sourceRequesterEmployeeNumber = normalizeInput(entry.employeeNumber ?? "")
   const sourceRequesterName = normalizeInput(entry.requesterName ?? "")
   const sourcePendingApproverEmployeeNumber = normalizeInput(entry.pendingApproverEmployeeNumber ?? "")
@@ -160,6 +182,7 @@ const buildManualOverridePayload = (
     departmentId: undefined,
     requesterEmployeeNumber: undefined,
     requesterName: undefined,
+    legacyStatus: undefined,
     pendingApproverEmployeeNumber: undefined,
     recommendingApproverEmployeeNumber: undefined,
     finalApproverEmployeeNumber: undefined,
@@ -173,6 +196,10 @@ const buildManualOverridePayload = (
 
   if (requesterName && requesterName !== sourceRequesterName) {
     payload.requesterName = requesterName
+  }
+
+  if (legacyStatus && legacyStatus !== sourceLegacyStatus) {
+    payload.legacyStatus = legacyStatus
   }
 
   if (pendingApproverEmployeeNumber && pendingApproverEmployeeNumber !== sourcePendingApproverEmployeeNumber) {
@@ -195,6 +222,7 @@ const buildManualOverridePayload = (
   const hasAnyOverride = Boolean(
     payload.requesterEmployeeNumber ||
       payload.requesterName ||
+      payload.legacyStatus ||
       payload.pendingApproverEmployeeNumber ||
       payload.recommendingApproverEmployeeNumber ||
       payload.finalApproverEmployeeNumber ||
@@ -207,7 +235,6 @@ const buildManualOverridePayload = (
 export function LegacyMaterialRequestSyncPage({ companyId, companyName, departments }: LegacyMaterialRequestSyncPageProps) {
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<SyncResult | null>(null)
-  const [wizardStep, setWizardStep] = useState<SyncWizardStep>("edit")
   const [rowActionRecordId, setRowActionRecordId] = useState<string | null>(null)
   const [unmatchedColumnVisibility, setUnmatchedColumnVisibility] = useState<UnmatchedColumnVisibility>(
     DEFAULT_UNMATCHED_COLUMN_VISIBILITY
@@ -250,43 +277,9 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     [unmatchedRows]
   )
 
-  const departmentById = useMemo(() => new Map(departments.map((department) => [department.id, department])), [departments])
-
-  const departmentIdByCode = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const department of departments) {
-      const key = normalizeKey(department.code)
-      if (!key) continue
-      map.set(key, department.id)
-    }
-    return map
-  }, [departments])
-
-  const departmentIdByName = useMemo(() => {
-    const map = new Map<string, string | null>()
-    for (const department of departments) {
-      const key = normalizeKey(department.name)
-      if (!key) continue
-
-      const existing = map.get(key)
-      if (existing === undefined) {
-        map.set(key, department.id)
-      } else if (existing !== department.id) {
-        map.set(key, null)
-      }
-    }
-    return map
-  }, [departments])
-
-  const inferDepartmentIdFromEntry = useCallback((entry: UnmatchedEntry): string => {
-    const byCode = departmentIdByCode.get(normalizeKey(entry.departmentCode))
-    if (byCode) {
-      return byCode
-    }
-
-    const byName = departmentIdByName.get(normalizeKey(entry.departmentName))
-    return byName ?? ""
-  }, [departmentIdByCode, departmentIdByName])
+  const inferDepartmentIdFromEntry = useCallback((_entry: UnmatchedEntry): string => {
+    return ""
+  }, [])
 
   const resolveDraftForEntry = useCallback((entry: UnmatchedEntry): ManualOverrideDraft => {
     const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
@@ -313,27 +306,20 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
     ]
   }, [result])
 
-  const previewRows = useMemo(() => {
-    if (!result?.ok) {
-      return [] as Array<{ entry: UnmatchedEntry; payload: ManualOverridePayload }>
-    }
+  const manualOverrides = useMemo(() => {
+    const rows: ManualOverridePayload[] = []
 
-    const rows: Array<{ entry: UnmatchedEntry; payload: ManualOverridePayload }> = []
-
-    for (const entry of result.unmatched) {
+    for (const entry of unmatchedRows) {
       const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
       const draft = resolveDraftForEntry(entry)
-
       const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId)
       if (payload) {
-        rows.push({ entry, payload })
+        rows.push(payload)
       }
     }
 
     return rows
-  }, [result, inferDepartmentIdFromEntry, resolveDraftForEntry])
-
-  const manualOverrides = useMemo(() => previewRows.map((row) => row.payload), [previewRows])
+  }, [inferDepartmentIdFromEntry, resolveDraftForEntry, unmatchedRows])
   const hiddenColumnCount = useMemo(
     () => UNMATCHED_COLUMN_OPTIONS.filter((column) => !unmatchedColumnVisibility[column.key]).length,
     [unmatchedColumnVisibility]
@@ -423,6 +409,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         entry.pendingStepName ?? "",
         entry.employeeNumber,
         entry.requesterName,
+        entry.legacyDepartmentName,
         entry.departmentName,
       ]
 
@@ -520,7 +507,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
       setUnmatchedPage(1)
       setMatchedPage(1)
       toast.success(response.message)
-      setWizardStep("edit")
     })
   }
 
@@ -669,7 +655,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         }
 
         applySyncResult(refreshResponse)
-        setWizardStep("edit")
       } finally {
         setIsBulkSavingRows(false)
       }
@@ -734,7 +719,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         }
 
         applySyncResult(refreshResponse)
-        setWizardStep("edit")
       } finally {
         setRowActionRecordId(null)
       }
@@ -749,6 +733,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
         (row
           ? createDraftFromUnmatchedEntry(row, inferDepartmentIdFromEntry(row))
           : {
+              legacyStatus: "",
               requesterEmployeeNumber: "",
               requesterName: "",
               pendingApproverEmployeeNumber: "",
@@ -909,7 +894,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
               <CardHeader>
                 <CardTitle className="text-base">Step 2: Unmatched Rows Editor</CardTitle>
                 <CardDescription>
-                  Update row details below. Approver columns expect employee numbers and are matched against employee number in this new system. You can save one row at a time or use the bulk preview/apply flow.
+                  Update row details below. Requester/approver fields are matched using legacy employee ID against employee number in this new system. Department is manual assignment, and legacy status can be adjusted when needed.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1167,7 +1152,28 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                   <TableCell className="min-w-40 text-xs">{entry.requestNumber}</TableCell>
                                 ) : null}
                                 {unmatchedColumnVisibility.legacyStatus ? (
-                                  <TableCell className="min-w-28 text-xs">{entry.legacyStatus || "-"}</TableCell>
+                                  <TableCell className="min-w-44">
+                                    <Select
+                                      value={draft.legacyStatus || entry.legacyStatus || "__UNSET__"}
+                                      onValueChange={(value) =>
+                                        updateDraft(entry.legacyRecordId, {
+                                          legacyStatus: value === "__UNSET__" ? entry.legacyStatus : value,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full" data-no-row-select="true">
+                                        <SelectValue placeholder="Legacy status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__UNSET__">Use source legacy status</SelectItem>
+                                        {LEGACY_STATUS_OPTIONS.map((status) => (
+                                          <SelectItem key={status} value={status}>
+                                            {status}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </TableCell>
                                 ) : null}
                                 {unmatchedColumnVisibility.mappedStatus ? (
                                   <TableCell className="min-w-32 text-xs">{entry.mappedStatus || "-"}</TableCell>
@@ -1362,10 +1368,10 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                         Re-Run Dry Sync With Edits
                       </Button>
                       <Button
-                        onClick={() => setWizardStep("preview")}
-                        disabled={manualOverrides.length === 0 || isPending}
+                        disabled={isPending}
+                        onClick={() => runSync({ dryRun: false })}
                       >
-                        Preview Changes
+                        Run Apply Sync With Current Edits
                       </Button>
                     </div>
                   </>
@@ -1468,6 +1474,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                 <TableHead>Pending Step</TableHead>
                                 <TableHead>Requester #</TableHead>
                                 <TableHead>Requester Name</TableHead>
+                                <TableHead>Legacy Department</TableHead>
                                 <TableHead>Department (New System)</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1481,6 +1488,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                                   <TableCell className="text-xs">{entry.pendingStepName || "-"}</TableCell>
                                   <TableCell className="text-xs">{entry.employeeNumber || "-"}</TableCell>
                                   <TableCell className="text-xs">{entry.requesterName || "-"}</TableCell>
+                                  <TableCell className="text-xs">{entry.legacyDepartmentName || "-"}</TableCell>
                                   <TableCell className="text-xs">{entry.departmentName || "-"}</TableCell>
                                 </TableRow>
                               ))}
@@ -1534,106 +1542,6 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
                 )}
               </CardContent>
             </Card>
-
-            {wizardStep === "preview" ? (
-              <Card className="border-border/60">
-                <CardHeader>
-                  <CardTitle className="text-base">Step 3: Preview Changes</CardTitle>
-                  <CardDescription>
-                    Review your manual updates before opening confirmation.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {previewRows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No manual changes to preview.</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-md border border-border/60">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Request</TableHead>
-                            <TableHead>Legacy ID</TableHead>
-                            <TableHead>Changed Fields</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {previewRows.map((row) => (
-                            <TableRow key={row.entry.legacyRecordId}>
-                              <TableCell className="text-xs">{row.entry.requestNumber}</TableCell>
-                              <TableCell className="text-xs">{row.entry.legacyRecordId}</TableCell>
-                              <TableCell className="text-xs">
-                                {[
-                                  row.payload.requesterEmployeeNumber
-                                    ? `Requester #: ${row.payload.requesterEmployeeNumber}`
-                                    : null,
-                                  row.payload.requesterName ? `Requester Name: ${row.payload.requesterName}` : null,
-                                  row.payload.pendingApproverEmployeeNumber
-                                    ? `Pending Approver #: ${row.payload.pendingApproverEmployeeNumber}`
-                                    : null,
-                                  row.payload.recommendingApproverEmployeeNumber
-                                    ? `Recommending Approver #: ${row.payload.recommendingApproverEmployeeNumber}`
-                                    : null,
-                                  row.payload.finalApproverEmployeeNumber
-                                    ? `Final Approver #: ${row.payload.finalApproverEmployeeNumber}`
-                                    : null,
-                                  row.payload.departmentId
-                                    ? `Department: ${departmentById.get(row.payload.departmentId)?.name ?? row.payload.departmentId}`
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" | ")}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => setWizardStep("edit")}>Back To Edit</Button>
-                    <Button onClick={() => setWizardStep("confirm")} disabled={previewRows.length === 0}>
-                      Continue To Confirmation
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {wizardStep === "confirm" ? (
-              <Card className="border-border/60">
-                <CardHeader>
-                  <CardTitle className="text-base">Step 4: Confirmation</CardTitle>
-                  <CardDescription>
-                    Confirm manual updates below. This will run apply sync and save records.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-md border border-border/60 px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Manual Updates</p>
-                      <p className="text-sm font-semibold text-foreground">{previewRows.length}</p>
-                    </div>
-                    <div className="rounded-md border border-border/60 px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Current Unmatched</p>
-                      <p className="text-sm font-semibold text-foreground">{unmatchedRows.length}</p>
-                    </div>
-                    <div className="rounded-md border border-border/60 px-3 py-2">
-                      <p className="text-xs text-muted-foreground">Mode</p>
-                      <p className="text-sm font-semibold text-foreground">APPLY</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => setWizardStep("preview")}>Back To Preview</Button>
-                    <Button onClick={() => runSync({ dryRun: false })} disabled={isPending} className="gap-2">
-                      {isPending ? <IconRefresh className="size-4 animate-spin" /> : <IconPlayerPlay className="size-4" />}
-                      {isPending ? "Applying Sync..." : "Confirm & Run Apply Sync"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
 
             <div className="grid gap-4 xl:grid-cols-2">
               <Card className="border-border/60">
@@ -1704,7 +1612,7 @@ export function LegacyMaterialRequestSyncPage({ companyId, companyName, departme
             </p>
             <p className="inline-flex items-start gap-2">
               <IconAlertTriangle className="mt-0.5 size-4 text-amber-500" />
-              Run dry sync first, then use preview and confirmation before apply sync.
+              Run dry sync first, complete manual status/department corrections, then run apply sync.
             </p>
           </CardContent>
         </Card>

@@ -44,6 +44,8 @@ type LegacySyncMatchedRow = {
   pendingStepName: string | null
   employeeNumber: string
   requesterName: string
+  legacyDepartmentCode: string
+  legacyDepartmentName: string
   departmentName: string
 }
 
@@ -106,6 +108,7 @@ export type LegacyMaterialRequestManualOverride = {
   pendingApproverEmployeeNumber?: string
   recommendingApproverEmployeeNumber?: string
   finalApproverEmployeeNumber?: string
+  legacyStatus?: string
   departmentCode?: string
   departmentName?: string
 }
@@ -617,7 +620,6 @@ const buildApproverResolver = async (companyId: string) => {
 
   const userById = new Map<string, ApproverUserLite>()
   const userIdsByEmployeeNumber = new Map<string, string[]>()
-  const userIdsByName = new Map<string, string[]>()
 
   for (const access of accessRows) {
     userById.set(access.userId, {
@@ -625,11 +627,6 @@ const buildApproverResolver = async (companyId: string) => {
       firstName: access.user.firstName,
       lastName: access.user.lastName,
     })
-
-    const key = nameKey(access.user.firstName, access.user.lastName)
-    const existing = userIdsByName.get(key) ?? []
-    existing.push(access.userId)
-    userIdsByName.set(key, existing)
   }
 
   for (const employee of employeeRows) {
@@ -647,28 +644,17 @@ const buildApproverResolver = async (companyId: string) => {
   const resolve = (identity: Identity): { matched: ApproverUserLite | null; reason: string | null } => {
     const employeeNumberKey = normalizeText(identity.employeeNumber)
 
-    if (employeeNumberKey) {
-      const candidateIds = userIdsByEmployeeNumber.get(employeeNumberKey) ?? []
-      if (candidateIds.length === 1) {
-        const candidate = userById.get(candidateIds[0]) ?? null
-        return { matched: candidate, reason: candidate ? null : "APPROVER_NOT_FOUND" }
-      }
-      if (candidateIds.length > 1) {
-        return { matched: null, reason: "AMBIGUOUS_APPROVER_EMPLOYEE_NUMBER_MATCH" }
-      }
+    if (!employeeNumberKey) {
+      return { matched: null, reason: "APPROVER_EMPLOYEE_NUMBER_MISSING" }
     }
 
-    const firstName = normalizeText(identity.firstName)
-    const lastName = normalizeText(identity.lastName)
-    if (firstName && lastName) {
-      const candidateIds = userIdsByName.get(`${firstName}|${lastName}`) ?? []
-      if (candidateIds.length === 1) {
-        const candidate = userById.get(candidateIds[0]) ?? null
-        return { matched: candidate, reason: candidate ? null : "APPROVER_NOT_FOUND" }
-      }
-      if (candidateIds.length > 1) {
-        return { matched: null, reason: "AMBIGUOUS_APPROVER_NAME_MATCH" }
-      }
+    const candidateIds = userIdsByEmployeeNumber.get(employeeNumberKey) ?? []
+    if (candidateIds.length === 1) {
+      const candidate = userById.get(candidateIds[0]) ?? null
+      return { matched: candidate, reason: candidate ? null : "APPROVER_NOT_FOUND" }
+    }
+    if (candidateIds.length > 1) {
+      return { matched: null, reason: "AMBIGUOUS_APPROVER_EMPLOYEE_NUMBER_MATCH" }
     }
 
     return { matched: null, reason: "APPROVER_NOT_FOUND" }
@@ -1113,7 +1099,11 @@ export async function executeLegacyMaterialRequestSync(
         continue
       }
 
-      const legacyStatus = normalizeLegacyStatus(pickPath(row, ["status"]))
+      const legacyStatusRaw = normalizeLegacyStatus(pickPath(row, ["status"]))
+      const legacyStatusOverride = hasOverrideValue(override?.legacyStatus)
+        ? normalizeLegacyStatus(override?.legacyStatus)
+        : ""
+      const legacyStatus = legacyStatusOverride || legacyStatusRaw
       if (!legacyStatus) {
         skipped.push({
           domain: "material-request",
@@ -1249,13 +1239,13 @@ export async function executeLegacyMaterialRequestSync(
       const departmentName = departmentNameHint
       const resolvedDepartment = overrideDepartmentId
         ? departmentResolver.resolveById(overrideDepartmentId)
-        : departmentResolver.resolve({ departmentCode, departmentName })
+        : { matched: null, reason: "DEPARTMENT_OVERRIDE_REQUIRED" as string | null }
 
-      const departmentId = resolvedDepartment.matched?.id ?? requester.departmentId
+      const departmentId = resolvedDepartment.matched?.id ?? null
       if (!departmentId) {
         unmatched.push({
           domain: "material-request",
-          reason: resolvedDepartment.reason ?? "DEPARTMENT_NOT_FOUND",
+          reason: resolvedDepartment.reason ?? "DEPARTMENT_OVERRIDE_REQUIRED",
           legacyRecordId,
           requestNumber,
           legacyStatus,
@@ -1742,6 +1732,8 @@ export async function executeLegacyMaterialRequestSync(
         pendingStepName,
         employeeNumber: requester.employeeNumber,
         requesterName: `${requester.firstName} ${requester.lastName}`,
+        legacyDepartmentCode,
+        legacyDepartmentName,
         departmentName: resolvedDepartment.matched?.name ?? departmentName,
       })
     } catch (error) {

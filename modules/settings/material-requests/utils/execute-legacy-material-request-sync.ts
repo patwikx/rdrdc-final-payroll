@@ -108,6 +108,10 @@ export type LegacyMaterialRequestManualOverride = {
   pendingApproverEmployeeNumber?: string
   recommendingApproverEmployeeNumber?: string
   finalApproverEmployeeNumber?: string
+  stepOneApproverUserId?: string
+  stepTwoApproverUserId?: string
+  stepThreeApproverUserId?: string
+  stepFourApproverUserId?: string
   legacyStatus?: string
   departmentCode?: string
   departmentName?: string
@@ -138,6 +142,22 @@ type DepartmentLite = {
   id: string
   code: string
   name: string
+}
+
+type DepartmentApprovalFlowStepLite = {
+  stepNumber: number
+  stepName: string
+  approverUserId: string
+}
+
+type DepartmentApprovalFlowLite = {
+  departmentId: string
+  requiredSteps: number
+  steps: DepartmentApprovalFlowStepLite[]
+  selectedApproverByStep: Map<number, string>
+  approverUserIdsByStep: Map<number, string[]>
+  stepNameByStep: Map<number, string>
+  missingStepNumbers: number[]
 }
 
 type ApprovalStatusText = "APPROVED" | "DISAPPROVED"
@@ -505,6 +525,28 @@ const stageNameMap: Record<StageKey, string> = {
   final: "Final Approval",
 }
 
+const stageKeyByStepNumber: Record<number, StageKey | undefined> = {
+  1: "review",
+  2: "budget",
+  3: "recommending",
+  4: "final",
+}
+
+const stageNumberByKey: Record<StageKey, number> = {
+  review: 1,
+  budget: 2,
+  recommending: 3,
+  final: 4,
+}
+
+const pendingStepNumberFromStatus = (
+  legacyStatus: string,
+  hasFinalStageSignal: boolean
+): number | null => {
+  const pendingKey = pendingStageKeyFromStatus(legacyStatus, hasFinalStageSignal)
+  return pendingKey ? stageNumberByKey[pendingKey] : null
+}
+
 const buildRequesterResolver = async (companyId: string) => {
   const employees = await db.employee.findMany({
     where: {
@@ -733,6 +775,115 @@ const buildDepartmentResolver = async (companyId: string) => {
   }
 
   return { resolve, resolveById }
+}
+
+const buildDepartmentApprovalFlowResolver = async (companyId: string) => {
+  const flows = await db.departmentMaterialRequestApprovalFlow.findMany({
+    where: {
+      companyId,
+      isActive: true,
+    },
+    select: {
+      departmentId: true,
+      requiredSteps: true,
+      steps: {
+        select: {
+          stepNumber: true,
+          stepName: true,
+          approverUserId: true,
+          approverUser: {
+            select: {
+              isActive: true,
+              isRequestApprover: true,
+              companyAccess: {
+                where: {
+                  companyId,
+                  isActive: true,
+                },
+                select: {
+                  id: true,
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+        orderBy: [{ stepNumber: "asc" }, { approverUserId: "asc" }],
+      },
+    },
+  })
+
+  const byDepartmentId = new Map<string, DepartmentApprovalFlowLite>()
+
+  for (const flow of flows) {
+    const validSteps = flow.steps
+      .filter((step) => step.stepNumber >= 1 && step.stepNumber <= flow.requiredSteps)
+      .filter(
+        (step) =>
+          step.approverUser.isActive &&
+          step.approverUser.isRequestApprover &&
+          step.approverUser.companyAccess.length > 0
+      )
+      .map((step) => ({
+        stepNumber: step.stepNumber,
+        stepName: step.stepName?.trim() || `Step ${step.stepNumber}`,
+        approverUserId: step.approverUserId,
+      }))
+
+    const selectedApproverByStep = new Map<number, string>()
+    const approverUserIdsByStep = new Map<number, string[]>()
+    const stepNameByStep = new Map<number, string>()
+
+    for (const step of validSteps) {
+      const existingApproverIds = approverUserIdsByStep.get(step.stepNumber) ?? []
+      if (!existingApproverIds.includes(step.approverUserId)) {
+        existingApproverIds.push(step.approverUserId)
+        approverUserIdsByStep.set(step.stepNumber, existingApproverIds)
+      }
+
+      if (!selectedApproverByStep.has(step.stepNumber)) {
+        selectedApproverByStep.set(step.stepNumber, step.approverUserId)
+      }
+      if (!stepNameByStep.has(step.stepNumber)) {
+        stepNameByStep.set(step.stepNumber, step.stepName)
+      }
+    }
+
+    const missingStepNumbers: number[] = []
+    for (let stepNumber = 1; stepNumber <= flow.requiredSteps; stepNumber += 1) {
+      if (!selectedApproverByStep.has(stepNumber)) {
+        missingStepNumbers.push(stepNumber)
+      }
+      if (!stepNameByStep.has(stepNumber)) {
+        stepNameByStep.set(stepNumber, `Step ${stepNumber}`)
+      }
+    }
+
+    byDepartmentId.set(flow.departmentId, {
+      departmentId: flow.departmentId,
+      requiredSteps: flow.requiredSteps,
+      steps: validSteps,
+      selectedApproverByStep,
+      approverUserIdsByStep,
+      stepNameByStep,
+      missingStepNumbers,
+    })
+  }
+
+  const resolve = (departmentId: string): { matched: DepartmentApprovalFlowLite | null; reason: string | null } => {
+    const flow = byDepartmentId.get(departmentId) ?? null
+    if (!flow) {
+      return { matched: null, reason: "DEPARTMENT_APPROVAL_FLOW_NOT_FOUND" }
+    }
+
+    if (flow.missingStepNumbers.length > 0) {
+      return { matched: null, reason: "DEPARTMENT_APPROVAL_FLOW_INCOMPLETE" }
+    }
+
+    return { matched: flow, reason: null }
+  }
+
+  return { resolve }
 }
 
 const extractLegacyRecordId = (row: LegacyRow): string => {
@@ -1006,10 +1157,11 @@ const uniqueRequestNumber = async (companyId: string, preferredRequestNumber: st
 export async function executeLegacyMaterialRequestSync(
   input: ExecuteLegacyMaterialRequestSyncInput
 ): Promise<LegacyMaterialRequestSyncExecutionResult> {
-  const [requesterResolver, approverResolver, departmentResolver] = await Promise.all([
+  const [requesterResolver, approverResolver, departmentResolver, departmentApprovalFlowResolver] = await Promise.all([
     buildRequesterResolver(input.companyId),
     buildApproverResolver(input.companyId),
     buildDepartmentResolver(input.companyId),
+    buildDepartmentApprovalFlowResolver(input.companyId),
   ])
 
   const fetchedRows = await fetchRows({
@@ -1153,19 +1305,29 @@ export async function executeLegacyMaterialRequestSync(
         overrideRecommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
         overrideFinalApproverEmployeeNumber: finalApproverEmployeeNumberHint,
       })
-      const mappedStatus = mapRequestStatus({
+      let mappedStatus = mapRequestStatus({
         legacyStatus,
         hasFinalStageSignal: stageBuild.stages.some((stage) => stage.key === "final" && stage.include),
         finalApprovalStatus: stageBuild.finalApprovalStatus,
       })
-      const mappedStatusLabel = mapLegacyToUnmatchedDisplayStatus({
+      let mappedStatusLabel = mapLegacyToUnmatchedDisplayStatus({
         legacyStatus,
         mappedStatus,
       })
 
       const requesterIdentity = extractIdentity(row, {
-        // Requester matching must be legacy requester employee-id/number only.
-        employeeNumberPaths: ["requestedByEmployeeId", "requestedBy.employeeId", "requestedBy.employeeNumber"],
+        // Requester matching must be legacy requester employee number only (no name fallback).
+        employeeNumberPaths: [
+          "requestedByEmployeeId",
+          "requestedBy.employeeId",
+          "requestedBy.employeeNumber",
+          "requestedBy.empNo",
+          "requestedByNo",
+          "requesterEmployeeId",
+          "requesterEmployeeNumber",
+          "requesterNumber",
+          "requesterNo",
+        ],
         firstNamePaths: ["requestedByFirstName", "requestedBy.firstName"],
         lastNamePaths: ["requestedByLastName", "requestedBy.lastName"],
         namePaths: ["requestedByName", "requestedBy.name"],
@@ -1268,6 +1430,50 @@ export async function executeLegacyMaterialRequestSync(
         continue
       }
 
+      const departmentFlowResolution = departmentApprovalFlowResolver.resolve(departmentId)
+      const departmentApprovalFlow = departmentFlowResolution.matched
+
+      mappedStatus = mapRequestStatus({
+        legacyStatus,
+        hasFinalStageSignal: (departmentApprovalFlow?.requiredSteps ?? 0) >= 4,
+        finalApprovalStatus: stageBuild.finalApprovalStatus,
+      })
+      mappedStatusLabel = mapLegacyToUnmatchedDisplayStatus({
+        legacyStatus,
+        mappedStatus,
+      })
+
+      if (
+        (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL ||
+          mappedStatus === MaterialRequestStatus.APPROVED ||
+          mappedStatus === MaterialRequestStatus.REJECTED) &&
+        !departmentApprovalFlow
+      ) {
+        unmatched.push({
+          domain: "material-request",
+          reason: departmentFlowResolution.reason ?? "DEPARTMENT_APPROVAL_FLOW_NOT_FOUND",
+          legacyRecordId,
+          requestNumber,
+          legacyStatus,
+          mappedStatus: mappedStatusLabel,
+          pendingStepName: pendingStepNameHint,
+          pendingApproverEmployeeNumber: pendingApproverEmployeeNumberHint,
+          recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
+          recommendingApproverName: recommendingApproverNameHint,
+          recommendingApprovalStatus: recommendingApprovalStatusHint,
+          finalApproverEmployeeNumber: finalApproverEmployeeNumberHint,
+          finalApproverName: finalApproverNameHint,
+          finalApprovalStatus: finalApprovalStatusHint,
+          legacyDepartmentCode,
+          legacyDepartmentName,
+          departmentCode,
+          departmentName,
+          employeeNumber: requester.employeeNumber,
+          requesterName: `${requester.firstName} ${requester.lastName}`,
+        })
+        continue
+      }
+
       const datePreparedSource = toDate(pickPath(row, ["datePrepared", "createdAt"]))
       const dateRequiredSource = toDate(pickPath(row, ["dateRequired", "datePrepared", "createdAt"]))
       if (!datePreparedSource || !dateRequiredSource) {
@@ -1310,18 +1516,6 @@ export async function executeLegacyMaterialRequestSync(
       }
 
       const pendingKey = stageBuild.pendingKey
-      if (pendingKey && hasOverrideValue(override?.pendingApproverEmployeeNumber)) {
-        const pendingStage = stageBuild.stages.find((stage) => stage.key === pendingKey)
-        if (pendingStage && !pendingStage.approverUserId) {
-          const pendingApproverMatch = approverResolver.resolve({
-            employeeNumber: override?.pendingApproverEmployeeNumber?.trim() ?? "",
-            firstName: "",
-            lastName: "",
-          })
-          pendingStage.approverUserId = pendingApproverMatch.matched?.userId ?? null
-        }
-      }
-
       const pendingStepName = pendingKey ? stageNameMap[pendingKey] : pendingStepNameHint
       const pendingApproverEmployeeNumber = hasOverrideValue(override?.pendingApproverEmployeeNumber)
         ? override?.pendingApproverEmployeeNumber?.trim() ?? ""
@@ -1330,35 +1524,47 @@ export async function executeLegacyMaterialRequestSync(
           : pendingKey === "final"
             ? finalApproverEmployeeNumberHint
             : getPendingApproverEmployeeNumber(row, pendingKey)
-      const stagesWithApprovers: Array<StageCandidate & { approverUserId: string }> = []
-
-      for (const stage of stageBuild.stages) {
-        if (!stage.include) {
-          continue
-        }
-
-        if (!stage.approverUserId) {
-          skipped.push({
-            domain: "material-request",
-            reason: `DROPPED_STAGE_WITHOUT_APPROVER_${stage.key.toUpperCase()}`,
-            legacyRecordId,
-            requestNumber,
-            status: legacyStatus,
-          })
-          continue
-        }
-
-        stagesWithApprovers.push({
-          ...stage,
-          approverUserId: stage.approverUserId,
-        })
+      const stepApproverOverrideByStep = new Map<number, string>()
+      if (hasOverrideValue(override?.stepOneApproverUserId)) {
+        stepApproverOverrideByStep.set(1, override?.stepOneApproverUserId?.trim() ?? "")
       }
+      if (hasOverrideValue(override?.stepTwoApproverUserId)) {
+        stepApproverOverrideByStep.set(2, override?.stepTwoApproverUserId?.trim() ?? "")
+      }
+      if (hasOverrideValue(override?.stepThreeApproverUserId)) {
+        stepApproverOverrideByStep.set(3, override?.stepThreeApproverUserId?.trim() ?? "")
+      }
+      if (hasOverrideValue(override?.stepFourApproverUserId)) {
+        stepApproverOverrideByStep.set(4, override?.stepFourApproverUserId?.trim() ?? "")
+      }
+      const stageByKey = new Map(stageBuild.stages.map((stage) => [stage.key, stage]))
+      const pendingStepNumber =
+        mappedStatus === MaterialRequestStatus.PENDING_APPROVAL
+          ? pendingStepNumberFromStatus(legacyStatus, (departmentApprovalFlow?.requiredSteps ?? 0) >= 4)
+          : null
+      const pendingStepDisplayName =
+        pendingStepNumber && departmentApprovalFlow
+          ? departmentApprovalFlow.stepNameByStep.get(pendingStepNumber) ?? `Step ${pendingStepNumber}`
+          : pendingStepName
 
-      if (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL) {
-        if (!pendingKey) {
+      const approvalSteps: MaterialRequestApprovalStepCreate[] = []
+      let requiredSteps = 0
+      let currentStep: number | null = null
+      let rejectedStepNumber: number | null = null
+      let selectedInitialApproverUserId: string | null = null
+      let selectedStepTwoApproverUserId: string | null = null
+      let selectedStepThreeApproverUserId: string | null = null
+      let selectedStepFourApproverUserId: string | null = null
+
+      if (
+        mappedStatus === MaterialRequestStatus.PENDING_APPROVAL ||
+        mappedStatus === MaterialRequestStatus.APPROVED ||
+        mappedStatus === MaterialRequestStatus.REJECTED
+      ) {
+        if (!departmentApprovalFlow) {
           skipped.push({
             domain: "material-request",
-            reason: "PENDING_STATUS_WITHOUT_PENDING_STAGE",
+            reason: "DEPARTMENT_APPROVAL_FLOW_NOT_FOUND",
             legacyRecordId,
             requestNumber,
             status: legacyStatus,
@@ -1366,16 +1572,68 @@ export async function executeLegacyMaterialRequestSync(
           continue
         }
 
-        const hasPendingStage = stagesWithApprovers.some((stage) => stage.key === pendingKey)
-        if (!hasPendingStage) {
+        requiredSteps = departmentApprovalFlow.requiredSteps
+        const selectedApproverByStep = new Map<number, string>()
+        let hasInvalidStepApproverOverride = false
+
+        for (let stepNumber = 1; stepNumber <= requiredSteps; stepNumber += 1) {
+          const configuredApproverUserIds = departmentApprovalFlow.approverUserIdsByStep.get(stepNumber) ?? []
+          const overrideApproverUserId = stepApproverOverrideByStep.get(stepNumber) ?? null
+
+          if (overrideApproverUserId) {
+            if (!configuredApproverUserIds.includes(overrideApproverUserId)) {
+              unmatched.push({
+                domain: "material-request",
+                reason: "STEP_APPROVER_OVERRIDE_NOT_IN_DEPARTMENT_FLOW",
+                legacyRecordId,
+                requestNumber,
+                legacyStatus,
+                mappedStatus: mappedStatusLabel,
+                pendingStepName: pendingStepDisplayName,
+                pendingApproverEmployeeNumber,
+                recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
+                recommendingApproverName: recommendingApproverNameHint,
+                recommendingApprovalStatus: recommendingApprovalStatusHint,
+                finalApproverEmployeeNumber: finalApproverEmployeeNumberHint,
+                finalApproverName: finalApproverNameHint,
+                finalApprovalStatus: finalApprovalStatusHint,
+                legacyDepartmentCode,
+                legacyDepartmentName,
+                departmentCode,
+                departmentName,
+                employeeNumber: requester.employeeNumber,
+                requesterName: `${requester.firstName} ${requester.lastName}`,
+              })
+              hasInvalidStepApproverOverride = true
+              break
+            }
+
+            selectedApproverByStep.set(stepNumber, overrideApproverUserId)
+            continue
+          }
+
+          const defaultApproverUserId = departmentApprovalFlow.selectedApproverByStep.get(stepNumber) ?? null
+          if (defaultApproverUserId) {
+            selectedApproverByStep.set(stepNumber, defaultApproverUserId)
+          }
+        }
+
+        if (hasInvalidStepApproverOverride) {
+          continue
+        }
+
+        const missingSelectedApproverStep = Array.from({ length: requiredSteps }).findIndex(
+          (_, index) => !selectedApproverByStep.has(index + 1)
+        )
+        if (missingSelectedApproverStep >= 0) {
           unmatched.push({
             domain: "material-request",
-            reason: `PENDING_STAGE_NOT_RESOLVED_${pendingKey.toUpperCase()}`,
+            reason: "DEPARTMENT_APPROVAL_FLOW_INCOMPLETE",
             legacyRecordId,
             requestNumber,
             legacyStatus,
             mappedStatus: mappedStatusLabel,
-            pendingStepName,
+            pendingStepName: pendingStepDisplayName,
             pendingApproverEmployeeNumber,
             recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
             recommendingApproverName: recommendingApproverNameHint,
@@ -1392,71 +1650,116 @@ export async function executeLegacyMaterialRequestSync(
           })
           continue
         }
-      }
 
-      const approvalSteps: MaterialRequestApprovalStepCreate[] = []
-      const pendingIndex =
-        mappedStatus === MaterialRequestStatus.PENDING_APPROVAL && pendingKey
-          ? stagesWithApprovers.findIndex((stage) => stage.key === pendingKey)
-          : -1
+        selectedInitialApproverUserId = selectedApproverByStep.get(1) ?? null
+        selectedStepTwoApproverUserId = selectedApproverByStep.get(2) ?? null
+        selectedStepThreeApproverUserId = selectedApproverByStep.get(3) ?? null
+        selectedStepFourApproverUserId = selectedApproverByStep.get(4) ?? null
 
-      const explicitRejectedIndex = stagesWithApprovers.findIndex((stage) => stage.explicitStatus === "DISAPPROVED")
-      const rejectedIndex =
-        mappedStatus === MaterialRequestStatus.REJECTED
-          ? explicitRejectedIndex >= 0
-            ? explicitRejectedIndex
-            : stagesWithApprovers.length - 1
-          : -1
-
-      for (let index = 0; index < stagesWithApprovers.length; index += 1) {
-        const stage = stagesWithApprovers[index]
-
-        let stepStatus: MaterialRequestStepStatus
         if (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL) {
-          stepStatus = pendingIndex >= 0 && index < pendingIndex ? MaterialRequestStepStatus.APPROVED : MaterialRequestStepStatus.PENDING
+          if (!pendingStepNumber) {
+            skipped.push({
+              domain: "material-request",
+              reason: "PENDING_STATUS_WITHOUT_PENDING_STAGE",
+              legacyRecordId,
+              requestNumber,
+              status: legacyStatus,
+            })
+            continue
+          }
+
+          if (pendingStepNumber > requiredSteps) {
+            unmatched.push({
+              domain: "material-request",
+              reason: "PENDING_STAGE_NOT_CONFIGURED_IN_DEPARTMENT_FLOW",
+              legacyRecordId,
+              requestNumber,
+              legacyStatus,
+              mappedStatus: mappedStatusLabel,
+              pendingStepName: pendingStepDisplayName,
+              pendingApproverEmployeeNumber,
+              recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
+              recommendingApproverName: recommendingApproverNameHint,
+              recommendingApprovalStatus: recommendingApprovalStatusHint,
+              finalApproverEmployeeNumber: finalApproverEmployeeNumberHint,
+              finalApproverName: finalApproverNameHint,
+              finalApprovalStatus: finalApprovalStatusHint,
+              legacyDepartmentCode,
+              legacyDepartmentName,
+              departmentCode,
+              departmentName,
+              employeeNumber: requester.employeeNumber,
+              requesterName: `${requester.firstName} ${requester.lastName}`,
+            })
+            continue
+          }
+
+          currentStep = pendingStepNumber
         } else if (mappedStatus === MaterialRequestStatus.APPROVED) {
-          stepStatus = MaterialRequestStepStatus.APPROVED
+          currentStep = requiredSteps
         } else if (mappedStatus === MaterialRequestStatus.REJECTED) {
-          if (rejectedIndex >= 0 && index < rejectedIndex) {
-            stepStatus = MaterialRequestStepStatus.APPROVED
-          } else if (index === rejectedIndex) {
-            stepStatus = MaterialRequestStepStatus.REJECTED
-          } else {
-            stepStatus = MaterialRequestStepStatus.SKIPPED
-          }
-        } else {
-          if (stage.explicitStatus === "APPROVED") {
-            stepStatus = MaterialRequestStepStatus.APPROVED
-          } else if (stage.explicitStatus === "DISAPPROVED") {
-            stepStatus = MaterialRequestStepStatus.REJECTED
-          } else {
-            stepStatus = MaterialRequestStepStatus.SKIPPED
-          }
+          const explicitRejectedStepNumber =
+            stageBuild.stages
+              .map((stage) =>
+                stage.explicitStatus === "DISAPPROVED"
+                  ? stageNumberByKey[stage.key]
+                  : null
+              )
+              .find((stepNumber): stepNumber is number => stepNumber !== null && stepNumber <= requiredSteps) ?? null
+
+          rejectedStepNumber =
+            explicitRejectedStepNumber ??
+            (pendingStepNumber && pendingStepNumber <= requiredSteps ? pendingStepNumber : requiredSteps)
+          currentStep = rejectedStepNumber
         }
 
-        approvalSteps.push({
-          stepNumber: index + 1,
-          stepName: stage.name,
-          approverUserId: stage.approverUserId,
-          status: stepStatus,
-          actedAt: stepStatus === MaterialRequestStepStatus.PENDING ? null : stage.actedAt,
-          actedByUserId: stepStatus === MaterialRequestStepStatus.PENDING || stepStatus === MaterialRequestStepStatus.SKIPPED ? null : stage.approverUserId,
-          remarks:
-            stepStatus === MaterialRequestStepStatus.SKIPPED
-              ? "Skipped after rejection"
-              : stage.remarks,
-        })
-      }
+        for (let stepNumber = 1; stepNumber <= requiredSteps; stepNumber += 1) {
+          const approverUserId = selectedApproverByStep.get(stepNumber)
+          if (!approverUserId) {
+            continue
+          }
 
-      const requiredSteps = approvalSteps.length
-      const currentStep =
-        mappedStatus === MaterialRequestStatus.PENDING_APPROVAL && pendingIndex >= 0
-          ? pendingIndex + 1
-          : mappedStatus === MaterialRequestStatus.REJECTED && rejectedIndex >= 0
-            ? rejectedIndex + 1
-            : mappedStatus === MaterialRequestStatus.APPROVED && requiredSteps > 0
-              ? requiredSteps
-              : null
+          const stageKey = stageKeyByStepNumber[stepNumber]
+          const stage = stageKey ? stageByKey.get(stageKey) : null
+
+          let stepStatus: MaterialRequestStepStatus
+          if (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL) {
+            stepStatus =
+              currentStep !== null && stepNumber < currentStep
+                ? MaterialRequestStepStatus.APPROVED
+                : MaterialRequestStepStatus.PENDING
+          } else if (mappedStatus === MaterialRequestStatus.APPROVED) {
+            stepStatus = MaterialRequestStepStatus.APPROVED
+          } else {
+            if (rejectedStepNumber !== null && stepNumber < rejectedStepNumber) {
+              stepStatus = MaterialRequestStepStatus.APPROVED
+            } else if (rejectedStepNumber !== null && stepNumber === rejectedStepNumber) {
+              stepStatus = MaterialRequestStepStatus.REJECTED
+            } else {
+              stepStatus = MaterialRequestStepStatus.SKIPPED
+            }
+          }
+
+          approvalSteps.push({
+            stepNumber,
+            stepName: departmentApprovalFlow.stepNameByStep.get(stepNumber) ?? `Step ${stepNumber}`,
+            approverUserId,
+            status: stepStatus,
+            actedAt:
+              stepStatus === MaterialRequestStepStatus.PENDING || stepStatus === MaterialRequestStepStatus.SKIPPED
+                ? null
+                : stage?.actedAt ?? toDate(pickPath(row, ["updatedAt"])),
+            actedByUserId:
+              stepStatus === MaterialRequestStepStatus.PENDING || stepStatus === MaterialRequestStepStatus.SKIPPED
+                ? null
+                : approverUserId,
+            remarks:
+              stepStatus === MaterialRequestStepStatus.SKIPPED
+                ? "Skipped after rejection"
+                : stage?.remarks ?? null,
+          })
+        }
+      }
 
       if (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL && currentStep === null) {
         skipped.push({
@@ -1481,7 +1784,14 @@ export async function executeLegacyMaterialRequestSync(
       const cancelledAt =
         mappedStatus === MaterialRequestStatus.CANCELLED ? toDate(pickPath(row, ["updatedAt"])) : null
 
-      const rejectionStep = rejectedIndex >= 0 ? approvalSteps[rejectedIndex] : null
+      const rejectionStep =
+        mappedStatus === MaterialRequestStatus.REJECTED && rejectedStepNumber !== null
+          ? approvalSteps.find(
+              (step) =>
+                step.stepNumber === rejectedStepNumber &&
+                step.status === MaterialRequestStepStatus.REJECTED
+            ) ?? null
+          : null
       const finalDecisionByUserId =
         mappedStatus === MaterialRequestStatus.REJECTED
           ? rejectionStep?.approverUserId ?? null
@@ -1581,10 +1891,10 @@ export async function executeLegacyMaterialRequestSync(
               status: mappedStatus,
               requesterEmployeeId: requester.id,
               requesterUserId,
-              selectedInitialApproverUserId: approvalSteps[0]?.approverUserId ?? null,
-              selectedStepTwoApproverUserId: approvalSteps[1]?.approverUserId ?? null,
-              selectedStepThreeApproverUserId: approvalSteps[2]?.approverUserId ?? null,
-              selectedStepFourApproverUserId: approvalSteps[3]?.approverUserId ?? null,
+              selectedInitialApproverUserId,
+              selectedStepTwoApproverUserId,
+              selectedStepThreeApproverUserId,
+              selectedStepFourApproverUserId,
               departmentId,
               datePrepared,
               dateRequired,
@@ -1729,7 +2039,7 @@ export async function executeLegacyMaterialRequestSync(
         requestNumber: preferredRequestNumber,
         legacyStatus,
         mappedStatus: mappedStatusLabel,
-        pendingStepName,
+        pendingStepName: pendingStepDisplayName,
         employeeNumber: requester.employeeNumber,
         requesterName: `${requester.firstName} ${requester.lastName}`,
         legacyDepartmentCode,

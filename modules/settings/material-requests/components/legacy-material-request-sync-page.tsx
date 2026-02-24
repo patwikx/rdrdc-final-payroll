@@ -785,6 +785,43 @@ export function LegacyMaterialRequestSyncPage({
     },
     []
   )
+  const buildForcedOverrideForApply = useCallback((params: {
+    entry: UnmatchedEntry
+    draft: ManualOverrideDraft
+  }): { ok: true; payload: ManualOverridePayload } | { ok: false; error: string } => {
+    const { entry, draft } = params
+    const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
+    const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
+    const basePayload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
+    const resolvedDepartmentId = resolveDepartmentIdForDraft(entry, draft)
+
+    if (!resolvedDepartmentId) {
+      return {
+        ok: false,
+        error: `Department is required for ${entry.requestNumber} (${entry.legacyRecordId}).`,
+      }
+    }
+
+    const payload: ManualOverridePayload = basePayload ?? {
+      legacyRecordId: entry.legacyRecordId,
+      departmentId: undefined,
+      requesterEmployeeNumber: undefined,
+      requesterName: undefined,
+      pendingApproverEmployeeNumber: undefined,
+      recommendingApproverEmployeeNumber: undefined,
+      finalApproverEmployeeNumber: undefined,
+      stepOneApproverUserId: undefined,
+      stepTwoApproverUserId: undefined,
+      stepThreeApproverUserId: undefined,
+      stepFourApproverUserId: undefined,
+      legacyStatus: undefined,
+      departmentCode: undefined,
+      departmentName: undefined,
+    }
+    payload.departmentId = resolvedDepartmentId
+
+    return { ok: true, payload }
+  }, [inferDepartmentIdFromEntry, resolveDepartmentIdForDraft, resolveSourceApproverUserIdByStep])
 
   const saveSelectedRows = () => {
     startTransition(async () => {
@@ -802,14 +839,28 @@ export function LegacyMaterialRequestSyncPage({
         }
 
         const selectedOverrides: ManualOverridePayload[] = []
+        const missingDepartmentErrors: string[] = []
         for (const entry of selectedRows) {
-          const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
           const draft = resolveDraftForEntry(entry)
-          const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
-          const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
-          if (payload) {
-            selectedOverrides.push(payload)
+          const forcedOverride = buildForcedOverrideForApply({ entry, draft })
+          if (!forcedOverride.ok) {
+            missingDepartmentErrors.push(forcedOverride.error)
+            continue
           }
+          selectedOverrides.push(forcedOverride.payload)
+        }
+
+        if (missingDepartmentErrors.length > 0) {
+          toast.error("Some selected rows are missing department assignment.", {
+            description: missingDepartmentErrors[0],
+          })
+          // eslint-disable-next-line no-console
+          console.log("[Legacy MR Sync] Save selected rows blocked (missing department)", {
+            missingDepartmentErrors,
+            selectedLegacyRecordIds,
+            selectedRequestNumbers: selectedRows.map((row) => row.requestNumber),
+          })
+          return
         }
 
         let applyResponse: SyncResult
@@ -859,6 +910,7 @@ export function LegacyMaterialRequestSyncPage({
           console.log("[Legacy MR Sync] Save selected rows failed details", {
             failedCount: failedSelectedRows.length,
             failedLegacyRecordIds: failedSelectedRows.map((row) => row.legacyRecordId),
+            selectedRequestNumbers: selectedRows.map((row) => row.requestNumber),
             applyResponseSummary: applyResponse.summary,
             firstFailure: failure,
             applyResponseUnmatched: applyResponse.unmatched,
@@ -899,12 +951,22 @@ export function LegacyMaterialRequestSyncPage({
       setRowActionRecordId(entry.legacyRecordId)
 
       try {
-        const inferredDepartmentId = inferDepartmentIdFromEntry(entry)
         const draft =
           manualOverrideDraftByRecordId[entry.legacyRecordId] ??
-          createDraftFromUnmatchedEntry(entry, inferredDepartmentId)
-        const sourceApproverUserIdByStep = resolveSourceApproverUserIdByStep(entry, draft)
-        const payload = buildManualOverridePayload(entry, draft, inferredDepartmentId, sourceApproverUserIdByStep)
+          createDraftFromUnmatchedEntry(entry, inferDepartmentIdFromEntry(entry))
+        const forcedOverride = buildForcedOverrideForApply({ entry, draft })
+        if (!forcedOverride.ok) {
+          toast.error("Department is required before saving this row.", {
+            description: forcedOverride.error,
+          })
+          // eslint-disable-next-line no-console
+          console.log("[Legacy MR Sync] Save row blocked (missing department)", {
+            requestNumber: entry.requestNumber,
+            legacyRecordId: entry.legacyRecordId,
+            error: forcedOverride.error,
+          })
+          return
+        }
 
         let applyResponse: SyncResult
         try {
@@ -913,7 +975,7 @@ export function LegacyMaterialRequestSyncPage({
             companyId,
             dryRun: false,
             targetLegacyRecordIds: [entry.legacyRecordId],
-            manualOverrides: payload ? [payload] : [],
+            manualOverrides: [forcedOverride.payload],
           })
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unexpected server error."

@@ -17,6 +17,7 @@ type EmployeeLite = {
 export type LegacySyncUnmatchedRow = {
   domain: SyncDomain
   reason: string
+  reasonDetail?: string
   legacyRecordId: string
   employeeNumber: string
   firstName: string
@@ -475,6 +476,13 @@ const buildEmployeeResolver = async (companyId: string) => {
 }
 
 const buildLeaveTypeResolver = async (companyId: string, dryRun: boolean) => {
+  type LeaveTypeLite = { id: string; companyId: string | null; code: string; name: string }
+  type LeaveTypeResolveResult = {
+    matched: LeaveTypeLite | null
+    reason: "LEAVE_TYPE_NOT_FOUND" | "LEAVE_TYPE_CREATE_FAILED" | "LEAVE_TYPE_CREATE_ERROR" | null
+    reasonDetail: string | null
+  }
+
   const leaveTypes = await db.leaveType.findMany({
     where: {
       OR: [{ companyId }, { companyId: null }],
@@ -488,10 +496,10 @@ const buildLeaveTypeResolver = async (companyId: string, dryRun: boolean) => {
     },
   })
 
-  const byCode = new Map<string, { id: string; companyId: string | null; code: string; name: string }>()
-  const byName = new Map<string, { id: string; companyId: string | null; code: string; name: string }>()
-  const byCanonicalName = new Map<string, Array<{ id: string; companyId: string | null; code: string; name: string }>>()
-  const byLegacyCode = new Map<string, { id: string; companyId: string | null; code: string; name: string }>()
+  const byCode = new Map<string, LeaveTypeLite>()
+  const byName = new Map<string, LeaveTypeLite>()
+  const byCanonicalName = new Map<string, LeaveTypeLite[]>()
+  const byLegacyCode = new Map<string, LeaveTypeLite>()
 
   for (const leaveType of leaveTypes) {
     byCode.set(normalizeText(leaveType.code), leaveType)
@@ -507,41 +515,48 @@ const buildLeaveTypeResolver = async (companyId: string, dryRun: boolean) => {
 
   let createdCount = 0
 
-  const pickPreferredLeaveType = (
-    candidates: Array<{ id: string; companyId: string | null; code: string; name: string }>
-  ) => {
+  const pickPreferredLeaveType = (candidates: LeaveTypeLite[]) => {
     if (candidates.length === 0) return null
     const companyScoped = candidates.find((item) => item.companyId === companyId)
     return companyScoped ?? candidates[0]
   }
 
-  const resolve = async (identity: { code: string; name: string }) => {
+  const resolve = async (identity: { code: string; name: string }): Promise<LeaveTypeResolveResult> => {
     const codeKey = normalizeText(identity.code)
     const nameKeyValue = normalizeText(identity.name)
     const canonicalNameKey = canonicalizeLeaveTypeName(identity.name)
+    const displayIdentity = [identity.code, identity.name].filter(Boolean).join(" / ") || "unknown leave type"
 
-    if (codeKey && byCode.has(codeKey)) return byCode.get(codeKey) ?? null
-    if (nameKeyValue && byName.has(nameKeyValue)) return byName.get(nameKeyValue) ?? null
+    if (codeKey && byCode.has(codeKey)) {
+      return { matched: byCode.get(codeKey) ?? null, reason: null, reasonDetail: null }
+    }
+
+    if (nameKeyValue && byName.has(nameKeyValue)) {
+      return { matched: byName.get(nameKeyValue) ?? null, reason: null, reasonDetail: null }
+    }
+
     if (canonicalNameKey && byCanonicalName.has(canonicalNameKey)) {
       const candidate = pickPreferredLeaveType(byCanonicalName.get(canonicalNameKey) ?? [])
-      if (candidate) return candidate
+      if (candidate) {
+        return { matched: candidate, reason: null, reasonDetail: null }
+      }
     }
-    if (identity.code && byLegacyCode.has(identity.code)) return byLegacyCode.get(identity.code) ?? null
+    if (codeKey && byLegacyCode.has(codeKey)) {
+      return { matched: byLegacyCode.get(codeKey) ?? null, reason: null, reasonDetail: null }
+    }
 
     if (dryRun) {
-      return null
+      return {
+        matched: null,
+        reason: "LEAVE_TYPE_NOT_FOUND",
+        reasonDetail: `No active leave type match found for ${displayIdentity} (dry run does not auto-create leave types).`,
+      }
     }
 
     const baseCode = `LEGACY_${slugify(identity.code || identity.name || "TYPE")}`
     const name = safeString(identity.name) || safeString(identity.code) || "Legacy Leave Type"
-    let created:
-      | {
-          id: string
-          companyId: string | null
-          code: string
-          name: string
-        }
-      | null = null
+    let created: LeaveTypeLite | null = null
+    let failureMessage: string | null = null
 
     for (let suffix = 0; suffix < 30; suffix += 1) {
       const candidateCode = suffix === 0 ? baseCode : `${baseCode}_${suffix}`
@@ -568,13 +583,24 @@ const buildLeaveTypeResolver = async (companyId: string, dryRun: boolean) => {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (!message.includes("Unique constraint")) {
-          throw error
+          return {
+            matched: null,
+            reason: "LEAVE_TYPE_CREATE_ERROR",
+            reasonDetail: `Failed creating leave type for ${displayIdentity}: ${message}`,
+          }
         }
+        failureMessage = message
       }
     }
 
     if (!created) {
-      return null
+      return {
+        matched: null,
+        reason: "LEAVE_TYPE_CREATE_FAILED",
+        reasonDetail:
+          failureMessage ??
+          `Failed creating leave type for ${displayIdentity}: could not generate a unique code after 30 attempts.`,
+      }
     }
 
     createdCount += 1
@@ -586,10 +612,10 @@ const buildLeaveTypeResolver = async (companyId: string, dryRun: boolean) => {
       existing.push(created)
       byCanonicalName.set(canonical, existing)
     }
-    if (identity.code) {
-      byLegacyCode.set(identity.code, created)
+    if (codeKey) {
+      byLegacyCode.set(codeKey, created)
     }
-    return created
+    return { matched: created, reason: null, reasonDetail: null }
   }
 
   return {
@@ -791,11 +817,12 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
       }
 
       const leaveTypeIdentity = extractLeaveTypeIdentity(row)
-      const leaveType = await leaveTypeResolver.resolve(leaveTypeIdentity)
-      if (!leaveType) {
+      const leaveTypeResolution = await leaveTypeResolver.resolve(leaveTypeIdentity)
+      if (!leaveTypeResolution.matched) {
         unmatched.push({
           domain: "leave",
-          reason: "LEAVE_TYPE_NOT_FOUND_OR_CREATE_FAILED",
+          reason: leaveTypeResolution.reason ?? "LEAVE_TYPE_NOT_FOUND",
+          reasonDetail: leaveTypeResolution.reasonDetail ?? undefined,
           legacyRecordId: recordId,
           employeeNumber: employeeIdentity.employeeNumber,
           firstName: employeeIdentity.firstName,
@@ -805,6 +832,7 @@ export async function executeLegacyLeaveOvertimeSync(input: ExecuteLegacySyncInp
         })
         continue
       }
+      const leaveType = leaveTypeResolution.matched
 
       const startDateRaw = toDate(pickPath(row, ["startDate"]))
       const endDateRaw = toDate(pickPath(row, ["endDate"]))

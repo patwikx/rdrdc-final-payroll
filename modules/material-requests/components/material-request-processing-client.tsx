@@ -41,6 +41,7 @@ import {
   updateMaterialRequestProcessingStatusAction,
 } from "@/modules/material-requests/actions/material-request-processing-actions"
 import { openMaterialRequestPrintWindow } from "@/modules/material-requests/components/material-request-print-button"
+import { MaterialRequestSupplierInput } from "@/modules/material-requests/components/material-request-supplier-input"
 import type {
   EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestProcessingDetail,
@@ -1106,10 +1107,9 @@ export function MaterialRequestProcessingClient({
                 <Label>
                   Supplier <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <MaterialRequestSupplierInput
                   value={supplierName}
-                  onChange={(event) => setSupplierName(event.target.value)}
-                  placeholder="Supplier name"
+                  onChange={setSupplierName}
                   maxLength={160}
                   disabled={isActionPending}
                 />

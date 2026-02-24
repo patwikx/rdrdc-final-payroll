@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { updateMaterialRequestProcessingStatusAction } from "@/modules/material-requests/actions/material-request-processing-actions"
 import { MaterialRequestPrintButton } from "@/modules/material-requests/components/material-request-print-button"
+import { MaterialRequestSupplierInput } from "@/modules/material-requests/components/material-request-supplier-input"
 import type { EmployeePortalMaterialRequestProcessingDetail } from "@/modules/material-requests/types/employee-portal-material-request-types"
 
 type MaterialRequestProcessingDetailPageProps = {
@@ -674,10 +675,9 @@ export function MaterialRequestProcessingDetailPage({
                 <Label>
                   Supplier <span className="text-destructive">*</span>
                 </Label>
-                <Input
+                <MaterialRequestSupplierInput
                   value={supplierName}
-                  onChange={(event) => setSupplierName(event.target.value)}
-                  placeholder="Supplier name"
+                  onChange={setSupplierName}
                   maxLength={160}
                   disabled={isPending}
                 />

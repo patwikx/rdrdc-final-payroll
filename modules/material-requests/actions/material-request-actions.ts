@@ -55,6 +55,11 @@ const toNullableText = (value: string | undefined): string | null => {
   return trimmed.length > 0 ? trimmed : null
 }
 
+const normalizeItemCode = (value: string | undefined): string | null => {
+  const normalized = toNullableText(value)
+  return normalized ? normalized.toUpperCase() : null
+}
+
 const toNullableId = (value: string | undefined): string | null => {
   if (!value) {
     return null
@@ -104,7 +109,7 @@ const normalizeMaterialRequestItems = (
     return {
       lineNumber: index + 1,
       source: item.source ?? MaterialRequestItemSource.MANUAL,
-      itemCode: toNullableText(item.itemCode),
+      itemCode: normalizeItemCode(item.itemCode),
       description: item.description.trim(),
       uom: item.uom.trim(),
       quantity,
@@ -113,6 +118,30 @@ const normalizeMaterialRequestItems = (
       remarks: toNullableText(item.remarks),
     }
   })
+}
+
+const validateUniqueItemCodes = (
+  items: NormalizedMaterialRequestItem[]
+): { ok: true } | { ok: false; error: string } => {
+  const firstLineByCode = new Map<string, number>()
+
+  for (const item of items) {
+    if (!item.itemCode) {
+      continue
+    }
+
+    const firstLine = firstLineByCode.get(item.itemCode)
+    if (firstLine !== undefined) {
+      return {
+        ok: false,
+        error: `Duplicate item code "${item.itemCode}" found on line ${firstLine} and line ${item.lineNumber}.`,
+      }
+    }
+
+    firstLineByCode.set(item.itemCode, item.lineNumber)
+  }
+
+  return { ok: true }
 }
 
 const computeMaterialRequestTotals = (params: {
@@ -183,8 +212,35 @@ const generateMaterialRequestNumber = async (params: {
   return `${prefix}${suffix}`
 }
 
+const hasUniqueConflictTarget = (error: Prisma.PrismaClientKnownRequestError, fields: string[]): boolean => {
+  const target = error.meta?.target
+
+  if (Array.isArray(target)) {
+    const normalizedTarget = target.map((value) => String(value))
+    return fields.every((field) => normalizedTarget.includes(field))
+  }
+
+  if (typeof target === "string") {
+    return fields.every((field) => target.includes(field))
+  }
+
+  return false
+}
+
 const isRequestNumberConflictError = (error: unknown): boolean => {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002" &&
+    hasUniqueConflictTarget(error, ["companyId", "requestNumber"])
+  )
+}
+
+const isMaterialRequestItemCodeConflictError = (error: unknown): boolean => {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002" &&
+    hasUniqueConflictTarget(error, ["materialRequestId", "itemCode"])
+  )
 }
 
 const isTransactionSerializationConflict = (error: unknown): boolean => {
@@ -363,6 +419,10 @@ export async function createMaterialRequestDraftAction(
   }
 
   const items = normalizeMaterialRequestItems(payload.items)
+  const uniqueItemCodesValidation = validateUniqueItemCodes(items)
+  if (!uniqueItemCodesValidation.ok) {
+    return uniqueItemCodesValidation
+  }
   const totals = computeMaterialRequestTotals({
     items,
     freight: payload.freight,
@@ -473,6 +533,10 @@ export async function createMaterialRequestDraftAction(
         requestId: created.id,
       }
     } catch (error) {
+      if (isMaterialRequestItemCodeConflictError(error)) {
+        return { ok: false, error: "Duplicate item codes are not allowed within the same material request." }
+      }
+
       if (isRequestNumberConflictError(error) && attempt < 11) {
         continue
       }
@@ -568,6 +632,10 @@ export async function updateMaterialRequestDraftAction(
   }
 
   const items = normalizeMaterialRequestItems(payload.items)
+  const uniqueItemCodesValidation = validateUniqueItemCodes(items)
+  if (!uniqueItemCodesValidation.ok) {
+    return uniqueItemCodesValidation
+  }
   const totals = computeMaterialRequestTotals({
     items,
     freight: payload.freight,
@@ -886,6 +954,10 @@ export async function updateMaterialRequestDraftAction(
   } catch (error) {
     if (error instanceof MaterialRequestStateConflictError) {
       return { ok: false, error: error.message }
+    }
+
+    if (isMaterialRequestItemCodeConflictError(error)) {
+      return { ok: false, error: "Duplicate item codes are not allowed within the same material request." }
     }
 
     const message = error instanceof Error ? error.message : "Unknown error"

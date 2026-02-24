@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
@@ -8,6 +8,7 @@ import {
   IconChartBar,
   IconChevronLeft,
   IconChevronRight,
+  IconClipboardList,
   IconEdit,
   IconFilter,
   IconPlus,
@@ -20,6 +21,7 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -31,10 +33,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { copyPositionsFromCompanyAction } from "@/modules/settings/employment/actions/copy-positions-from-company-action"
+import { getSourcePositionsFromCompanyAction } from "@/modules/settings/employment/actions/get-source-positions-from-company-action"
 import { upsertEmploymentEntityAction } from "@/modules/settings/employment/actions/upsert-employment-entity-action"
 import type { EmploymentSettingsViewModel } from "@/modules/settings/employment/utils/get-employment-settings-view-model"
 
@@ -99,6 +104,15 @@ type EmploymentClassForm = {
 }
 
 type StatusFilter = "all" | "active" | "inactive"
+
+type CopySourcePositionItem = {
+  id: string
+  code: string
+  name: string
+  level: number
+  isActive: boolean
+}
+
 const TABLE_PAGE_SIZE = 5
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
@@ -206,6 +220,75 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
   const [employmentTypeFilter, setEmploymentTypeFilter] = useState<StatusFilter>("all")
   const [employmentClassSearch, setEmploymentClassSearch] = useState("")
   const [employmentClassFilter, setEmploymentClassFilter] = useState<StatusFilter>("all")
+  const [copyPositionsDialogOpen, setCopyPositionsDialogOpen] = useState(false)
+  const [copyPositionsSourceCompanyId, setCopyPositionsSourceCompanyId] = useState("")
+  const [copySourcePositions, setCopySourcePositions] = useState<CopySourcePositionItem[]>([])
+  const [copySelectedPositionIds, setCopySelectedPositionIds] = useState<string[]>([])
+  const [copySourcePositionsLoading, setCopySourcePositionsLoading] = useState(false)
+  const [copySourcePositionsError, setCopySourcePositionsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (data.copySourceCompanies.length === 0) {
+      setCopyPositionsSourceCompanyId("")
+      return
+    }
+
+    const firstSourceCompanyId = data.copySourceCompanies[0]?.companyId ?? ""
+    setCopyPositionsSourceCompanyId((previous) => {
+      if (!previous || !data.copySourceCompanies.some((item) => item.companyId === previous)) {
+        return firstSourceCompanyId
+      }
+
+      return previous
+    })
+  }, [data.copySourceCompanies])
+
+  useEffect(() => {
+    if (!copyPositionsDialogOpen) {
+      return
+    }
+
+    if (!copyPositionsSourceCompanyId) {
+      setCopySourcePositions([])
+      setCopySelectedPositionIds([])
+      setCopySourcePositionsError(null)
+      return
+    }
+
+    let cancelled = false
+
+    setCopySourcePositionsLoading(true)
+    setCopySourcePositionsError(null)
+
+    void (async () => {
+      const result = await getSourcePositionsFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyPositionsSourceCompanyId,
+      })
+
+      if (cancelled) {
+        return
+      }
+
+      if (!result.ok) {
+        setCopySourcePositions([])
+        setCopySelectedPositionIds([])
+        setCopySourcePositionsError(result.error)
+        return
+      }
+
+      setCopySourcePositions(result.positions)
+      setCopySelectedPositionIds(result.positions.map((item) => item.id))
+    })().finally(() => {
+      if (!cancelled) {
+        setCopySourcePositionsLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [copyPositionsDialogOpen, copyPositionsSourceCompanyId, data.companyId])
 
   const filteredPositions = useMemo(
     () =>
@@ -352,6 +435,61 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
     })
   }
 
+  const handleToggleCopyPosition = (positionId: string, checked: boolean) => {
+    setCopySelectedPositionIds((previous) => {
+      if (checked) {
+        if (previous.includes(positionId)) {
+          return previous
+        }
+
+        return [...previous, positionId]
+      }
+
+      return previous.filter((id) => id !== positionId)
+    })
+  }
+
+  const handleToggleAllCopyPositions = (checked: boolean) => {
+    if (checked) {
+      setCopySelectedPositionIds(copySourcePositions.map((item) => item.id))
+      return
+    }
+
+    setCopySelectedPositionIds([])
+  }
+
+  const handleCopyPositions = () => {
+    if (!copyPositionsSourceCompanyId) {
+      toast.error("Select a source company first.")
+      return
+    }
+
+    if (copySelectedPositionIds.length === 0) {
+      toast.error("Select at least one position to copy.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await copyPositionsFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyPositionsSourceCompanyId,
+        selectedSourcePositionIds: copySelectedPositionIds,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setCopyPositionsDialogOpen(false)
+      setCopySourcePositions([])
+      setCopySelectedPositionIds([])
+      setCopySourcePositionsError(null)
+      router.refresh()
+    })
+  }
+
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
       <header className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-4 py-6 sm:px-6">
@@ -395,13 +533,30 @@ export function EmploymentSettingsPage({ data }: EmploymentSettingsPageProps) {
             values: [item.code, item.name, String(item.level), item.jobFamily ?? "-", renderActiveBadge(item.isActive)],
           }))}
           controls={
-            <TableFilters
-              searchValue={positionSearch}
-              onSearchChange={setPositionSearch}
-              statusValue={positionStatusFilter}
-              onStatusChange={setPositionStatusFilter}
-              searchPlaceholder="Search positions"
-            />
+            <>
+              <TableFilters
+                searchValue={positionSearch}
+                onSearchChange={setPositionSearch}
+                statusValue={positionStatusFilter}
+                onStatusChange={setPositionStatusFilter}
+                searchPlaceholder="Search positions"
+              />
+              <CopyPositionsDialog
+                open={copyPositionsDialogOpen}
+                onOpenChange={setCopyPositionsDialogOpen}
+                sourceCompanyId={copyPositionsSourceCompanyId}
+                onSourceCompanyChange={setCopyPositionsSourceCompanyId}
+                sourceCompanies={data.copySourceCompanies}
+                sourcePositions={copySourcePositions}
+                selectedPositionIds={copySelectedPositionIds}
+                onTogglePosition={handleToggleCopyPosition}
+                onToggleAllPositions={handleToggleAllCopyPositions}
+                sourcePositionsLoading={copySourcePositionsLoading}
+                sourcePositionsError={copySourcePositionsError}
+                onSubmit={handleCopyPositions}
+                isPending={isPending}
+              />
+            </>
           }
           onEdit={(id) => {
             const record = data.positions.find((item) => item.id === id)
@@ -764,6 +919,187 @@ function TableFilters({
         </SelectContent>
       </Select>
     </>
+  )
+}
+
+function CopyPositionsDialog({
+  open,
+  onOpenChange,
+  sourceCompanyId,
+  onSourceCompanyChange,
+  sourceCompanies,
+  sourcePositions,
+  selectedPositionIds,
+  onTogglePosition,
+  onToggleAllPositions,
+  sourcePositionsLoading,
+  sourcePositionsError,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sourceCompanyId: string
+  onSourceCompanyChange: (value: string) => void
+  sourceCompanies: EmploymentSettingsViewModel["copySourceCompanies"]
+  sourcePositions: CopySourcePositionItem[]
+  selectedPositionIds: string[]
+  onTogglePosition: (positionId: string, checked: boolean) => void
+  onToggleAllPositions: (checked: boolean) => void
+  sourcePositionsLoading: boolean
+  sourcePositionsError: string | null
+  onSubmit: () => void
+  isPending: boolean
+}) {
+  const selectedPositionIdSet = new Set(selectedPositionIds)
+  const selectedCount = sourcePositions.filter((item) => selectedPositionIdSet.has(item.id)).length
+  const allSelected = sourcePositions.length > 0 && selectedCount === sourcePositions.length
+  const someSelected = selectedCount > 0 && !allSelected
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2" disabled={sourceCompanies.length === 0}>
+          <IconClipboardList className="size-3.5" />
+          Copy Positions
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Copy Positions From Company</DialogTitle>
+          <DialogDescription>
+            Select specific positions to copy from another company. Existing codes will be updated, new codes will be created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Label htmlFor="copy-positions-source-company">
+            Source Company<Required />
+          </Label>
+          <Select value={sourceCompanyId} onValueChange={onSourceCompanyChange}>
+            <SelectTrigger id="copy-positions-source-company" className="w-full">
+              <SelectValue placeholder="Select source company" />
+            </SelectTrigger>
+            <SelectContent>
+              {sourceCompanies.map((company) => (
+                <SelectItem key={company.companyId} value={company.companyId}>
+                  {company.companyCode} - {company.companyName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sourceCompanies.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No eligible source companies available.</p>
+          ) : null}
+
+          {sourceCompanyId ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs">
+                <label
+                  className={cn(
+                    "inline-flex items-center gap-2",
+                    sourcePositionsLoading || sourcePositions.length === 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                  )}
+                >
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(checked) => onToggleAllPositions(checked === true)}
+                    disabled={sourcePositionsLoading || sourcePositions.length === 0 || isPending}
+                    aria-label="Select all positions"
+                  />
+                  <span>Select all positions</span>
+                </label>
+                <span className="text-muted-foreground">
+                  {selectedCount} / {sourcePositions.length} selected
+                </span>
+              </div>
+
+              <ScrollArea className="h-56 rounded-md border border-border/70">
+                <div className="space-y-1 p-2">
+                  {sourcePositionsLoading ? (
+                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">Loading source positions...</p>
+                  ) : sourcePositionsError ? (
+                    <p className="px-2 py-8 text-center text-xs text-destructive">{sourcePositionsError}</p>
+                  ) : sourcePositions.length === 0 ? (
+                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">No positions found in the selected source company.</p>
+                  ) : (
+                    sourcePositions.map((position) => {
+                      const isSelected = selectedPositionIdSet.has(position.id)
+
+                      return (
+                        <div
+                          key={position.id}
+                          role="button"
+                          tabIndex={isPending ? -1 : 0}
+                          onClick={() => {
+                            if (isPending) {
+                              return
+                            }
+
+                            onTogglePosition(position.id, !isSelected)
+                          }}
+                          onKeyDown={(event) => {
+                            if (isPending) {
+                              return
+                            }
+
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault()
+                              onTogglePosition(position.id, !isSelected)
+                            }
+                          }}
+                          className={cn(
+                            "w-full rounded-md border px-2 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            isSelected ? "border-primary bg-primary/10 shadow-[inset_2px_0_0_theme(colors.primary)]" : "border-border/60 hover:bg-muted/40",
+                            isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="inline-flex items-center gap-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onPointerDown={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onCheckedChange={(checked) => onTogglePosition(position.id, checked === true)}
+                                aria-label={`Select ${position.code}`}
+                                disabled={isPending}
+                              />
+                              <span className="font-medium text-foreground">{position.code}</span>
+                            </div>
+                            {renderActiveBadge(position.isActive)}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">{position.name}</p>
+                          <p className="text-[11px] text-muted-foreground">Level {position.level}</p>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={onSubmit}
+            disabled={
+              isPending ||
+              !sourceCompanyId ||
+              sourceCompanies.length === 0 ||
+              sourcePositionsLoading ||
+              sourcePositions.length === 0 ||
+              selectedCount === 0
+            }
+          >
+            {isPending ? "Copying..." : "Copy Positions"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

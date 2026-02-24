@@ -69,6 +69,7 @@ export default async function AttendanceRulesRoutePage({ params, searchParams }:
       companyName={rules.companyName}
       initialData={rules.form}
       schedules={rules.schedules}
+      copySourceCompanies={rules.copySourceCompanies}
     />
   )
 }

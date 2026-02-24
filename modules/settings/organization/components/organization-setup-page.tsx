@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
@@ -9,6 +9,7 @@ import {
   IconChartBar,
   IconChevronLeft,
   IconChevronRight,
+  IconClipboardList,
   IconEdit,
   IconGitBranch,
   IconMapPin,
@@ -20,6 +21,7 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -41,6 +44,8 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { copyDepartmentsFromCompanyAction } from "@/modules/settings/organization/actions/copy-departments-from-company-action"
+import { getSourceDepartmentsFromCompanyAction } from "@/modules/settings/organization/actions/get-source-departments-from-company-action"
 import { upsertOrganizationEntityAction } from "@/modules/settings/organization/actions/upsert-organization-entity-action"
 import type { OrganizationOverviewData } from "@/modules/settings/organization/utils/get-organization-overview-data"
 
@@ -104,6 +109,14 @@ type BranchForm = {
 type EntityTableRow = {
   id: string
   values: Array<string | React.ReactNode>
+}
+
+type CopySourceDepartmentItem = {
+  id: string
+  code: string
+  name: string
+  parentLabel: string | null
+  isActive: boolean
 }
 
 const renderActiveBadge = (isActive: boolean): React.ReactNode => {
@@ -174,11 +187,80 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
   const [divisionDialogOpen, setDivisionDialogOpen] = useState(false)
   const [rankDialogOpen, setRankDialogOpen] = useState(false)
   const [branchDialogOpen, setBranchDialogOpen] = useState(false)
+  const [copyDepartmentsDialogOpen, setCopyDepartmentsDialogOpen] = useState(false)
+  const [copyDepartmentsSourceCompanyId, setCopyDepartmentsSourceCompanyId] = useState("")
+  const [copySourceDepartments, setCopySourceDepartments] = useState<CopySourceDepartmentItem[]>([])
+  const [copySelectedDepartmentIds, setCopySelectedDepartmentIds] = useState<string[]>([])
+  const [copySourceDepartmentsLoading, setCopySourceDepartmentsLoading] = useState(false)
+  const [copySourceDepartmentsError, setCopySourceDepartmentsError] = useState<string | null>(null)
 
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(createEmptyDepartmentForm())
   const [divisionForm, setDivisionForm] = useState<DivisionForm>(createEmptyDivisionForm())
   const [rankForm, setRankForm] = useState<RankForm>(createEmptyRankForm())
   const [branchForm, setBranchForm] = useState<BranchForm>(createEmptyBranchForm())
+
+  useEffect(() => {
+    if (data.copySourceCompanies.length === 0) {
+      setCopyDepartmentsSourceCompanyId("")
+      return
+    }
+
+    const firstSourceCompanyId = data.copySourceCompanies[0]?.companyId ?? ""
+    setCopyDepartmentsSourceCompanyId((previous) => {
+      if (!previous || !data.copySourceCompanies.some((item) => item.companyId === previous)) {
+        return firstSourceCompanyId
+      }
+
+      return previous
+    })
+  }, [data.copySourceCompanies])
+
+  useEffect(() => {
+    if (!copyDepartmentsDialogOpen) {
+      return
+    }
+
+    if (!copyDepartmentsSourceCompanyId) {
+      setCopySourceDepartments([])
+      setCopySelectedDepartmentIds([])
+      setCopySourceDepartmentsError(null)
+      return
+    }
+
+    let cancelled = false
+
+    setCopySourceDepartmentsLoading(true)
+    setCopySourceDepartmentsError(null)
+
+    void (async () => {
+      const result = await getSourceDepartmentsFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyDepartmentsSourceCompanyId,
+      })
+
+      if (cancelled) {
+        return
+      }
+
+      if (!result.ok) {
+        setCopySourceDepartments([])
+        setCopySelectedDepartmentIds([])
+        setCopySourceDepartmentsError(result.error)
+        return
+      }
+
+      setCopySourceDepartments(result.departments)
+      setCopySelectedDepartmentIds(result.departments.map((item) => item.id))
+    })().finally(() => {
+      if (!cancelled) {
+        setCopySourceDepartmentsLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [copyDepartmentsDialogOpen, copyDepartmentsSourceCompanyId, data.companyId])
 
   const resetForms = () => {
     setDepartmentForm(createEmptyDepartmentForm())
@@ -285,6 +367,61 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
       toast.success(result.message)
       setDepartmentDialogOpen(false)
       resetForms()
+      router.refresh()
+    })
+  }
+
+  const handleToggleCopyDepartment = (departmentId: string, checked: boolean) => {
+    setCopySelectedDepartmentIds((previous) => {
+      if (checked) {
+        if (previous.includes(departmentId)) {
+          return previous
+        }
+
+        return [...previous, departmentId]
+      }
+
+      return previous.filter((id) => id !== departmentId)
+    })
+  }
+
+  const handleToggleAllCopyDepartments = (checked: boolean) => {
+    if (checked) {
+      setCopySelectedDepartmentIds(copySourceDepartments.map((item) => item.id))
+      return
+    }
+
+    setCopySelectedDepartmentIds([])
+  }
+
+  const handleCopyDepartments = () => {
+    if (!copyDepartmentsSourceCompanyId) {
+      toast.error("Select a source company first.")
+      return
+    }
+
+    if (copySelectedDepartmentIds.length === 0) {
+      toast.error("Select at least one department to copy.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await copyDepartmentsFromCompanyAction({
+        companyId: data.companyId,
+        sourceCompanyId: copyDepartmentsSourceCompanyId,
+        selectedSourceDepartmentIds: copySelectedDepartmentIds,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setCopyDepartmentsDialogOpen(false)
+      setCopySourceDepartments([])
+      setCopySelectedDepartmentIds([])
+      setCopySourceDepartmentsError(null)
       router.refresh()
     })
   }
@@ -437,16 +574,33 @@ export function OrganizationSetupPage({ data }: OrganizationSetupPageProps) {
           }))}
           onEdit={handleEditDepartment}
           dialog={
-            <DepartmentDialog
-              open={departmentDialogOpen}
-              onOpenChange={setDepartmentDialogOpen}
-              form={departmentForm}
-              setForm={setDepartmentForm}
-              options={data.departments.map((item) => ({ id: item.id, code: item.code, name: item.name }))}
-              onSubmit={handleSaveDepartment}
-              isPending={isPending}
-              onCreate={() => setDepartmentForm(createEmptyDepartmentForm())}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <CopyDepartmentsDialog
+                open={copyDepartmentsDialogOpen}
+                onOpenChange={setCopyDepartmentsDialogOpen}
+                sourceCompanyId={copyDepartmentsSourceCompanyId}
+                onSourceCompanyChange={setCopyDepartmentsSourceCompanyId}
+                sourceCompanies={data.copySourceCompanies}
+                sourceDepartments={copySourceDepartments}
+                selectedDepartmentIds={copySelectedDepartmentIds}
+                onToggleDepartment={handleToggleCopyDepartment}
+                onToggleAllDepartments={handleToggleAllCopyDepartments}
+                sourceDepartmentsLoading={copySourceDepartmentsLoading}
+                sourceDepartmentsError={copySourceDepartmentsError}
+                onSubmit={handleCopyDepartments}
+                isPending={isPending}
+              />
+              <DepartmentDialog
+                open={departmentDialogOpen}
+                onOpenChange={setDepartmentDialogOpen}
+                form={departmentForm}
+                setForm={setDepartmentForm}
+                options={data.departments.map((item) => ({ id: item.id, code: item.code, name: item.name }))}
+                onSubmit={handleSaveDepartment}
+                isPending={isPending}
+                onCreate={() => setDepartmentForm(createEmptyDepartmentForm())}
+              />
+            </div>
           }
         />
 
@@ -723,6 +877,189 @@ function DepartmentDialog({
         </div>
         <DialogFooter>
           <Button type="button" onClick={onSubmit} disabled={isPending}>{isPending ? "Saving..." : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CopyDepartmentsDialog({
+  open,
+  onOpenChange,
+  sourceCompanyId,
+  onSourceCompanyChange,
+  sourceCompanies,
+  sourceDepartments,
+  selectedDepartmentIds,
+  onToggleDepartment,
+  onToggleAllDepartments,
+  sourceDepartmentsLoading,
+  sourceDepartmentsError,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  sourceCompanyId: string
+  onSourceCompanyChange: (value: string) => void
+  sourceCompanies: OrganizationOverviewData["copySourceCompanies"]
+  sourceDepartments: CopySourceDepartmentItem[]
+  selectedDepartmentIds: string[]
+  onToggleDepartment: (departmentId: string, checked: boolean) => void
+  onToggleAllDepartments: (checked: boolean) => void
+  sourceDepartmentsLoading: boolean
+  sourceDepartmentsError: string | null
+  onSubmit: () => void
+  isPending: boolean
+}) {
+  const selectedDepartmentIdSet = new Set(selectedDepartmentIds)
+  const selectedCount = sourceDepartments.filter((item) => selectedDepartmentIdSet.has(item.id)).length
+  const allSelected = sourceDepartments.length > 0 && selectedCount === sourceDepartments.length
+  const someSelected = selectedCount > 0 && !allSelected
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2" disabled={sourceCompanies.length === 0}>
+          <IconClipboardList className="size-3.5" />
+          Copy Departments
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Copy Departments From Company</DialogTitle>
+          <DialogDescription>
+            Select specific departments to copy from another company. Existing codes will be updated, new codes will be created.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Label htmlFor="copy-departments-source-company">
+            Source Company<Required />
+          </Label>
+          <Select value={sourceCompanyId} onValueChange={onSourceCompanyChange}>
+            <SelectTrigger id="copy-departments-source-company" className="w-full">
+              <SelectValue placeholder="Select source company" />
+            </SelectTrigger>
+            <SelectContent>
+              {sourceCompanies.map((company) => (
+                <SelectItem key={company.companyId} value={company.companyId}>
+                  {company.companyCode} - {company.companyName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {sourceCompanies.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No eligible source companies available.</p>
+          ) : null}
+
+          {sourceCompanyId ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs">
+                <label
+                  className={cn(
+                    "inline-flex items-center gap-2",
+                    sourceDepartmentsLoading || sourceDepartments.length === 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                  )}
+                >
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={(checked) => onToggleAllDepartments(checked === true)}
+                    disabled={sourceDepartmentsLoading || sourceDepartments.length === 0 || isPending}
+                    aria-label="Select all departments"
+                  />
+                  <span>Select all departments</span>
+                </label>
+                <span className="text-muted-foreground">
+                  {selectedCount} / {sourceDepartments.length} selected
+                </span>
+              </div>
+
+              <ScrollArea className="h-56 rounded-md border border-border/70">
+                <div className="space-y-1 p-2">
+                  {sourceDepartmentsLoading ? (
+                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">Loading source departments...</p>
+                  ) : sourceDepartmentsError ? (
+                    <p className="px-2 py-8 text-center text-xs text-destructive">{sourceDepartmentsError}</p>
+                  ) : sourceDepartments.length === 0 ? (
+                    <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+                      No departments found in the selected source company.
+                    </p>
+                  ) : (
+                    sourceDepartments.map((department) => {
+                      const isSelected = selectedDepartmentIdSet.has(department.id)
+
+                      return (
+                        <div
+                          key={department.id}
+                          role="button"
+                          tabIndex={isPending ? -1 : 0}
+                          onClick={() => {
+                            if (isPending) {
+                              return
+                            }
+
+                            onToggleDepartment(department.id, !isSelected)
+                          }}
+                          onKeyDown={(event) => {
+                            if (isPending) {
+                              return
+                            }
+
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault()
+                              onToggleDepartment(department.id, !isSelected)
+                            }
+                          }}
+                          className={cn(
+                            "w-full rounded-md border px-2 py-2 text-left text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            isSelected ? "border-primary bg-primary/10 shadow-[inset_2px_0_0_theme(colors.primary)]" : "border-border/60 hover:bg-muted/40",
+                            isPending ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="inline-flex items-center gap-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onPointerDown={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                }}
+                                onCheckedChange={(checked) => onToggleDepartment(department.id, checked === true)}
+                                aria-label={`Select ${department.code}`}
+                                disabled={isPending}
+                              />
+                              <span className="font-medium text-foreground">{department.code}</span>
+                            </div>
+                            {renderActiveBadge(department.isActive)}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">{department.name}</p>
+                          <p className="text-[11px] text-muted-foreground">Parent: {department.parentLabel ?? "None"}</p>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={onSubmit}
+            disabled={
+              isPending ||
+              !sourceCompanyId ||
+              sourceCompanies.length === 0 ||
+              sourceDepartmentsLoading ||
+              sourceDepartments.length === 0 ||
+              selectedCount === 0
+            }
+          >
+            {isPending ? "Copying..." : "Copy Departments"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

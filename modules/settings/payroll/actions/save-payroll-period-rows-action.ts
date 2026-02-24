@@ -75,7 +75,7 @@ export async function savePayrollPeriodRowsAction(
   }
 
   try {
-    await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
       const pattern = await tx.payPeriodPattern.findFirst({
         where: {
           id: payload.patternId,
@@ -86,6 +86,29 @@ export async function savePayrollPeriodRowsAction(
 
       if (!pattern) {
         throw new Error("Payroll policy pattern not found for this company.")
+      }
+
+      const existingRows = await tx.payPeriod.findMany({
+        where: {
+          patternId: pattern.id,
+          year: payload.year,
+        },
+        select: {
+          id: true,
+          periodNumber: true,
+          statusCode: true,
+          _count: {
+            select: {
+              payrollRuns: true,
+            },
+          },
+        },
+      })
+
+      const existingRowIds = new Set(existingRows.map((row) => row.id))
+
+      if (payload.periodRows.some((row) => row.id && !existingRowIds.has(row.id))) {
+        throw new Error("One or more pay period rows are invalid for the selected year.")
       }
 
       for (const row of payload.periodRows) {
@@ -130,6 +153,47 @@ export async function savePayrollPeriodRowsAction(
         })
       }
 
+      const incomingRowIds = new Set(payload.periodRows.map((row) => row.id).filter((id): id is string => Boolean(id)))
+      const incomingPeriodNumbersWithoutId = new Set(
+        payload.periodRows.filter((row) => !row.id).map((row) => row.periodNumber)
+      )
+
+      const rowsToDelete = existingRows.filter(
+        (row) => !incomingRowIds.has(row.id) && !incomingPeriodNumbersWithoutId.has(row.periodNumber)
+      )
+
+      if (rowsToDelete.length > 0) {
+        const lockedRows = rowsToDelete.filter((row) => row.statusCode === "LOCKED")
+
+        if (lockedRows.length > 0) {
+          throw new Error(
+            `Cannot remove archived pay period rows: ${lockedRows
+              .map((row) => String(row.periodNumber))
+              .sort((a, b) => Number(a) - Number(b))
+              .join(", ")}.`
+          )
+        }
+
+        const rowsWithPayrollRuns = rowsToDelete.filter((row) => row._count.payrollRuns > 0)
+
+        if (rowsWithPayrollRuns.length > 0) {
+          throw new Error(
+            `Cannot remove pay period rows with payroll runs: ${rowsWithPayrollRuns
+              .map((row) => String(row.periodNumber))
+              .sort((a, b) => Number(a) - Number(b))
+              .join(", ")}.`
+          )
+        }
+
+        await tx.payPeriod.deleteMany({
+          where: {
+            id: {
+              in: rowsToDelete.map((row) => row.id),
+            },
+          },
+        })
+      }
+
       await createAuditLog(
         {
           tableName: "PayPeriod",
@@ -140,16 +204,22 @@ export async function savePayrollPeriodRowsAction(
           changes: [
             { fieldName: "year", newValue: payload.year },
             { fieldName: "rows.count", newValue: payload.periodRows.length },
+            { fieldName: "rows.removed", newValue: rowsToDelete.length },
           ],
         },
         tx
       )
+
+      return { removedRowsCount: rowsToDelete.length }
     })
 
     revalidatePath(`/${context.companyId}/settings/payroll`)
     revalidatePath(`/${context.companyId}/dashboard`)
 
-    return { ok: true, message: `Pay period rows for ${payload.year} saved successfully.` }
+    const removedRowsMessage =
+      result.removedRowsCount > 0 ? ` ${result.removedRowsCount} row(s) removed.` : ""
+
+    return { ok: true, message: `Pay period rows for ${payload.year} saved successfully.${removedRowsMessage}` }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { ok: false, error: `Failed to save pay period rows: ${message}` }

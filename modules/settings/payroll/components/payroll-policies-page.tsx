@@ -10,9 +10,20 @@ import {
   IconLock,
   IconRefresh,
   IconSettings,
+  IconTrash,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -45,6 +56,9 @@ type PayrollPoliciesPageProps = {
   initialData: PayrollPoliciesInput
   availableYears: number[]
 }
+
+const PAYROLL_YEAR_MIN = 2000
+const PAYROLL_YEAR_MAX = 2100
 
 const Required = () => <span className="ml-1 text-destructive">*</span>
 
@@ -101,6 +115,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
   const [isArchivingYear, startArchiveYearTransition] = useTransition()
   const [isSavingPattern, setIsSavingPattern] = useState(false)
   const [isSavingRows, setIsSavingRows] = useState(false)
+  const [pendingDeleteRowIndex, setPendingDeleteRowIndex] = useState<number | null>(null)
   const yearValue = form.periodYear
 
   const isTopControlsBusy = isGeneratingYear || isArchivingYear || isSavingPattern
@@ -112,6 +127,18 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
 
   const canGenerateYear = !availableYears.includes(yearValue)
   const isYearFullyLocked = form.periodRows.length > 0 && form.periodRows.every((row) => row.statusCode === "LOCKED")
+  const previousYearValue = yearValue - 1
+  const nextYearValue = yearValue + 1
+  const canGoPreviousYear = previousYearValue >= PAYROLL_YEAR_MIN
+  const canGoNextYear = nextYearValue <= PAYROLL_YEAR_MAX
+
+  const updateYearSearchParam = (nextYear: number) => {
+    if (Number.isNaN(nextYear)) return
+
+    const search = new URLSearchParams(window.location.search)
+    search.set("year", String(nextYear))
+    window.location.search = search.toString()
+  }
 
   const updateField = <K extends keyof PayrollPoliciesInput>(key: K, value: PayrollPoliciesInput[K]) => {
     setForm((previous) => ({ ...previous, [key]: value }))
@@ -140,6 +167,50 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
           : row
       ),
     }))
+  }
+
+  const handleRequestRemoveRow = (index: number) => {
+    if (isYearFullyLocked || isRowsControlsBusy) {
+      return
+    }
+
+    const row = form.periodRows[index]
+
+    if (!row) {
+      return
+    }
+
+    if (row.statusCode === "LOCKED") {
+      toast.error("Locked pay period rows cannot be removed.")
+      return
+    }
+
+    if (form.periodRows.length <= 1) {
+      toast.error("At least one pay period row is required.")
+      return
+    }
+
+    setPendingDeleteRowIndex(index)
+  }
+
+  const handleConfirmRemoveRow = () => {
+    if (pendingDeleteRowIndex === null) {
+      return
+    }
+
+    const row = form.periodRows[pendingDeleteRowIndex]
+
+    if (!row) {
+      setPendingDeleteRowIndex(null)
+      return
+    }
+
+    setForm((previous) => ({
+      ...previous,
+      periodRows: previous.periodRows.filter((_, rowIndex) => rowIndex !== pendingDeleteRowIndex),
+    }))
+
+    setPendingDeleteRowIndex(null)
   }
 
   const handleReset = () => {
@@ -269,20 +340,21 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
             <Select
               value={String(yearValue)}
               onValueChange={(value) => {
-                if (value === "__new__") {
-                  const nextYear = (availableYears.at(-1) ?? yearValue) + 1
-                  const search = new URLSearchParams(window.location.search)
-                  search.set("year", String(nextYear))
-                  window.location.search = search.toString()
+                if (value === "__previous__") {
+                  if (canGoPreviousYear) {
+                    updateYearSearchParam(previousYearValue)
+                  }
                   return
                 }
 
-                const nextYear = Number(value)
-                if (Number.isNaN(nextYear)) return
+                if (value === "__next__") {
+                  if (canGoNextYear) {
+                    updateYearSearchParam(nextYearValue)
+                  }
+                  return
+                }
 
-                const search = new URLSearchParams(window.location.search)
-                search.set("year", String(nextYear))
-                window.location.search = search.toString()
+                updateYearSearchParam(Number(value))
               }}
             >
               <SelectTrigger className="h-8 w-[140px]">
@@ -295,7 +367,8 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
                   </SelectItem>
                 ))}
                 {!availableYears.includes(yearValue) ? <SelectItem value={String(yearValue)}>{yearValue}</SelectItem> : null}
-                <SelectItem value="__new__">+ New Year</SelectItem>
+                {canGoPreviousYear ? <SelectItem value="__previous__">+ Previous Year</SelectItem> : null}
+                {canGoNextYear ? <SelectItem value="__next__">+ Next Year</SelectItem> : null}
               </SelectContent>
             </Select>
             <Button type="button" variant="ghost" size="sm" className="h-8 px-2" onClick={handleReset} disabled={isTopControlsBusy}>
@@ -547,6 +620,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
         <PeriodTableRows
           rows={form.periodRows}
           onChange={updateRowField}
+          onRemove={handleRequestRemoveRow}
           isYearLocked={isYearFullyLocked}
           selectedYear={yearValue}
           canArchiveYear={Boolean(form.patternId) && !isYearFullyLocked}
@@ -557,6 +631,32 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
           onSaveRows={handleSaveRows}
         />
       </section>
+
+      <AlertDialog
+        open={pendingDeleteRowIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeleteRowIndex(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove pay period row?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteRowIndex === null
+                ? "This action removes the selected row from this year."
+                : `This will remove pay period #${form.periodRows[pendingDeleteRowIndex]?.periodNumber ?? ""} from ${yearValue}. Save period rows to persist this change.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleConfirmRemoveRow}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }
@@ -564,6 +664,7 @@ export function PayrollPoliciesPage({ companyName, initialData, availableYears }
 function PeriodTableRows({
   rows,
   onChange,
+  onRemove,
   isYearLocked,
   selectedYear,
   canArchiveYear,
@@ -579,6 +680,7 @@ function PeriodTableRows({
     key: K,
     value: PayrollPoliciesInput["periodRows"][number][K]
   ) => void
+  onRemove: (index: number) => void
   isYearLocked: boolean
   selectedYear: number
   canArchiveYear: boolean
@@ -625,6 +727,7 @@ function PeriodTableRows({
                   "Payment Date",
                   "Working Days",
                   "Status",
+                  "Actions",
                 ].map((header) => (
                   <th key={header} className="px-3 py-2 text-left font-medium text-muted-foreground">
                     {header}
@@ -639,7 +742,9 @@ function PeriodTableRows({
                   index={index}
                   row={row}
                   onChange={onChange}
-                  disabled={isYearLocked}
+                  onRemove={onRemove}
+                  disabled={isBusy || isYearLocked}
+                  canRemove={rows.length > 1}
                 />
               ))}
             </tbody>
@@ -653,7 +758,9 @@ function PeriodEditableRow({
   index,
   row,
   onChange,
+  onRemove,
   disabled,
+  canRemove,
 }: {
   index: number
   row: PayrollPoliciesInput["periodRows"][number]
@@ -662,8 +769,12 @@ function PeriodEditableRow({
     key: K,
     value: PayrollPoliciesInput["periodRows"][number][K]
   ) => void
+  onRemove: (index: number) => void
   disabled: boolean
+  canRemove: boolean
 }) {
+  const isRemoveDisabled = disabled || !canRemove || row.statusCode === "LOCKED"
+
   return (
     <tr className="border-t border-border/50">
       <td className="px-3 py-2 text-foreground">{row.periodNumber}</td>
@@ -718,6 +829,28 @@ function PeriodEditableRow({
             <SelectItem value="LOCKED">LOCKED</SelectItem>
           </SelectContent>
         </Select>
+      </td>
+      <td className="px-3 py-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => onRemove(index)}
+                disabled={isRemoveDisabled}
+                aria-label={`Remove pay period ${row.periodNumber}`}
+              >
+                <IconTrash className="size-3.5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={6}>
+            Remove row
+          </TooltipContent>
+        </Tooltip>
       </td>
     </tr>
   )

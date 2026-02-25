@@ -78,6 +78,8 @@ type ManualOverridePayload = SyncLegacyMaterialRequestsInput["manualOverrides"][
 
 type ManualOverrideDraft = {
   legacyStatus: string
+  mappedStatus: string
+  pendingStepNumber: string
   requesterEmployeeNumber: string
   requesterName: string
   departmentId: string
@@ -124,6 +126,31 @@ const createStepApproverPatch = (stepNumber: number, userId: string): Partial<Ma
   if (stepNumber === 3) return { stepThreeApproverUserId: userId }
   if (stepNumber === 4) return { stepFourApproverUserId: userId }
   return {}
+}
+
+const parsePendingStepNumberFromText = (value: string): number | null => {
+  const normalized = normalizeInput(value)
+  if (!normalized) {
+    return null
+  }
+
+  const numeric = Number.parseInt(normalized, 10)
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 4) {
+    return numeric
+  }
+
+  if (normalized.toLowerCase() === "review") return 1
+  if (normalized.toLowerCase() === "budget approval") return 2
+  if (normalized.toLowerCase() === "recommending approval") return 3
+  if (normalized.toLowerCase() === "final approval") return 4
+
+  const stepMatch = normalized.match(/^step\s+([1-4])$/i)
+  if (stepMatch) {
+    const parsed = Number.parseInt(stepMatch[1], 10)
+    return Number.isInteger(parsed) ? parsed : null
+  }
+
+  return null
 }
 
 const UNMATCHED_COLUMN_OPTIONS: Array<{ key: UnmatchedColumnKey; label: string }> = [
@@ -183,11 +210,39 @@ const LEGACY_STATUS_OPTIONS = [
   "ACKNOWLEDGED",
   "DEPLOYED",
 ] as const
+const MAPPED_NEW_STATUS_OPTIONS = [
+  "DRAFT",
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "REJECTED",
+  "CANCELLED",
+] as const
 const INTERACTIVE_ROW_ELEMENT_SELECTOR =
   "input,textarea,button,a,[role='button'],[role='combobox'],[role='menuitem'],[data-no-row-select='true']"
 
+const normalizeMappedStatusDraftValue = (value: string): string => {
+  const normalized = normalizeInput(value).toUpperCase()
+  if (MAPPED_NEW_STATUS_OPTIONS.includes(normalized as (typeof MAPPED_NEW_STATUS_OPTIONS)[number])) {
+    return normalized
+  }
+
+  if (
+    normalized === "POSTED" ||
+    normalized === "PENDING_POSTING" ||
+    normalized === "PENDING_PURCHASER" ||
+    normalized === "IN_PROGRESS" ||
+    normalized === "COMPLETED"
+  ) {
+    return "APPROVED"
+  }
+
+  return ""
+}
+
 const createDraftFromUnmatchedEntry = (entry: UnmatchedEntry, inferredDepartmentId: string): ManualOverrideDraft => ({
   legacyStatus: entry.legacyStatus ?? "",
+  mappedStatus: normalizeMappedStatusDraftValue(entry.mappedStatus ?? ""),
+  pendingStepNumber: parsePendingStepNumberFromText(entry.pendingStepName ?? "")?.toString() ?? "",
   requesterEmployeeNumber: entry.employeeNumber ?? "",
   requesterName: entry.requesterName ?? "",
   departmentId: inferredDepartmentId,
@@ -206,6 +261,8 @@ const buildManualOverridePayload = (
   const requesterEmployeeNumber = normalizeInput(draft.requesterEmployeeNumber)
   const requesterName = normalizeInput(draft.requesterName)
   const legacyStatus = normalizeInput(draft.legacyStatus).toUpperCase()
+  const mappedStatus = normalizeMappedStatusDraftValue(draft.mappedStatus)
+  const pendingStepNumber = parsePendingStepNumberFromText(draft.pendingStepNumber)
   const departmentId = normalizeInput(draft.departmentId)
   const stepOneApproverUserId = normalizeInput(draft.stepOneApproverUserId)
   const stepTwoApproverUserId = normalizeInput(draft.stepTwoApproverUserId)
@@ -213,6 +270,7 @@ const buildManualOverridePayload = (
   const stepFourApproverUserId = normalizeInput(draft.stepFourApproverUserId)
 
   const sourceLegacyStatus = normalizeInput(entry.legacyStatus).toUpperCase()
+  const sourceMappedStatus = normalizeMappedStatusDraftValue(entry.mappedStatus ?? "")
   const sourceRequesterEmployeeNumber = normalizeInput(entry.employeeNumber ?? "")
   const sourceRequesterName = normalizeInput(entry.requesterName ?? "")
   const sourceDepartmentId = normalizeInput(inferredDepartmentId)
@@ -233,6 +291,8 @@ const buildManualOverridePayload = (
     stepTwoApproverUserId: undefined,
     stepThreeApproverUserId: undefined,
     stepFourApproverUserId: undefined,
+    mappedStatus: undefined,
+    pendingStepNumber: undefined,
     legacyStatus: undefined,
     departmentCode: undefined,
     departmentName: undefined,
@@ -248,6 +308,14 @@ const buildManualOverridePayload = (
 
   if (legacyStatus && legacyStatus !== sourceLegacyStatus) {
     payload.legacyStatus = legacyStatus
+  }
+
+  if (mappedStatus && mappedStatus !== sourceMappedStatus) {
+    payload.mappedStatus = mappedStatus as ManualOverridePayload["mappedStatus"]
+  }
+
+  if (pendingStepNumber !== null) {
+    payload.pendingStepNumber = pendingStepNumber
   }
 
   if (departmentId && departmentId !== sourceDepartmentId) {
@@ -278,7 +346,9 @@ const buildManualOverridePayload = (
       payload.stepOneApproverUserId ||
       payload.stepTwoApproverUserId ||
       payload.stepThreeApproverUserId ||
-      payload.stepFourApproverUserId
+      payload.stepFourApproverUserId ||
+      payload.mappedStatus ||
+      payload.pendingStepNumber !== undefined
   )
 
   return hasAnyOverride ? payload : null
@@ -814,6 +884,8 @@ export function LegacyMaterialRequestSyncPage({
       stepTwoApproverUserId: undefined,
       stepThreeApproverUserId: undefined,
       stepFourApproverUserId: undefined,
+      mappedStatus: undefined,
+      pendingStepNumber: undefined,
       legacyStatus: undefined,
       departmentCode: undefined,
       departmentName: undefined,
@@ -1049,6 +1121,8 @@ export function LegacyMaterialRequestSyncPage({
           ? createDraftFromUnmatchedEntry(row, inferDepartmentIdFromEntry(row))
           : {
               legacyStatus: "",
+              mappedStatus: "",
+              pendingStepNumber: "",
               requesterEmployeeNumber: "",
               requesterName: "",
               departmentId: "",
@@ -1297,7 +1371,7 @@ export function LegacyMaterialRequestSyncPage({
               <CardHeader>
                 <CardTitle className="text-base">Step 2: Unmatched Rows Editor</CardTitle>
                 <CardDescription>
-                  Update row details below. Requester is matched using legacy employee number to employee number in this new system. Department assignment is manual, and each approval step has its own approver column so you can override the selected department approver per step.
+                  Update row details below. You can override mapped new status, set department, and adjust step approvers per row before importing.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1529,6 +1603,26 @@ export function LegacyMaterialRequestSyncPage({
                                 const selectedDepartmentFlow = resolvedDepartmentId
                                   ? (departmentApprovalFlowByDepartmentId.get(resolvedDepartmentId) ?? null)
                                   : null
+                                const sourcePendingStepNumber = parsePendingStepNumberFromText(entry.pendingStepName ?? "")
+                                const selectedPendingStepNumber =
+                                  parsePendingStepNumberFromText(draft.pendingStepNumber) ?? sourcePendingStepNumber
+                                const effectiveMappedStatus =
+                                  draft.mappedStatus || normalizeMappedStatusDraftValue(entry.mappedStatus || "")
+                                const isPendingApprovalStatus = effectiveMappedStatus === "PENDING_APPROVAL"
+                                const pendingStepOptions = selectedDepartmentFlow
+                                  ? selectedDepartmentFlow.steps
+                                      .filter((step) => step.stepNumber >= 1 && step.stepNumber <= selectedDepartmentFlow.requiredSteps)
+                                      .sort((a, b) => a.stepNumber - b.stepNumber)
+                                      .map((step) => ({
+                                        stepNumber: step.stepNumber,
+                                        label: step.stepName || `Step ${step.stepNumber}`,
+                                      }))
+                                  : [
+                                      { stepNumber: 1, label: "Review" },
+                                      { stepNumber: 2, label: "Budget Approval" },
+                                      { stepNumber: 3, label: "Recommending Approval" },
+                                      { stepNumber: 4, label: "Final Approval" },
+                                    ]
                                 const isSavingThisRow = isPending && rowActionRecordId === entry.legacyRecordId
 
                                 return (
@@ -1584,10 +1678,60 @@ export function LegacyMaterialRequestSyncPage({
                                   </TableCell>
                                 ) : null}
                                 {unmatchedColumnVisibility.mappedStatus ? (
-                                  <TableCell className="min-w-32 text-xs">{entry.mappedStatus || "-"}</TableCell>
+                                  <TableCell className="min-w-52">
+                                    <Select
+                                      value={draft.mappedStatus || normalizeMappedStatusDraftValue(entry.mappedStatus || "") || "__UNSET__"}
+                                      onValueChange={(value) => {
+                                        const nextMappedStatus = value === "__UNSET__" ? "" : value
+                                        updateDraft(entry.legacyRecordId, {
+                                          mappedStatus: nextMappedStatus,
+                                          pendingStepNumber: nextMappedStatus === "PENDING_APPROVAL" ? draft.pendingStepNumber : "",
+                                        })
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-full" data-no-row-select="true">
+                                        <SelectValue placeholder="Mapped status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__UNSET__">Use auto-mapped status</SelectItem>
+                                        {MAPPED_NEW_STATUS_OPTIONS.map((status) => (
+                                          <SelectItem key={status} value={status}>
+                                            {status}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </TableCell>
                                 ) : null}
                                 {unmatchedColumnVisibility.pendingStep ? (
-                                  <TableCell className="min-w-32 text-xs">{entry.pendingStepName || "-"}</TableCell>
+                                  <TableCell className="min-w-56">
+                                    {isPendingApprovalStatus ? (
+                                      <Select
+                                        value={selectedPendingStepNumber ? String(selectedPendingStepNumber) : "__UNSET__"}
+                                        onValueChange={(value) =>
+                                          updateDraft(entry.legacyRecordId, {
+                                            pendingStepNumber: value === "__UNSET__" ? "" : value,
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger className="w-full" data-no-row-select="true">
+                                          <SelectValue placeholder="Pending step" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__UNSET__">Use status-derived pending step</SelectItem>
+                                          {pendingStepOptions.map((step) => (
+                                            <SelectItem key={step.stepNumber} value={String(step.stepNumber)}>
+                                              Step {step.stepNumber}: {step.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <div className="text-xs text-muted-foreground">
+                                        Set mapped status to `PENDING_APPROVAL` to edit pending step.
+                                      </div>
+                                    )}
+                                  </TableCell>
                                 ) : null}
                                 {unmatchedColumnVisibility.legacyDepartment ? (
                                   <TableCell className="min-w-56 text-xs">{entry.legacyDepartmentName || "-"}</TableCell>

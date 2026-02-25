@@ -63,6 +63,10 @@ const manualOverrideSchema = z.object({
     .uuid("Step 4 approver is invalid.")
     .optional()
     .transform((value) => value || undefined),
+  mappedStatus: z
+    .enum(["DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"])
+    .optional(),
+  pendingStepNumber: z.number().int().min(1, "Pending step must be at least 1.").max(4, "Pending step must not exceed 4.").optional(),
   legacyStatus: z
     .string()
     .trim()

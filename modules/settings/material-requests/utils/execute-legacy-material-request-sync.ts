@@ -112,6 +112,8 @@ export type LegacyMaterialRequestManualOverride = {
   stepTwoApproverUserId?: string
   stepThreeApproverUserId?: string
   stepFourApproverUserId?: string
+  mappedStatus?: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CANCELLED"
+  pendingStepNumber?: number
   legacyStatus?: string
   departmentCode?: string
   departmentName?: string
@@ -507,6 +509,17 @@ const mapLegacyToUnmatchedDisplayStatus = (params: {
   }
 
   return params.mappedStatus
+}
+
+const mapOverrideToMaterialRequestStatus = (
+  value: LegacyMaterialRequestManualOverride["mappedStatus"] | undefined
+): MaterialRequestStatus | null => {
+  if (value === "DRAFT") return MaterialRequestStatus.DRAFT
+  if (value === "PENDING_APPROVAL") return MaterialRequestStatus.PENDING_APPROVAL
+  if (value === "APPROVED") return MaterialRequestStatus.APPROVED
+  if (value === "REJECTED") return MaterialRequestStatus.REJECTED
+  if (value === "CANCELLED") return MaterialRequestStatus.CANCELLED
+  return null
 }
 
 const pendingStageKeyFromStatus = (legacyStatus: string, hasFinalStageSignal: boolean): StageKey | null => {
@@ -1255,6 +1268,7 @@ export async function executeLegacyMaterialRequestSync(
       const legacyStatusOverride = hasOverrideValue(override?.legacyStatus)
         ? normalizeLegacyStatus(override?.legacyStatus)
         : ""
+      const mappedStatusOverride = mapOverrideToMaterialRequestStatus(override?.mappedStatus)
       const legacyStatus = legacyStatusOverride || legacyStatusRaw
       if (!legacyStatus) {
         skipped.push({
@@ -1267,7 +1281,17 @@ export async function executeLegacyMaterialRequestSync(
       }
 
       const pendingKeyHint = pendingStageKeyFromStatus(legacyStatus, true)
+      const pendingStepNumberOverride =
+        typeof override?.pendingStepNumber === "number" &&
+        Number.isInteger(override.pendingStepNumber) &&
+        override.pendingStepNumber >= 1 &&
+        override.pendingStepNumber <= 4
+          ? override.pendingStepNumber
+          : null
       const pendingStepNameHint = pendingKeyHint ? stageNameMap[pendingKeyHint] : null
+      const pendingStepNameHintWithOverride = pendingStepNumberOverride
+        ? `Step ${pendingStepNumberOverride}`
+        : pendingStepNameHint
       const recommendingApproverEmployeeNumberHint = hasOverrideValue(override?.recommendingApproverEmployeeNumber)
         ? override?.recommendingApproverEmployeeNumber?.trim() ?? ""
         : safeString(pickPath(row, ["recApproverEmployeeId"]))
@@ -1310,10 +1334,15 @@ export async function executeLegacyMaterialRequestSync(
         hasFinalStageSignal: stageBuild.stages.some((stage) => stage.key === "final" && stage.include),
         finalApprovalStatus: stageBuild.finalApprovalStatus,
       })
-      let mappedStatusLabel = mapLegacyToUnmatchedDisplayStatus({
-        legacyStatus,
-        mappedStatus,
-      })
+      if (mappedStatusOverride) {
+        mappedStatus = mappedStatusOverride
+      }
+      let mappedStatusLabel = mappedStatusOverride
+        ? mappedStatusOverride
+        : mapLegacyToUnmatchedDisplayStatus({
+            legacyStatus,
+            mappedStatus,
+          })
 
       const requesterIdentity = extractIdentity(row, {
         // Requester matching must be legacy requester employee number only (no name fallback).
@@ -1351,7 +1380,7 @@ export async function executeLegacyMaterialRequestSync(
           requestNumber,
           legacyStatus,
           mappedStatus: mappedStatusLabel,
-          pendingStepName: pendingStepNameHint,
+          pendingStepName: pendingStepNameHintWithOverride,
           pendingApproverEmployeeNumber: pendingApproverEmployeeNumberHint,
           recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
           recommendingApproverName: recommendingApproverNameHint,
@@ -1378,7 +1407,7 @@ export async function executeLegacyMaterialRequestSync(
           requestNumber,
           legacyStatus,
           mappedStatus: mappedStatusLabel,
-          pendingStepName: pendingStepNameHint,
+          pendingStepName: pendingStepNameHintWithOverride,
           pendingApproverEmployeeNumber: pendingApproverEmployeeNumberHint,
           recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
           recommendingApproverName: recommendingApproverNameHint,
@@ -1412,7 +1441,7 @@ export async function executeLegacyMaterialRequestSync(
           requestNumber,
           legacyStatus,
           mappedStatus: mappedStatusLabel,
-          pendingStepName: pendingStepNameHint,
+          pendingStepName: pendingStepNameHintWithOverride,
           pendingApproverEmployeeNumber: pendingApproverEmployeeNumberHint,
           recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
           recommendingApproverName: recommendingApproverNameHint,
@@ -1438,10 +1467,15 @@ export async function executeLegacyMaterialRequestSync(
         hasFinalStageSignal: (departmentApprovalFlow?.requiredSteps ?? 0) >= 4,
         finalApprovalStatus: stageBuild.finalApprovalStatus,
       })
-      mappedStatusLabel = mapLegacyToUnmatchedDisplayStatus({
-        legacyStatus,
-        mappedStatus,
-      })
+      if (mappedStatusOverride) {
+        mappedStatus = mappedStatusOverride
+      }
+      mappedStatusLabel = mappedStatusOverride
+        ? mappedStatusOverride
+        : mapLegacyToUnmatchedDisplayStatus({
+            legacyStatus,
+            mappedStatus,
+          })
 
       if (
         (mappedStatus === MaterialRequestStatus.PENDING_APPROVAL ||
@@ -1456,7 +1490,7 @@ export async function executeLegacyMaterialRequestSync(
           requestNumber,
           legacyStatus,
           mappedStatus: mappedStatusLabel,
-          pendingStepName: pendingStepNameHint,
+          pendingStepName: pendingStepNameHintWithOverride,
           pendingApproverEmployeeNumber: pendingApproverEmployeeNumberHint,
           recommendingApproverEmployeeNumber: recommendingApproverEmployeeNumberHint,
           recommendingApproverName: recommendingApproverNameHint,
@@ -1540,12 +1574,14 @@ export async function executeLegacyMaterialRequestSync(
       const stageByKey = new Map(stageBuild.stages.map((stage) => [stage.key, stage]))
       const pendingStepNumber =
         mappedStatus === MaterialRequestStatus.PENDING_APPROVAL
-          ? pendingStepNumberFromStatus(legacyStatus, (departmentApprovalFlow?.requiredSteps ?? 0) >= 4)
+          ? pendingStepNumberOverride ?? pendingStepNumberFromStatus(legacyStatus, (departmentApprovalFlow?.requiredSteps ?? 0) >= 4)
           : null
       const pendingStepDisplayName =
         pendingStepNumber && departmentApprovalFlow
           ? departmentApprovalFlow.stepNameByStep.get(pendingStepNumber) ?? `Step ${pendingStepNumber}`
-          : pendingStepName
+          : pendingStepNumber
+            ? `Step ${pendingStepNumber}`
+            : pendingStepName
 
       const approvalSteps: MaterialRequestApprovalStepCreate[] = []
       let requiredSteps = 0

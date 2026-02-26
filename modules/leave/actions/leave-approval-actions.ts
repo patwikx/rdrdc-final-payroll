@@ -360,6 +360,7 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
       employeeId: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
     },
   })
@@ -375,6 +376,7 @@ export async function rejectLeaveBySupervisorAction(input: z.input<typeof decisi
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -423,6 +425,7 @@ export async function approveLeaveByHrAction(input: z.input<typeof decisionSchem
       employeeId: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
     },
   })
@@ -437,6 +440,7 @@ export async function approveLeaveByHrAction(input: z.input<typeof decisionSchem
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -488,6 +492,7 @@ export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema
       employeeId: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
     },
   })
@@ -502,6 +507,7 @@ export async function rejectLeaveByHrAction(input: z.input<typeof decisionSchema
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client"
 
 import { resolveLeaveBalanceChargeDecisionForRequest } from "@/modules/leave/utils/leave-balance-policy"
+import { isCtoLeaveType } from "@/modules/leave/utils/cto-leave-type"
 
 type TxClient = Prisma.TransactionClient
 
@@ -18,6 +19,7 @@ type BaseMutationInput = {
   requestNumber: string
   requestStartDate: Date
   numberOfDays: number
+  numberOfHours?: number | null
   processedById: string
 }
 
@@ -26,6 +28,60 @@ const toDecimalText = (value: number): string => roundTo2(value).toFixed(2)
 const toNumber = (value: Prisma.Decimal): number => Number(value)
 
 const requestYear = (requestStartDate: Date): number => requestStartDate.getUTCFullYear()
+
+const resolveBalanceChargeAmount = async (
+  tx: TxClient,
+  input: BaseMutationInput,
+  chargeLeaveTypeId: string
+): Promise<{ ok: true; amount: number; unitLabel: "day(s)" | "hour(s)" } | { ok: false; error: string }> => {
+  const chargeLeaveType = await tx.leaveType.findUnique({
+    where: { id: chargeLeaveTypeId },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      isCTO: true,
+    },
+  })
+
+  if (!chargeLeaveType) {
+    return { ok: false, error: "Leave type is no longer available for balance computation." }
+  }
+
+  const isCto = isCtoLeaveType(chargeLeaveType)
+  if (!isCto) {
+    return { ok: true, amount: roundTo2(input.numberOfDays), unitLabel: "day(s)" }
+  }
+
+  if (typeof input.numberOfHours === "number" && Number.isFinite(input.numberOfHours) && input.numberOfHours > 0) {
+    return { ok: true, amount: roundTo2(input.numberOfHours), unitLabel: "hour(s)" }
+  }
+
+  const employee = await tx.employee.findUnique({
+    where: { id: input.employeeId },
+    select: {
+      workSchedule: {
+        select: {
+          requiredHoursPerDay: true,
+        },
+      },
+    },
+  })
+
+  const requiredHoursPerDay = employee?.workSchedule?.requiredHoursPerDay
+    ? Number(employee.workSchedule.requiredHoursPerDay)
+    : null
+
+  if (!requiredHoursPerDay || !Number.isFinite(requiredHoursPerDay) || requiredHoursPerDay <= 0) {
+    return { ok: false, error: "Employee work schedule hours/day is required for CTO balance charging." }
+  }
+
+  return {
+    ok: true,
+    amount: roundTo2(input.numberOfDays * requiredHoursPerDay),
+    unitLabel: "hour(s)",
+  }
+}
 
 const getLeaveBalance = async (tx: TxClient, employeeId: string, leaveTypeId: string, year: number) => {
   return tx.leaveBalance.findUnique({
@@ -61,6 +117,11 @@ export async function reserveLeaveBalanceForRequest(
     return { ok: true }
   }
 
+  const chargeAmount = await resolveBalanceChargeAmount(tx, input, chargeDecision.chargeLeaveTypeId)
+  if (!chargeAmount.ok) {
+    return { ok: false, error: chargeAmount.error }
+  }
+
   const year = requestYear(input.requestStartDate)
   const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
@@ -73,17 +134,17 @@ export async function reserveLeaveBalanceForRequest(
 
   const availableBalance = toNumber(leaveBalance.availableBalance)
   const pendingRequests = toNumber(leaveBalance.pendingRequests)
-  const numberOfDays = roundTo2(input.numberOfDays)
+  const amount = chargeAmount.amount
 
-  if (availableBalance < numberOfDays) {
+  if (availableBalance < amount) {
     return {
       ok: false,
       error: "Insufficient leave balance for this request.",
     }
   }
 
-  const nextPendingRequests = roundTo2(pendingRequests + numberOfDays)
-  const nextAvailableBalance = roundTo2(availableBalance - numberOfDays)
+  const nextPendingRequests = roundTo2(pendingRequests + amount)
+  const nextAvailableBalance = roundTo2(availableBalance - amount)
 
   await tx.leaveBalance.update({
     where: { id: leaveBalance.id },
@@ -97,11 +158,11 @@ export async function reserveLeaveBalanceForRequest(
     data: {
       leaveBalanceId: leaveBalance.id,
       transactionType: "ADJUSTMENT",
-      amount: toDecimalText(-numberOfDays),
+      amount: toDecimalText(-amount),
       runningBalance: leaveBalance.currentBalance,
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Reserved ${toDecimalText(numberOfDays)} day(s) for leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
+      remarks: `Reserved ${toDecimalText(amount)} ${chargeAmount.unitLabel} for leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })
@@ -124,6 +185,11 @@ export async function releaseReservedLeaveBalanceForRequest(
     return { ok: true }
   }
 
+  const chargeAmount = await resolveBalanceChargeAmount(tx, input, chargeDecision.chargeLeaveTypeId)
+  if (!chargeAmount.ok) {
+    return { ok: false, error: chargeAmount.error }
+  }
+
   const year = requestYear(input.requestStartDate)
   const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
@@ -136,17 +202,17 @@ export async function releaseReservedLeaveBalanceForRequest(
 
   const pendingRequests = toNumber(leaveBalance.pendingRequests)
   const availableBalance = toNumber(leaveBalance.availableBalance)
-  const numberOfDays = roundTo2(input.numberOfDays)
+  const amount = chargeAmount.amount
 
-  if (pendingRequests < numberOfDays) {
+  if (pendingRequests < amount) {
     return {
       ok: false,
       error: "Leave balance reservation is inconsistent. Pending requests are lower than the request duration.",
     }
   }
 
-  const nextPendingRequests = roundTo2(pendingRequests - numberOfDays)
-  const nextAvailableBalance = roundTo2(availableBalance + numberOfDays)
+  const nextPendingRequests = roundTo2(pendingRequests - amount)
+  const nextAvailableBalance = roundTo2(availableBalance + amount)
 
   await tx.leaveBalance.update({
     where: { id: leaveBalance.id },
@@ -160,11 +226,11 @@ export async function releaseReservedLeaveBalanceForRequest(
     data: {
       leaveBalanceId: leaveBalance.id,
       transactionType: "ADJUSTMENT",
-      amount: toDecimalText(numberOfDays),
+      amount: toDecimalText(amount),
       runningBalance: leaveBalance.currentBalance,
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Released ${toDecimalText(numberOfDays)} day(s) back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
+      remarks: `Released ${toDecimalText(amount)} ${chargeAmount.unitLabel} back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })
@@ -187,6 +253,11 @@ export async function consumeReservedLeaveBalanceForRequest(
     return { ok: true }
   }
 
+  const chargeAmount = await resolveBalanceChargeAmount(tx, input, chargeDecision.chargeLeaveTypeId)
+  if (!chargeAmount.ok) {
+    return { ok: false, error: chargeAmount.error }
+  }
+
   const year = requestYear(input.requestStartDate)
   const leaveBalance = await getLeaveBalance(tx, input.employeeId, chargeDecision.chargeLeaveTypeId, year)
 
@@ -200,25 +271,25 @@ export async function consumeReservedLeaveBalanceForRequest(
   const currentBalance = toNumber(leaveBalance.currentBalance)
   const pendingRequests = toNumber(leaveBalance.pendingRequests)
   const creditsUsed = toNumber(leaveBalance.creditsUsed)
-  const numberOfDays = roundTo2(input.numberOfDays)
+  const amount = chargeAmount.amount
 
-  if (pendingRequests < numberOfDays) {
+  if (pendingRequests < amount) {
     return {
       ok: false,
       error: "Leave balance reservation is inconsistent. Pending requests are lower than the request duration.",
     }
   }
 
-  if (currentBalance < numberOfDays) {
+  if (currentBalance < amount) {
     return {
       ok: false,
       error: "Leave balance is insufficient to finalize this approval.",
     }
   }
 
-  const nextCurrentBalance = roundTo2(currentBalance - numberOfDays)
-  const nextPendingRequests = roundTo2(pendingRequests - numberOfDays)
-  const nextCreditsUsed = roundTo2(creditsUsed + numberOfDays)
+  const nextCurrentBalance = roundTo2(currentBalance - amount)
+  const nextPendingRequests = roundTo2(pendingRequests - amount)
+  const nextCreditsUsed = roundTo2(creditsUsed + amount)
   const nextAvailableBalance = roundTo2(nextCurrentBalance - nextPendingRequests)
 
   if (nextAvailableBalance < 0) {
@@ -242,11 +313,11 @@ export async function consumeReservedLeaveBalanceForRequest(
     data: {
       leaveBalanceId: leaveBalance.id,
       transactionType: "USAGE",
-      amount: toDecimalText(numberOfDays),
+      amount: toDecimalText(amount),
       runningBalance: toDecimalText(nextCurrentBalance),
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Consumed ${toDecimalText(numberOfDays)} day(s) for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
+      remarks: `Consumed ${toDecimalText(amount)} ${chargeAmount.unitLabel} for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })

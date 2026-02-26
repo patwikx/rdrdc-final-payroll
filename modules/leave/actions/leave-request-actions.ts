@@ -13,6 +13,7 @@ import {
   releaseReservedLeaveBalanceForRequest,
   reserveLeaveBalanceForRequest,
 } from "@/modules/leave/utils/leave-balance-ledger"
+import { isCtoLeaveType } from "@/modules/leave/utils/cto-leave-type"
 import {
   cancelLeaveRequestInputSchema,
   createLeaveRequestInputSchema,
@@ -44,6 +45,26 @@ const toDayCountLabel = (value: number): string => {
 const dayDiffInclusive = (start: Date, end: Date): number => {
   const ms = end.getTime() - start.getTime()
   return Math.floor(ms / (1000 * 60 * 60 * 24)) + 1
+}
+
+const roundTo2 = (value: number): number => Math.round(value * 100) / 100
+
+const resolveLeaveRequestHours = (params: {
+  isCto: boolean
+  numberOfDays: number
+  isHalfDay: boolean
+  requiredHoursPerDay: number | null
+}): { ok: true; numberOfHours: number | null } | { ok: false; error: string } => {
+  if (!params.isCto) {
+    return { ok: true, numberOfHours: null }
+  }
+
+  if (!params.requiredHoursPerDay || !Number.isFinite(params.requiredHoursPerDay) || params.requiredHoursPerDay <= 0) {
+    return { ok: false, error: "Employee work schedule hours/day is required for CTO leave requests." }
+  }
+
+  const computed = params.isHalfDay ? params.requiredHoursPerDay / 2 : params.numberOfDays * params.requiredHoursPerDay
+  return { ok: true, numberOfHours: roundTo2(computed) }
 }
 
 const generateLeaveRequestNumber = async (): Promise<string> => {
@@ -96,6 +117,11 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
         lastName: true,
         employeeNumber: true,
         reportingManagerId: true,
+        workSchedule: {
+          select: {
+            requiredHoursPerDay: true,
+          },
+        },
         reportingManager: {
           select: {
             firstName: true,
@@ -118,7 +144,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
         isActive: true,
         OR: [{ companyId: context.companyId }, { companyId: null }],
       },
-      select: { id: true, name: true },
+      select: { id: true, code: true, name: true, isCTO: true },
     }),
   ])
 
@@ -136,6 +162,18 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
     return { ok: false, error: "Leave date is invalid." }
   }
   const numberOfDays = payload.isHalfDay ? 0.5 : dayDiffInclusive(startDate, endDate)
+  const isHalfDay = Boolean(payload.isHalfDay)
+  const halfDayPeriod = payload.isHalfDay ? payload.halfDayPeriod ?? null : null
+  const requiredHoursPerDay = employee.workSchedule?.requiredHoursPerDay ? Number(employee.workSchedule.requiredHoursPerDay) : null
+  const numberOfHoursResult = resolveLeaveRequestHours({
+    isCto: isCtoLeaveType(leaveType),
+    numberOfDays,
+    isHalfDay,
+    requiredHoursPerDay,
+  })
+  if (!numberOfHoursResult.ok) {
+    return { ok: false, error: numberOfHoursResult.error }
+  }
 
   if (numberOfDays <= 0) {
     return { ok: false, error: "Invalid leave duration." }
@@ -158,8 +196,9 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
           startDate,
           endDate,
           numberOfDays,
-          isHalfDay: Boolean(payload.isHalfDay),
-          halfDayPeriod: payload.isHalfDay ? payload.halfDayPeriod ?? null : null,
+          numberOfHours: numberOfHoursResult.numberOfHours,
+          isHalfDay,
+          halfDayPeriod,
           reason: payload.reason?.trim() || null,
           statusCode: RequestStatus.PENDING,
           submittedAt,
@@ -172,6 +211,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
           employeeId: true,
           leaveTypeId: true,
           numberOfDays: true,
+          numberOfHours: true,
           startDate: true,
         },
       })
@@ -183,6 +223,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
         requestNumber: createdRequest.requestNumber,
         requestStartDate: createdRequest.startDate,
         numberOfDays: Number(createdRequest.numberOfDays),
+        numberOfHours: createdRequest.numberOfHours ? Number(createdRequest.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -233,7 +274,7 @@ export async function createLeaveRequestAction(input: CreateLeaveRequestInput): 
       detailLines: [
         `Leave type: ${leaveType.name}`,
         `Date range: ${leaveDateLabel.format(startDate)} to ${leaveDateLabel.format(endDate)}`,
-        `Duration: ${toDayCountLabel(numberOfDays)}${payload.isHalfDay ? ` (${payload.halfDayPeriod ?? "HALF DAY"})` : ""}`,
+        `Duration: ${toDayCountLabel(numberOfDays)}${isHalfDay ? ` (${halfDayPeriod ?? "HALF DAY"})` : ""}`,
         payload.reason?.trim() ? `Reason: ${payload.reason.trim()}` : "",
       ],
     })
@@ -294,6 +335,7 @@ export async function cancelLeaveRequestAction(input: CancelLeaveRequestInput): 
       employeeId: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
       statusCode: true,
       cancelledAt: true,
@@ -321,6 +363,7 @@ export async function cancelLeaveRequestAction(input: CancelLeaveRequestInput): 
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -399,6 +442,11 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
       select: {
         id: true,
         reportingManagerId: true,
+        workSchedule: {
+          select: {
+            requiredHoursPerDay: true,
+          },
+        },
       },
     }),
     db.leaveType.findFirst({
@@ -407,7 +455,7 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
         isActive: true,
         OR: [{ companyId: context.companyId }, { companyId: null }],
       },
-      select: { id: true },
+      select: { id: true, code: true, name: true, isCTO: true },
     }),
   ])
 
@@ -432,6 +480,7 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
       startDate: true,
       endDate: true,
       numberOfDays: true,
+      numberOfHours: true,
       isHalfDay: true,
       halfDayPeriod: true,
       reason: true,
@@ -454,6 +503,18 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
     return { ok: false, error: "Leave date is invalid." }
   }
   const numberOfDays = payload.isHalfDay ? 0.5 : dayDiffInclusive(startDate, endDate)
+  const isHalfDay = Boolean(payload.isHalfDay)
+  const halfDayPeriod = payload.isHalfDay ? payload.halfDayPeriod ?? null : null
+  const requiredHoursPerDay = employee.workSchedule?.requiredHoursPerDay ? Number(employee.workSchedule.requiredHoursPerDay) : null
+  const numberOfHoursResult = resolveLeaveRequestHours({
+    isCto: isCtoLeaveType(leaveType),
+    numberOfDays,
+    isHalfDay,
+    requiredHoursPerDay,
+  })
+  if (!numberOfHoursResult.ok) {
+    return { ok: false, error: numberOfHoursResult.error }
+  }
 
   if (numberOfDays <= 0) {
     return { ok: false, error: "Invalid leave duration." }
@@ -472,6 +533,7 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -486,8 +548,9 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
           startDate,
           endDate,
           numberOfDays,
-          isHalfDay: Boolean(payload.isHalfDay),
-          halfDayPeriod: payload.isHalfDay ? payload.halfDayPeriod ?? null : null,
+          numberOfHours: numberOfHoursResult.numberOfHours,
+          isHalfDay,
+          halfDayPeriod,
           reason: payload.reason?.trim() || null,
           supervisorApproverId: employee.reportingManagerId ?? request.supervisorApproverId,
         },
@@ -498,6 +561,7 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
           startDate: true,
           endDate: true,
           numberOfDays: true,
+          numberOfHours: true,
           isHalfDay: true,
           halfDayPeriod: true,
           reason: true,
@@ -512,6 +576,7 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
         requestNumber: updatedRequest.requestNumber,
         requestStartDate: updatedRequest.startDate,
         numberOfDays: Number(updatedRequest.numberOfDays),
+        numberOfHours: updatedRequest.numberOfHours ? Number(updatedRequest.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -531,6 +596,11 @@ export async function updateLeaveRequestAction(input: UpdateLeaveRequestInput): 
             { fieldName: "startDate", oldValue: request.startDate, newValue: updatedRequest.startDate },
             { fieldName: "endDate", oldValue: request.endDate, newValue: updatedRequest.endDate },
             { fieldName: "numberOfDays", oldValue: Number(request.numberOfDays), newValue: Number(updatedRequest.numberOfDays) },
+            {
+              fieldName: "numberOfHours",
+              oldValue: request.numberOfHours ? Number(request.numberOfHours) : null,
+              newValue: updatedRequest.numberOfHours ? Number(updatedRequest.numberOfHours) : null,
+            },
             { fieldName: "isHalfDay", oldValue: request.isHalfDay, newValue: updatedRequest.isHalfDay },
             { fieldName: "halfDayPeriod", oldValue: request.halfDayPeriod, newValue: updatedRequest.halfDayPeriod },
             { fieldName: "reason", oldValue: request.reason, newValue: updatedRequest.reason },

@@ -57,6 +57,7 @@ import {
   createLeaveRequestAction,
   updateLeaveRequestAction,
 } from "@/modules/leave/actions/leave-request-actions"
+import { isCtoLeaveType } from "@/modules/leave/utils/cto-leave-type"
 import type {
   EmployeePortalLeaveBalanceItem,
   EmployeePortalLeaveRequestRow,
@@ -91,7 +92,14 @@ const leaveBalanceCardNames = new Set([
   "compensary time off",
   "cto",
 ])
-const formatDays = (value: number): string => (Number.isInteger(value) ? `${value}` : value.toFixed(1))
+const formatDays = (value: number): string => {
+  if (Number.isInteger(value)) return `${value}`
+  return value.toFixed(4).replace(/\.?0+$/, "")
+}
+const formatHours = (value: number): string => {
+  if (Number.isInteger(value)) return `${value}`
+  return value.toFixed(2).replace(/\.?0+$/, "")
+}
 const isSameCalendarDay = (left: Date, right: Date): boolean => left.toDateString() === right.toDateString()
 const parseDateInputValue = (value: string): Date | undefined => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined
@@ -329,14 +337,24 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
 
               <div className="space-y-3">
                 <Label className="text-xs text-foreground">Leave Type <span className="text-destructive">*</span></Label>
-                <Select value={leaveTypeId} onValueChange={(value) => { setLeaveTypeId(value); setStartDate(undefined); setEndDate(undefined) }}>
-                  <SelectTrigger className="h-9 rounded-lg text-sm">
+                <Select
+                  value={leaveTypeId}
+                  onValueChange={(value) => {
+                    setLeaveTypeId(value)
+                    setStartDate(undefined)
+                    setEndDate(undefined)
+                    setIsHalfDay(false)
+                    setHalfDayPeriod("")
+                  }}
+                >
+                  <SelectTrigger className="h-9 rounded-lg text-sm w-full">
                     <SelectValue placeholder="Select leave type" />
                   </SelectTrigger>
                   <SelectContent className="rounded-lg border-border/60">
                     {leaveTypes.map((type) => {
                       const balance = leaveBalanceMap.get(type.id)
                       const LeaveTypeIcon = getLeaveTypeIcon(type.name)
+                      const isCto = isCtoLeaveType(type)
                       return (
                         <SelectItem key={type.id} value={type.id} className="text-sm">
                           <div className="flex w-full items-center justify-between gap-4">
@@ -345,7 +363,11 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                               <span className="truncate">{type.name}</span>
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {balance ? `Current ${formatDays(balance.currentBalance)} | Available ${formatDays(balance.availableBalance)}` : "No balance"}
+                              {balance
+                                ? isCto
+                                  ? `Available ${formatHours(balance.availableBalance)} hour(s)`
+                                  : `Available ${formatDays(balance.availableBalance)} day(s)`
+                                : "No balance"}
                             </span>
                           </div>
                         </SelectItem>
@@ -393,7 +415,11 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                   <Label className="text-xs text-foreground">End Date <span className="text-destructive">*</span></Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" disabled={!leaveTypeId} className={cn("w-full justify-start rounded-lg text-left", !endDate && "text-muted-foreground")}>
+                      <Button
+                        variant="outline"
+                        disabled={!leaveTypeId}
+                        className={cn("w-full justify-start rounded-lg text-left", !endDate && "text-muted-foreground")}
+                      >
                         <IconCalendarEvent className="mr-2 h-4 w-4" />
                         {endDate ? format(endDate, "PPP") : "Select date"}
                       </Button>
@@ -538,6 +564,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                   const currentBalance = balance?.currentBalance ?? 0
                   const availableBalance = balance?.availableBalance ?? 0
                   const LeaveTypeIcon = getLeaveTypeIcon(leaveType.name)
+                  const isCto = isCtoLeaveType(leaveType)
 
                   return (
                     <div key={leaveType.id} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
@@ -549,14 +576,18 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                       <div className="mt-3">
                         <p className="text-xs text-muted-foreground">Current Available</p>
                         <div className="mt-1 flex items-end gap-1.5">
-                          <span className="text-2xl font-semibold text-foreground">{formatDays(availableBalance)}</span>
-                          <span className="pb-0.5 text-xs text-muted-foreground">days</span>
+                          <span className="text-2xl font-semibold text-foreground">
+                            {isCto ? formatHours(availableBalance) : formatDays(availableBalance)}
+                          </span>
+                          <span className="pb-0.5 text-xs text-muted-foreground">{isCto ? "hours" : "days"}</span>
                         </div>
                       </div>
 
                       <div className="mt-3 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-xs">
                         <p className="text-muted-foreground">Starting Balance</p>
-                        <p className="font-medium text-foreground">{formatDays(currentBalance)} days</p>
+                        <p className="font-medium text-foreground">
+                          {isCto ? `${formatHours(currentBalance)} hours` : `${formatDays(currentBalance)} days`}
+                        </p>
                       </div>
                     </div>
                   )
@@ -779,7 +810,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Request #</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Leave Type</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Date Range</p>
-                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Days</p>
+                <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Duration</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reason</p>
                 <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
                 <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
@@ -799,7 +830,7 @@ export function LeaveRequestClient({ companyId, leaveTypes, leaveBalances, reque
                             <div>{request.startDate}</div>
                             <div className="text-xs text-muted-foreground">to {request.endDate}</div>
                           </div>
-                          <div className="col-span-1 text-xs text-foreground">{request.numberOfDays}</div>
+                          <div className="col-span-1 text-xs text-foreground">{request.numberOfDays} day(s)</div>
                           <div className="col-span-2 text-xs text-foreground line-clamp-2">{request.reason || "-"}</div>
                           <div className="col-span-2">
                             <Badge variant={statusVariant(request.statusCode)} className="w-full justify-center text-xs font-normal">

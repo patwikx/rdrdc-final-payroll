@@ -76,6 +76,7 @@ export async function approveLeaveRequestByHrAction(
       statusCode: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
       hrApproverId: true,
       hrApprovedAt: true,
@@ -104,6 +105,7 @@ export async function approveLeaveRequestByHrAction(
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 
@@ -197,6 +199,7 @@ export async function rejectLeaveRequestByHrAction(
       employeeId: true,
       leaveTypeId: true,
       numberOfDays: true,
+      numberOfHours: true,
       startDate: true,
       hrApproverId: true,
       hrRejectedAt: true,
@@ -224,6 +227,7 @@ export async function rejectLeaveRequestByHrAction(
         requestNumber: request.requestNumber,
         requestStartDate: request.startDate,
         numberOfDays: Number(request.numberOfDays),
+        numberOfHours: request.numberOfHours ? Number(request.numberOfHours) : null,
         processedById: context.userId,
       })
 

@@ -164,7 +164,7 @@ export function MaterialRequestExistingItemsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-3xl">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-[95vw] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Add Existing Items</DialogTitle>
         </DialogHeader>
@@ -186,57 +186,113 @@ export function MaterialRequestExistingItemsDialog({
 
           <div className="overflow-hidden rounded-md border border-border/60">
             <div className="h-[24rem] overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky top-0 z-20 w-10 bg-background"> </TableHead>
-                    <TableHead className="sticky top-0 z-20 w-[120px] bg-background">Code</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Description</TableHead>
-                    <TableHead className="sticky top-0 z-20 w-[90px] bg-background">UOM</TableHead>
-                    <TableHead className="sticky top-0 z-20 w-[110px] bg-background text-right">Cost</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => {
-                    const isSelected = selectedItemIds.has(item.itemId)
+              <div className="space-y-2 p-2 md:hidden">
+                {items.map((item) => {
+                  const isSelected = selectedItemIds.has(item.itemId)
 
-                    return (
-                      <TableRow
-                        key={item.itemId}
-                        className={isSelected ? "cursor-pointer bg-muted/40" : "cursor-pointer hover:bg-muted/30"}
-                        onClick={() => toggleSelection(item, !isSelected)}
-                      >
-                        <TableCell onClick={(event) => event.stopPropagation()}>
+                  return (
+                    <div
+                      key={item.itemId}
+                      role="button"
+                      tabIndex={0}
+                      className={`w-full cursor-pointer rounded-md border p-2 text-left ${
+                        isSelected ? "border-primary/40 bg-muted/40" : "border-border/60"
+                      }`}
+                      onClick={() => toggleSelection(item, !isSelected)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault()
+                          toggleSelection(item, !isSelected)
+                        }
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div
+                          className="pt-0.5"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={(checked) => toggleSelection(item, checked === true)}
                           />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-xs font-semibold text-foreground">{item.itemCode}</p>
+                          <p className="break-words text-xs text-muted-foreground">{item.itemDesc}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                            <span>UOM: {normalizeUnitOfMeasure(item)}</span>
+                            <span>Cost: {item.cost.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {isLoading ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Loading existing items...</p>
+                ) : null}
+
+                {!isLoading && items.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">No existing items found.</p>
+                ) : null}
+              </div>
+
+              <div className="hidden md:block">
+                <Table className="min-w-[640px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="sticky top-0 z-20 w-10 bg-background"> </TableHead>
+                      <TableHead className="sticky top-0 z-20 w-[120px] bg-background">Code</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-background">Description</TableHead>
+                      <TableHead className="sticky top-0 z-20 w-[90px] bg-background">UOM</TableHead>
+                      <TableHead className="sticky top-0 z-20 w-[110px] bg-background text-right">Cost</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item) => {
+                      const isSelected = selectedItemIds.has(item.itemId)
+
+                      return (
+                        <TableRow
+                          key={item.itemId}
+                          className={isSelected ? "cursor-pointer bg-muted/40" : "cursor-pointer hover:bg-muted/30"}
+                          onClick={() => toggleSelection(item, !isSelected)}
+                        >
+                          <TableCell onClick={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => toggleSelection(item, checked === true)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{item.itemCode}</TableCell>
+                          <TableCell className="max-w-[320px] truncate" title={item.itemDesc}>
+                            {item.itemDesc}
+                          </TableCell>
+                          <TableCell>{normalizeUnitOfMeasure(item)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{item.cost.toFixed(2)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
+
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                          Loading existing items...
                         </TableCell>
-                        <TableCell className="font-medium">{item.itemCode}</TableCell>
-                        <TableCell>{item.itemDesc}</TableCell>
-                        <TableCell>{normalizeUnitOfMeasure(item)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{item.cost.toFixed(2)}</TableCell>
                       </TableRow>
-                    )
-                  })}
+                    ) : null}
 
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                        Loading existing items...
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-
-                  {!isLoading && items.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                        No existing items found.
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
+                    {!isLoading && items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                          No existing items found.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </div>
         </div>

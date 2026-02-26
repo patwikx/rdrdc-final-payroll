@@ -945,12 +945,12 @@ export function MaterialRequestDraftFormClient({
             </div>
 
             <div className="overflow-hidden border-y border-border/60">
-              <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+              <div className="flex flex-col gap-2 border-b border-border/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
                   <IconPackage className="h-4 w-4 text-primary" />
                   <h3 className="text-sm font-semibold text-foreground">Request Items</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <Button
                     type="button"
                     variant="outline"
@@ -969,7 +969,101 @@ export function MaterialRequestDraftFormClient({
               </div>
 
               <div className="overflow-hidden rounded-lg border border-border/60">
-                <div className="overflow-x-auto">
+                <div className="max-h-[22rem] overflow-y-auto p-2 md:hidden">
+                  <div className="space-y-2">
+                    {form.items.map((item, index) => (
+                      <div key={item.id} className="space-y-2 rounded-lg border border-border/60 p-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-muted-foreground">Item #{index + 1}</p>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => removeItem(item.id)}
+                            disabled={form.items.length === 1}
+                          >
+                            <IconTrash className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Item Code</Label>
+                          <Input
+                            value={item.itemCode}
+                            readOnly
+                            placeholder="Auto-generated"
+                            className="h-8 bg-muted/40 text-muted-foreground"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">
+                            Description <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            value={item.description}
+                            onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                            placeholder="Item description"
+                            className="h-8"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              UOM <span className="text-destructive">*</span>
+                            </Label>
+                            <Input
+                              value={item.uom}
+                              onChange={(event) => updateItem(item.id, { uom: event.target.value })}
+                              placeholder="PCS"
+                              className="h-8"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">
+                              Qty <span className="text-destructive">*</span>
+                            </Label>
+                            <Input
+                              type="number"
+                              min="0.001"
+                              step="0.001"
+                              value={item.quantity}
+                              onChange={(event) => updateItem(item.id, { quantity: event.target.value })}
+                              className="h-8 text-right tabular-nums"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Unit Price</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(event) => updateItem(item.id, { unitPrice: event.target.value })}
+                              className="h-8 text-right tabular-nums"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Remarks</Label>
+                            <Input
+                              value={item.remarks}
+                              onChange={(event) => updateItem(item.id, { remarks: event.target.value })}
+                              placeholder="Optional line note"
+                              className="h-8"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
                   <div className="grid min-w-[920px] grid-cols-[2.25rem_7.5rem_minmax(0,1.2fr)_4.75rem_5.25rem_6.5rem_minmax(0,1fr)_4rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     <p>#</p>
                     <p>Item Code</p>
@@ -997,19 +1091,19 @@ export function MaterialRequestDraftFormClient({
                           value={item.itemCode}
                           readOnly
                           placeholder="Auto-generated"
-                          className="h-8 bg-muted/40 text-xs text-muted-foreground"
+                          className="h-8 bg-muted/40 text-muted-foreground"
                         />
                         <Input
                           value={item.description}
                           onChange={(event) => updateItem(item.id, { description: event.target.value })}
                           placeholder="Item description"
-                          className="h-8 text-xs"
+                          className="h-8"
                         />
                         <Input
                           value={item.uom}
                           onChange={(event) => updateItem(item.id, { uom: event.target.value })}
                           placeholder="PCS"
-                          className="h-8 text-xs"
+                          className="h-8"
                         />
                         <Input
                           type="number"
@@ -1017,7 +1111,7 @@ export function MaterialRequestDraftFormClient({
                           step="0.001"
                           value={item.quantity}
                           onChange={(event) => updateItem(item.id, { quantity: event.target.value })}
-                          className="h-8 text-right text-xs tabular-nums"
+                          className="h-8 text-right tabular-nums"
                         />
                         <Input
                           type="number"
@@ -1025,14 +1119,14 @@ export function MaterialRequestDraftFormClient({
                           step="0.01"
                           value={item.unitPrice}
                           onChange={(event) => updateItem(item.id, { unitPrice: event.target.value })}
-                          className="h-8 text-right text-xs tabular-nums"
+                          className="h-8 text-right tabular-nums"
                         />
                         <div>
                           <Input
                             value={item.remarks}
                             onChange={(event) => updateItem(item.id, { remarks: event.target.value })}
                             placeholder="Optional line note"
-                            className="h-8 text-xs"
+                            className="h-8"
                           />
                         </div>
                         <div className="flex justify-end">

@@ -22,7 +22,7 @@ function InputOTP({
       )}
       spellCheck={false}
       className={cn(
-        "disabled:cursor-not-allowed",
+        "!text-base/5 md:!text-xs/relaxed disabled:cursor-not-allowed",
         className
       )}
       {...props}

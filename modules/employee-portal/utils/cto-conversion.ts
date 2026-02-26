@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client"
 
+import { isCtoLeaveType } from "@/modules/leave/utils/cto-leave-type"
+
 type TxClient = Prisma.TransactionClient
 
 type CtoConversionInput = {
@@ -57,18 +59,21 @@ export async function applyCtoCreditForApprovedOvertime(
     return { ok: true, converted: false }
   }
 
-  const ctoLeaveType = await tx.leaveType.findFirst({
+  const ctoLeaveTypes = await tx.leaveType.findMany({
     where: {
       companyId: input.companyId,
-      isCTO: true,
       isActive: true,
     },
     select: {
       id: true,
+      code: true,
       name: true,
+      isCTO: true,
     },
     orderBy: [{ updatedAt: "desc" }],
   })
+
+  const ctoLeaveType = ctoLeaveTypes.find((item) => isCtoLeaveType(item)) ?? null
 
   if (!ctoLeaveType) {
     return { ok: false, error: "CTO leave type is not configured for this company." }
@@ -120,7 +125,7 @@ export async function applyCtoCreditForApprovedOvertime(
       runningBalance: toDecimalText(nextCurrentBalance),
       referenceType: "OVERTIME_REQUEST",
       referenceId: input.overtimeRequestId,
-      remarks: `CTO credit from overtime request ${input.requestNumber} (1:1 conversion)`,
+      remarks: `CTO credit from overtime request ${input.requestNumber}: ${overtimeHours.toFixed(2)} hour(s)`,
       processedById: input.processedById,
     },
   })

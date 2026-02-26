@@ -94,13 +94,13 @@ const menuItems = [
     title: "Material Request KPI",
     href: "/employee-portal/material-request-kpis",
     icon: IconChartBar,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    roles: ["COMPANY_ADMIN"],
   },
   {
     title: "Receiving Reports",
     href: "/employee-portal/material-request-receiving-reports",
     icon: IconReceipt2,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    roles: ["COMPANY_ADMIN"],
   },
   {
     title: "My Profile",
@@ -197,7 +197,7 @@ export function EmployeePortalSidebar({
   }
 
   const isAdminRole = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN"
-  const visibleMenuItems = menuItems.filter((item) => item.roles.includes(companyRole))
+  const visibleMenuItems = menuItems.filter((item) => (item.roles as readonly PortalRole[]).includes(companyRole))
   const visibleApproverItems = (canApproveRequests || isAdminRole)
     ? approverMenuItems.filter((item) => item.roles.includes(companyRole))
     : []

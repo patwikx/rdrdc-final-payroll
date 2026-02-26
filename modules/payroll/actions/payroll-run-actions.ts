@@ -371,15 +371,29 @@ const calculateAttendanceSnapshot = (params: {
     const isHalfDayDtr = isHalfDayRemarks(dtr?.remarks)
     const dtrPayableValue = isHalfDayDtr ? 0.5 : 1
 
+    const isPresentOrHolidayDtr = Boolean(
+      dtr && (dtr.attendanceStatus === AttendanceStatus.PRESENT || dtr.attendanceStatus === AttendanceStatus.HOLIDAY)
+    )
+
     if (isHoliday) {
       totalPayableDays += 1
     } else if (activeLeave?.isPaid) {
-      totalPayableDays += leaveDayValue
+      if (isPresentOrHolidayDtr) {
+        // Allow paid leave + actual worked half day to combine up to one full payable day.
+        totalPayableDays += Math.min(1, leaveDayValue + dtrPayableValue)
+      } else {
+        totalPayableDays += leaveDayValue
+      }
     } else if (activeLeave && !activeLeave.isPaid) {
-      unpaidAbsences += leaveDayValue
+      if (isPresentOrHolidayDtr) {
+        totalPayableDays += dtrPayableValue
+        unpaidAbsences += Math.max(0, leaveDayValue - dtrPayableValue)
+      } else {
+        unpaidAbsences += leaveDayValue
+      }
     } else if (isRestDay || dtr?.attendanceStatus === AttendanceStatus.REST_DAY) {
       totalPayableDays += 1
-    } else if (dtr && (dtr.attendanceStatus === AttendanceStatus.PRESENT || dtr.attendanceStatus === AttendanceStatus.HOLIDAY)) {
+    } else if (isPresentOrHolidayDtr) {
       totalPayableDays += dtrPayableValue
       if (isHalfDayDtr) {
         unpaidAbsences += 0.5

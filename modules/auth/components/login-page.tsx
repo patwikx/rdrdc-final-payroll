@@ -162,16 +162,6 @@ export function LoginPage() {
     <main className="min-h-svh bg-background lg:grid lg:min-h-screen lg:grid-cols-2">
       {/* ─── Left Panel: Branding ─── */}
       <section className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-muted/30 p-10 lg:flex xl:p-14">
-        {/* Decorative grid pattern */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-
         {/* Decorative corner accent */}
         <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full border border-border/50 bg-primary/5" />
         <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full border border-border/50 bg-primary/5" />

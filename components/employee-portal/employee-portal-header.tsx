@@ -12,6 +12,7 @@ type EmployeePortalHeaderProps = {
   companyId: string
   dashboardHref?: string | null
   accountHref: string
+  accountLabel?: string
   user: {
     name: string
     email: string
@@ -23,6 +24,7 @@ export function EmployeePortalHeader({
   companyId,
   dashboardHref = null,
   accountHref,
+  accountLabel = "Account",
   user,
 }: EmployeePortalHeaderProps) {
   return (
@@ -58,7 +60,14 @@ export function EmployeePortalHeader({
             </Link>
           </Button>
         ) : null}
-        <NavUser user={user} accountHref={accountHref} inSidebar={false} compactOnMobile squareAvatar />
+        <NavUser
+          user={user}
+          accountHref={accountHref}
+          accountLabel={accountLabel}
+          inSidebar={false}
+          compactOnMobile
+          squareAvatar
+        />
       </div>
     </header>
   )

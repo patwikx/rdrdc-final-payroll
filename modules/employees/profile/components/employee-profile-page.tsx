@@ -1,7 +1,7 @@
 "use client"
 
 import Image, { type ImageLoaderProps } from "next/image"
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import type { ComponentType, Dispatch, ReactNode, RefObject, SetStateAction } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -41,18 +41,24 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  clampImageCropOffsetsForZoom,
+  disposeImageCropEditorSource,
+  getImageCropEditorLayout,
+  loadImageCropEditorSource,
+  renderCroppedImageDataUrl,
+  type ImageCropEditorSource,
+} from "@/lib/client/image-crop"
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { EmployeeFamilyTab } from "@/modules/employees/profile/components/employee-family-tab"
 import { manageEmployeeLifecycleAction } from "@/modules/employees/profile/actions/manage-employee-lifecycle-action"
 import { updateEmployeeProfileAction } from "@/modules/employees/profile/actions/update-employee-profile-action"
-import {
-  removeEmployeePhotoAction,
-  updateEmployeePhotoAction,
-} from "@/modules/employees/profile/actions/update-employee-photo-action"
+import { updateEmployeePhotoAction } from "@/modules/employees/profile/actions/update-employee-photo-action"
 import { createEmployeeSignatureUploadUrlAction } from "@/modules/employees/profile/actions/create-employee-signature-upload-url-action"
 import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { EmployeeHistoryTab } from "@/modules/employees/profile/components/employee-history-tab"
@@ -344,19 +350,8 @@ const formatRateDisplay = (value: string): string => {
   })
 }
 
-const readFileAsDataUrl = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result)
-        return
-      }
-      reject(new Error("INVALID_FILE_RESULT"))
-    }
-    reader.onerror = () => reject(new Error("FILE_READ_FAILED"))
-    reader.readAsDataURL(file)
-  })
+const PHOTO_EDITOR_VIEWPORT_SIZE = 288
+const PHOTO_EDITOR_OUTPUT_SIZE = 640
 
 const recalculateDerivedRates = (draft: EmployeeProfileDraft): EmployeeProfileDraft => {
   const monthlyRate = toPositiveNumber(draft.monthlyRate)
@@ -421,8 +416,33 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
     buildInitialLifecycleDraft("DEACTIVATE")
   )
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(employee.photoUrl ?? "")
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false)
+  const [photoEditorSource, setPhotoEditorSource] = useState<ImageCropEditorSource | null>(null)
+  const [photoEditorZoom, setPhotoEditorZoom] = useState(1)
+  const [photoEditorOffsetX, setPhotoEditorOffsetX] = useState(0)
+  const [photoEditorOffsetY, setPhotoEditorOffsetY] = useState(0)
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   const signatureInputRef = useRef<HTMLInputElement | null>(null)
+
+  const photoEditorLayout = useMemo(() => {
+    if (!photoEditorSource) {
+      return null
+    }
+
+    return getImageCropEditorLayout({
+      source: photoEditorSource,
+      zoom: photoEditorZoom,
+      offsetX: photoEditorOffsetX,
+      offsetY: photoEditorOffsetY,
+      viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+    })
+  }, [photoEditorOffsetX, photoEditorOffsetY, photoEditorSource, photoEditorZoom])
+
+  useEffect(() => {
+    return () => {
+      disposeImageCropEditorSource(photoEditorSource)
+    }
+  }, [photoEditorSource])
 
   const onCancelEdit = () => {
     setDraft(initialDraft)
@@ -537,62 +557,104 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
     }
   }
 
-  const handlePhotoFileUpload = async (file: File | undefined) => {
-    if (!file) return
-
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      toast.error("Only JPG, PNG, and WEBP image files are allowed.")
+  const closePhotoEditor = () => {
+    if (isPhotoUploading) {
       return
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Profile photo must be 2 MB or below.")
-      return
-    }
-
-    setIsPhotoUploading(true)
-    try {
-      const photoDataUrl = await readFileAsDataUrl(file)
-      const result = await updateEmployeePhotoAction({
-        companyId: data.companyId,
-        employeeId: employee.id,
-        photoDataUrl,
-      })
-
-      if (!result.ok) {
-        toast.error(result.error)
-        return
-      }
-
-      setPhotoPreviewUrl(result.photoUrl)
-      toast.success(result.message)
-    } catch {
-      toast.error("Failed to upload employee photo.")
-    } finally {
-      setIsPhotoUploading(false)
-    }
+    setIsPhotoEditorOpen(false)
+    setPhotoEditorZoom(1)
+    setPhotoEditorOffsetX(0)
+    setPhotoEditorOffsetY(0)
+    setPhotoEditorSource((current) => {
+      disposeImageCropEditorSource(current)
+      return null
+    })
   }
 
-  const handleRemovePhoto = () => {
-    if (!photoPreviewUrl || isPhotoUploading) return
+  const handlePhotoZoomChange = (value: number[]) => {
+    const nextZoom = value[0] ?? 1
+    setPhotoEditorZoom(nextZoom)
+
+    if (!photoEditorSource) {
+      return
+    }
+
+    const clamped = clampImageCropOffsetsForZoom({
+      source: photoEditorSource,
+      zoom: nextZoom,
+      viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+      offsetX: photoEditorOffsetX,
+      offsetY: photoEditorOffsetY,
+    })
+    setPhotoEditorOffsetX(clamped.offsetX)
+    setPhotoEditorOffsetY(clamped.offsetY)
+  }
+
+  const handleApplyPhotoEdit = () => {
+    if (!photoEditorSource || !photoEditorLayout) {
+      return
+    }
 
     setIsPhotoUploading(true)
     void (async () => {
-      const result = await removeEmployeePhotoAction({
-        companyId: data.companyId,
-        employeeId: employee.id,
-      })
+      try {
+        const photoDataUrl = await renderCroppedImageDataUrl({
+          source: photoEditorSource,
+          layout: photoEditorLayout,
+          viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+          outputSize: PHOTO_EDITOR_OUTPUT_SIZE,
+          mimeType: "image/jpeg",
+          quality: 0.92,
+        })
+        const result = await updateEmployeePhotoAction({
+          companyId: data.companyId,
+          employeeId: employee.id,
+          photoDataUrl,
+        })
 
-      if (!result.ok) {
-        toast.error(result.error)
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
+
+        setPhotoPreviewUrl(result.photoUrl)
+        toast.success(result.message)
+        closePhotoEditor()
+      } catch {
+        toast.error("Failed to upload employee photo.")
+      } finally {
         setIsPhotoUploading(false)
-        return
       }
-
-      setPhotoPreviewUrl("")
-      toast.success(result.message)
-      setIsPhotoUploading(false)
     })()
+  }
+
+  const handlePhotoFileUpload = async (file: File | undefined) => {
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file.")
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Please select an image up to 5MB.")
+      return
+    }
+
+    try {
+      const nextSource = await loadImageCropEditorSource(file)
+      setPhotoEditorSource((current) => {
+        disposeImageCropEditorSource(current)
+        return nextSource
+      })
+      setPhotoEditorZoom(1)
+      setPhotoEditorOffsetX(0)
+      setPhotoEditorOffsetY(0)
+      setIsPhotoEditorOpen(true)
+    } catch {
+      toast.error("Failed to process selected photo.")
+    }
   }
 
   const onSaveEdit = () => {
@@ -830,52 +892,119 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
                   {employee.lastName[0]}
                 </AvatarFallback>
               </Avatar>
-              {!photoPreviewUrl ? (
-                <div className="pointer-events-none absolute inset-x-2 bottom-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="pointer-events-auto h-8 w-full justify-center gap-1.5"
-                    onClick={() => photoInputRef.current?.click()}
-                    disabled={isPhotoUploading}
-                  >
-                    <IconUpload className="size-3.5" />
-                    {isPhotoUploading ? "Uploading..." : "Upload Photo"}
-                  </Button>
-                  <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.currentTarget.files?.[0]
-                      void handlePhotoFileUpload(file)
-                      if (photoInputRef.current) {
-                        photoInputRef.current.value = ""
-                      }
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
-            <div className="px-2 py-2">
-              {photoPreviewUrl ? (
+              <div className="pointer-events-none absolute inset-x-2 bottom-2">
                 <Button
                   type="button"
-                  variant="outline"
                   size="sm"
-                  className="h-8 w-full"
-                  onClick={handleRemovePhoto}
+                  variant="secondary"
+                  className="pointer-events-auto h-8 w-full justify-center gap-1.5"
+                  onClick={() => photoInputRef.current?.click()}
                   disabled={isPhotoUploading}
                 >
-                  {isPhotoUploading ? "Removing..." : "Remove Photo"}
+                  <IconUpload className="size-3.5" />
+                  {isPhotoUploading ? "Uploading..." : photoPreviewUrl ? "Replace Photo" : "Upload Photo"}
                 </Button>
-              ) : (
-                <p className="px-1 text-center text-[11px] text-muted-foreground">
-                  JPG, PNG, or WEBP up to 2MB. Saves automatically after upload.
-                </p>
-              )}
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  void handlePhotoFileUpload(file)
+                  if (photoInputRef.current) {
+                    photoInputRef.current.value = ""
+                  }
+                }}
+              />
+            </div>
+            <Dialog
+              open={isPhotoEditorOpen}
+              onOpenChange={(open) => {
+                if (!open) {
+                  closePhotoEditor()
+                }
+              }}
+            >
+              <DialogContent className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[540px]">
+                <DialogHeader className="mb-3 border-b border-border/60 pb-3">
+                  <DialogTitle className="text-base font-semibold">Adjust Profile Photo</DialogTitle>
+                  <DialogDescription className="text-sm text-muted-foreground">
+                    Crop and resize the photo before saving.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="mx-auto overflow-hidden rounded-xl border border-border/60 bg-muted/20" style={{ width: PHOTO_EDITOR_VIEWPORT_SIZE, height: PHOTO_EDITOR_VIEWPORT_SIZE }}>
+                    {photoEditorSource && photoEditorLayout ? (
+                      <div className="relative h-full w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photoEditorSource.objectUrl}
+                          alt="Employee profile photo crop preview"
+                          className="pointer-events-none absolute max-w-none select-none"
+                          draggable={false}
+                          style={{
+                            width: `${photoEditorLayout.scaledWidth}px`,
+                            height: `${photoEditorLayout.scaledHeight}px`,
+                            left: `${photoEditorLayout.imageLeft}px`,
+                            top: `${photoEditorLayout.imageTop}px`,
+                          }}
+                        />
+                        <div className="pointer-events-none absolute inset-0 border border-primary/50" />
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Zoom</span>
+                        <span>{photoEditorZoom.toFixed(2)}x</span>
+                      </div>
+                      <Slider value={[photoEditorZoom]} onValueChange={handlePhotoZoomChange} min={1} max={3} step={0.01} />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Horizontal</span>
+                        <span>{Math.round(photoEditorLayout?.clampedOffsetX ?? 0)}px</span>
+                      </div>
+                      <Slider
+                        value={[photoEditorLayout?.clampedOffsetX ?? 0]}
+                        onValueChange={(value) => setPhotoEditorOffsetX(value[0] ?? 0)}
+                        min={-(photoEditorLayout?.maxOffsetX ?? 0)}
+                        max={photoEditorLayout?.maxOffsetX ?? 0}
+                        step={1}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Vertical</span>
+                        <span>{Math.round(photoEditorLayout?.clampedOffsetY ?? 0)}px</span>
+                      </div>
+                      <Slider
+                        value={[photoEditorLayout?.clampedOffsetY ?? 0]}
+                        onValueChange={(value) => setPhotoEditorOffsetY(value[0] ?? 0)}
+                        min={-(photoEditorLayout?.maxOffsetY ?? 0)}
+                        max={photoEditorLayout?.maxOffsetY ?? 0}
+                        step={1}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
+                    <Button type="button" variant="outline" onClick={closePhotoEditor} disabled={isPhotoUploading}>
+                      Cancel
+                    </Button>
+                    <Button type="button" onClick={handleApplyPhotoEdit} disabled={isPhotoUploading || !photoEditorSource}>
+                      {isPhotoUploading ? "Uploading..." : "Apply Photo"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <div className="px-2 py-2">
+              <p className="px-1 text-center text-[11px] text-muted-foreground">
+                Upload an image up to 5MB. Crop is applied before save.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-px bg-border/60">
               <div className="bg-background p-3 text-center">

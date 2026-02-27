@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { BloodType, CivilStatus, Gender, RelationshipType } from "@prisma/client"
@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Slider } from "@/components/ui/slider"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -135,7 +136,48 @@ type Props = {
   employee: ProfileData
 }
 
+type ProfilePhotoEditorSource = {
+  objectUrl: string
+  naturalWidth: number
+  naturalHeight: number
+}
+
+const PHOTO_EDITOR_VIEWPORT_SIZE = 288
+const PROFILE_PHOTO_OUTPUT_SIZE = 640
+
 const enumLabel = (value: string | null | undefined): string => (value ? value.replace(/_/g, " ") : "N/A")
+
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
+
+const disposePhotoEditorSource = (source: ProfilePhotoEditorSource | null): void => {
+  if (!source) {
+    return
+  }
+
+  URL.revokeObjectURL(source.objectUrl)
+}
+
+const loadPhotoEditorSource = async (file: File): Promise<ProfilePhotoEditorSource> => {
+  const objectUrl = URL.createObjectURL(file)
+  const image = new Image()
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error("Failed to decode image"))
+      image.src = objectUrl
+    })
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl)
+    throw error
+  }
+
+  return {
+    objectUrl,
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
+  }
+}
 
 export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
   const [isProfilePending, startProfileTransition] = useTransition()
@@ -143,6 +185,11 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
   const [isPhotoPending, startPhotoTransition] = useTransition()
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false)
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false)
+  const [photoEditorSource, setPhotoEditorSource] = useState<ProfilePhotoEditorSource | null>(null)
+  const [photoEditorZoom, setPhotoEditorZoom] = useState(1)
+  const [photoEditorOffsetX, setPhotoEditorOffsetX] = useState(0)
+  const [photoEditorOffsetY, setPhotoEditorOffsetY] = useState(0)
   const router = useRouter()
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -184,6 +231,45 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
       fileSize: doc.fileSize,
     }))
   )
+
+  const photoEditorLayout = useMemo(() => {
+    if (!photoEditorSource) {
+      return null
+    }
+
+    const baseScale = Math.max(
+      PHOTO_EDITOR_VIEWPORT_SIZE / photoEditorSource.naturalWidth,
+      PHOTO_EDITOR_VIEWPORT_SIZE / photoEditorSource.naturalHeight
+    )
+    const displayScale = baseScale * photoEditorZoom
+    const scaledWidth = photoEditorSource.naturalWidth * displayScale
+    const scaledHeight = photoEditorSource.naturalHeight * displayScale
+    const maxOffsetX = Math.max(0, (scaledWidth - PHOTO_EDITOR_VIEWPORT_SIZE) / 2)
+    const maxOffsetY = Math.max(0, (scaledHeight - PHOTO_EDITOR_VIEWPORT_SIZE) / 2)
+    const clampedOffsetX = clamp(photoEditorOffsetX, -maxOffsetX, maxOffsetX)
+    const clampedOffsetY = clamp(photoEditorOffsetY, -maxOffsetY, maxOffsetY)
+    const imageLeft = (PHOTO_EDITOR_VIEWPORT_SIZE - scaledWidth) / 2 + clampedOffsetX
+    const imageTop = (PHOTO_EDITOR_VIEWPORT_SIZE - scaledHeight) / 2 + clampedOffsetY
+
+    return {
+      baseScale,
+      displayScale,
+      scaledWidth,
+      scaledHeight,
+      maxOffsetX,
+      maxOffsetY,
+      clampedOffsetX,
+      clampedOffsetY,
+      imageLeft,
+      imageTop,
+    }
+  }, [photoEditorOffsetX, photoEditorOffsetY, photoEditorSource, photoEditorZoom])
+
+  useEffect(() => {
+    return () => {
+      disposePhotoEditorSource(photoEditorSource)
+    }
+  }, [photoEditorSource])
 
   const handleUpdate = () => {
     startProfileTransition(async () => {
@@ -248,7 +334,120 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
     })
   }
 
-  const handleProfilePhotoFile = (file: File | undefined) => {
+  const closePhotoEditor = () => {
+    setIsPhotoEditorOpen(false)
+    setPhotoEditorZoom(1)
+    setPhotoEditorOffsetX(0)
+    setPhotoEditorOffsetY(0)
+    setPhotoEditorSource((current) => {
+      disposePhotoEditorSource(current)
+      return null
+    })
+  }
+
+  const handlePhotoZoomChange = (value: number[]) => {
+    const nextZoom = value[0] ?? 1
+    setPhotoEditorZoom(nextZoom)
+
+    if (!photoEditorSource) {
+      return
+    }
+
+    const baseScale = Math.max(
+      PHOTO_EDITOR_VIEWPORT_SIZE / photoEditorSource.naturalWidth,
+      PHOTO_EDITOR_VIEWPORT_SIZE / photoEditorSource.naturalHeight
+    )
+    const scaledWidth = photoEditorSource.naturalWidth * baseScale * nextZoom
+    const scaledHeight = photoEditorSource.naturalHeight * baseScale * nextZoom
+    const maxOffsetX = Math.max(0, (scaledWidth - PHOTO_EDITOR_VIEWPORT_SIZE) / 2)
+    const maxOffsetY = Math.max(0, (scaledHeight - PHOTO_EDITOR_VIEWPORT_SIZE) / 2)
+
+    setPhotoEditorOffsetX((current) => clamp(current, -maxOffsetX, maxOffsetX))
+    setPhotoEditorOffsetY((current) => clamp(current, -maxOffsetY, maxOffsetY))
+  }
+
+  const renderProfilePhotoDataUrl = async (): Promise<string> => {
+    if (!photoEditorSource || !photoEditorLayout) {
+      throw new Error("No image selected for editing.")
+    }
+
+    const image = new Image()
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error("Failed to prepare cropped image."))
+      image.src = photoEditorSource.objectUrl
+    })
+
+    const canvas = document.createElement("canvas")
+    canvas.width = PROFILE_PHOTO_OUTPUT_SIZE
+    canvas.height = PROFILE_PHOTO_OUTPUT_SIZE
+
+    const context = canvas.getContext("2d")
+    if (!context) {
+      throw new Error("Failed to process selected image.")
+    }
+
+    const sourceSide = PHOTO_EDITOR_VIEWPORT_SIZE / photoEditorLayout.displayScale
+    const rawSourceX = (0 - photoEditorLayout.imageLeft) / photoEditorLayout.displayScale
+    const rawSourceY = (0 - photoEditorLayout.imageTop) / photoEditorLayout.displayScale
+    const maxSourceX = Math.max(0, photoEditorSource.naturalWidth - sourceSide)
+    const maxSourceY = Math.max(0, photoEditorSource.naturalHeight - sourceSide)
+    const sourceX = clamp(rawSourceX, 0, maxSourceX)
+    const sourceY = clamp(rawSourceY, 0, maxSourceY)
+
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = "high"
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceSide,
+      sourceSide,
+      0,
+      0,
+      PROFILE_PHOTO_OUTPUT_SIZE,
+      PROFILE_PHOTO_OUTPUT_SIZE
+    )
+
+    return canvas.toDataURL("image/jpeg", 0.92)
+  }
+
+  const handleApplyPhotoEdit = () => {
+    const previousPreview = profilePhotoPreview
+
+    startPhotoTransition(async () => {
+      try {
+        const dataUrl = await renderProfilePhotoDataUrl()
+        setProfilePhotoPreview(dataUrl)
+
+        const result = await updateEmployeeSelfServiceAction({
+          companyId,
+          profilePhotoDataUrl: dataUrl,
+        })
+
+        if (!result.ok) {
+          setProfilePhotoPreview(previousPreview)
+          toast.error(result.error)
+          return
+        }
+
+        toast.success("Profile photo updated.")
+        closePhotoEditor()
+        router.refresh()
+      } catch (error) {
+        setProfilePhotoPreview(previousPreview)
+        const message = error instanceof Error ? error.message : "Failed to upload profile photo."
+        const sizeLimitMessage = message.toLowerCase().includes("body exceeded")
+          ? "Image is too large for upload. Please use a smaller file."
+          : "Failed to upload profile photo. Please try again."
+        toast.error(sizeLimitMessage)
+      }
+    })
+  }
+
+  const handleProfilePhotoFile = async (file: File | undefined) => {
     if (!file) {
       return
     }
@@ -264,48 +463,19 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
       return
     }
 
-    const reader = new FileReader()
-    reader.onerror = () => {
-      toast.error("Failed to read selected image.")
-    }
-
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : null
-      if (!dataUrl) {
-        toast.error("Failed to process selected image.")
-        return
-      }
-
-      const previousPreview = profilePhotoPreview
-      setProfilePhotoPreview(dataUrl)
-
-      startPhotoTransition(async () => {
-        try {
-          const result = await updateEmployeeSelfServiceAction({
-            companyId,
-            profilePhotoDataUrl: dataUrl,
-          })
-
-          if (!result.ok) {
-            setProfilePhotoPreview(previousPreview)
-            toast.error(result.error)
-            return
-          }
-
-          toast.success("Profile photo updated.")
-          router.refresh()
-        } catch (error) {
-          setProfilePhotoPreview(previousPreview)
-          const message = error instanceof Error ? error.message : "Failed to upload profile photo."
-          const sizeLimitMessage = message.toLowerCase().includes("body exceeded")
-            ? "Image is too large for upload. Please use a smaller file."
-            : "Failed to upload profile photo. Please try again."
-          toast.error(sizeLimitMessage)
-        }
+    try {
+      const nextSource = await loadPhotoEditorSource(file)
+      setPhotoEditorSource((current) => {
+        disposePhotoEditorSource(current)
+        return nextSource
       })
+      setPhotoEditorZoom(1)
+      setPhotoEditorOffsetX(0)
+      setPhotoEditorOffsetY(0)
+      setIsPhotoEditorOpen(true)
+    } catch {
+      toast.error("Failed to process selected image.")
     }
-
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -574,6 +744,87 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
                   event.currentTarget.value = ""
                 }}
               />
+              <Dialog
+                open={isPhotoEditorOpen}
+                onOpenChange={(open) => {
+                  if (!open && !isPhotoPending) {
+                    closePhotoEditor()
+                  }
+                }}
+              >
+                <DialogContent className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[540px]">
+                  <DialogHeader className="mb-3 border-b border-border/60 pb-3">
+                    <DialogTitle className="text-base font-semibold">Adjust Profile Photo</DialogTitle>
+                    <DialogDescription className="text-sm text-muted-foreground">
+                      Crop and resize your photo before upload.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="mx-auto overflow-hidden rounded-xl border border-border/60 bg-muted/20" style={{ width: PHOTO_EDITOR_VIEWPORT_SIZE, height: PHOTO_EDITOR_VIEWPORT_SIZE }}>
+                      {photoEditorSource && photoEditorLayout ? (
+                        <div className="relative h-full w-full">
+                          <img
+                            src={photoEditorSource.objectUrl}
+                            alt="Profile photo crop preview"
+                            className="pointer-events-none absolute max-w-none select-none"
+                            draggable={false}
+                            style={{
+                              width: `${photoEditorLayout.scaledWidth}px`,
+                              height: `${photoEditorLayout.scaledHeight}px`,
+                              left: `${photoEditorLayout.imageLeft}px`,
+                              top: `${photoEditorLayout.imageTop}px`,
+                            }}
+                          />
+                          <div className="pointer-events-none absolute inset-0 border border-primary/50" />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Zoom</span>
+                          <span>{photoEditorZoom.toFixed(2)}x</span>
+                        </div>
+                        <Slider value={[photoEditorZoom]} onValueChange={handlePhotoZoomChange} min={1} max={3} step={0.01} />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Horizontal</span>
+                          <span>{Math.round(photoEditorLayout?.clampedOffsetX ?? 0)}px</span>
+                        </div>
+                        <Slider
+                          value={[photoEditorLayout?.clampedOffsetX ?? 0]}
+                          onValueChange={(value) => setPhotoEditorOffsetX(value[0] ?? 0)}
+                          min={-(photoEditorLayout?.maxOffsetX ?? 0)}
+                          max={photoEditorLayout?.maxOffsetX ?? 0}
+                          step={1}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Vertical</span>
+                          <span>{Math.round(photoEditorLayout?.clampedOffsetY ?? 0)}px</span>
+                        </div>
+                        <Slider
+                          value={[photoEditorLayout?.clampedOffsetY ?? 0]}
+                          onValueChange={(value) => setPhotoEditorOffsetY(value[0] ?? 0)}
+                          min={-(photoEditorLayout?.maxOffsetY ?? 0)}
+                          max={photoEditorLayout?.maxOffsetY ?? 0}
+                          step={1}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
+                      <Button variant="outline" onClick={closePhotoEditor} className="rounded-lg" disabled={isPhotoPending}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleApplyPhotoEdit} className="rounded-lg" disabled={isPhotoPending || !photoEditorSource}>
+                        {isPhotoPending ? "Uploading..." : "Apply Photo"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
 
             <div className="space-y-4">

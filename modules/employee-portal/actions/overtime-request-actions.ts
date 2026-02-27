@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { EmailType, RequestStatus } from "@prisma/client"
+import { RequestStatus } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
@@ -81,11 +81,14 @@ export async function createOvertimeRequestAction(
           firstName: true,
           lastName: true,
           emails: {
-            where: { isActive: true },
-            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            where: {
+              isActive: true,
+              isPrimary: true,
+            },
+            orderBy: [{ createdAt: "asc" }],
+            take: 1,
             select: {
               email: true,
-              emailTypeId: true,
             },
           },
         },
@@ -149,8 +152,7 @@ export async function createOvertimeRequestAction(
   revalidatePath(`/${context.companyId}/employee-portal/overtime`)
   revalidatePath(`/${context.companyId}/dashboard`)
 
-  const supervisorEmail =
-    employee.reportingManager?.emails.find((row) => row.emailTypeId === EmailType.WORK)?.email ?? null
+  const supervisorEmail = employee.reportingManager?.emails[0]?.email ?? null
   const supervisorName = employee.reportingManager
     ? `${employee.reportingManager.firstName} ${employee.reportingManager.lastName}`
     : null

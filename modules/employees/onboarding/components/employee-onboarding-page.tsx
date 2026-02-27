@@ -1,7 +1,7 @@
 "use client"
 
 import type { ChangeEvent } from "react"
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBriefcase,
@@ -42,6 +42,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Slider } from "@/components/ui/slider"
 import {
   Select,
   SelectContent,
@@ -70,6 +71,14 @@ import {
   taxStatusOptions,
   type EmployeeOnboardingInput,
 } from "@/modules/employees/onboarding/schemas/employee-onboarding-schema"
+import {
+  clampImageCropOffsetsForZoom,
+  disposeImageCropEditorSource,
+  getImageCropEditorLayout,
+  loadImageCropEditorSource,
+  renderCroppedImageDataUrl,
+  type ImageCropEditorSource,
+} from "@/lib/client/image-crop"
 
 type Option = { id: string; code: string; name: string }
 
@@ -232,6 +241,9 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
   })
 }
 
+const PHOTO_EDITOR_VIEWPORT_SIZE = 288
+const PHOTO_EDITOR_OUTPUT_SIZE = 640
+
 export function EmployeeOnboardingPage({ companyName, initialData, options }: EmployeeOnboardingPageProps) {
   const router = useRouter()
   const [form, setForm] = useState<EmployeeOnboardingInput>(initialData)
@@ -240,10 +252,37 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
   const [isPending, startTransition] = useTransition()
   const [isCreatingOption, startCreateOption] = useTransition()
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false)
+  const [isPhotoEditorApplying, setIsPhotoEditorApplying] = useState(false)
+  const [photoEditorSource, setPhotoEditorSource] = useState<ImageCropEditorSource | null>(null)
+  const [photoEditorZoom, setPhotoEditorZoom] = useState(1)
+  const [photoEditorOffsetX, setPhotoEditorOffsetX] = useState(0)
+  const [photoEditorOffsetY, setPhotoEditorOffsetY] = useState(0)
+  const [photoEditorFileName, setPhotoEditorFileName] = useState<string | null>(null)
   const [createTarget, setCreateTarget] = useState<DynamicCreateTarget | null>(null)
   const [createName, setCreateName] = useState("")
   const profileInputRef = useRef<HTMLInputElement | null>(null)
   const documentsInputRef = useRef<HTMLInputElement | null>(null)
+
+  const photoEditorLayout = useMemo(() => {
+    if (!photoEditorSource) {
+      return null
+    }
+
+    return getImageCropEditorLayout({
+      source: photoEditorSource,
+      zoom: photoEditorZoom,
+      offsetX: photoEditorOffsetX,
+      offsetY: photoEditorOffsetY,
+      viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+    })
+  }, [photoEditorOffsetX, photoEditorOffsetY, photoEditorSource, photoEditorZoom])
+
+  useEffect(() => {
+    return () => {
+      disposeImageCropEditorSource(photoEditorSource)
+    }
+  }, [photoEditorSource])
 
   const updateSection = <S extends keyof EmployeeOnboardingInput, K extends keyof EmployeeOnboardingInput[S]>(
     section: S,
@@ -305,20 +344,100 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
     return value > 0 ? value.toFixed(2) : ""
   }, [form.payroll.monthlyRate, form.payroll.monthlyDivisor, form.payroll.hoursPerDay])
 
-  const handleProfilePhotoFile = async (file: File | undefined) => {
-    if (!file) return
+  const closePhotoEditor = () => {
+    if (isPhotoEditorApplying) {
+      return
+    }
 
+    setIsPhotoEditorOpen(false)
+    setPhotoEditorZoom(1)
+    setPhotoEditorOffsetX(0)
+    setPhotoEditorOffsetY(0)
+    setPhotoEditorFileName(null)
+    setPhotoEditorSource((current) => {
+      disposeImageCropEditorSource(current)
+      return null
+    })
+  }
+
+  const handlePhotoZoomChange = (value: number[]) => {
+    const nextZoom = value[0] ?? 1
+    setPhotoEditorZoom(nextZoom)
+
+    if (!photoEditorSource) {
+      return
+    }
+
+    const clamped = clampImageCropOffsetsForZoom({
+      source: photoEditorSource,
+      zoom: nextZoom,
+      viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+      offsetX: photoEditorOffsetX,
+      offsetY: photoEditorOffsetY,
+    })
+    setPhotoEditorOffsetX(clamped.offsetX)
+    setPhotoEditorOffsetY(clamped.offsetY)
+  }
+
+  const handleApplyPhotoEdit = async () => {
+    if (!photoEditorSource || !photoEditorLayout) {
+      return
+    }
+
+    setIsPhotoEditorApplying(true)
     try {
-      const dataUrl = await readFileAsDataUrl(file)
+      const dataUrl = await renderCroppedImageDataUrl({
+        source: photoEditorSource,
+        layout: photoEditorLayout,
+        viewportSize: PHOTO_EDITOR_VIEWPORT_SIZE,
+        outputSize: PHOTO_EDITOR_OUTPUT_SIZE,
+        mimeType: "image/jpeg",
+        quality: 0.92,
+      })
+
       setForm((prev) => ({
         ...prev,
         uploads: {
           ...prev.uploads,
           profilePhotoDataUrl: dataUrl,
-          profilePhotoFileName: file.name,
+          profilePhotoFileName: photoEditorFileName ?? prev.uploads.profilePhotoFileName,
         },
       }))
+
       toast.success("Profile image attached.")
+      closePhotoEditor()
+    } catch {
+      toast.error("Failed to process selected profile image.")
+    } finally {
+      setIsPhotoEditorApplying(false)
+    }
+  }
+
+  const handleProfilePhotoFile = async (file: File | undefined) => {
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file.")
+      return
+    }
+
+    const maxImageBytes = 5 * 1024 * 1024
+    if (file.size > maxImageBytes) {
+      toast.error("Please select an image up to 5MB.")
+      return
+    }
+
+    try {
+      const nextSource = await loadImageCropEditorSource(file)
+      setPhotoEditorSource((current) => {
+        disposeImageCropEditorSource(current)
+        return nextSource
+      })
+      setPhotoEditorFileName(file.name)
+      setPhotoEditorZoom(1)
+      setPhotoEditorOffsetX(0)
+      setPhotoEditorOffsetY(0)
+      setIsPhotoEditorOpen(true)
     } catch {
       toast.error("Failed to read selected profile image.")
     }
@@ -554,6 +673,88 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                         <p className="truncate text-[11px] text-muted-foreground">
                           {form.uploads.profilePhotoFileName ?? "No profile image selected"}
                         </p>
+                        <Dialog
+                          open={isPhotoEditorOpen}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              closePhotoEditor()
+                            }
+                          }}
+                        >
+                          <DialogContent className="w-[95vw] max-w-[95vw] rounded-2xl border-border/60 shadow-none sm:!max-w-[540px]">
+                            <DialogHeader className="mb-3 border-b border-border/60 pb-3">
+                              <DialogTitle className="text-base font-semibold">Adjust Profile Photo</DialogTitle>
+                              <DialogDescription className="text-sm text-muted-foreground">
+                                Crop and resize your photo before attaching it.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="mx-auto overflow-hidden rounded-xl border border-border/60 bg-muted/20" style={{ width: PHOTO_EDITOR_VIEWPORT_SIZE, height: PHOTO_EDITOR_VIEWPORT_SIZE }}>
+                                {photoEditorSource && photoEditorLayout ? (
+                                  <div className="relative h-full w-full">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={photoEditorSource.objectUrl}
+                                      alt="Profile photo crop preview"
+                                      className="pointer-events-none absolute max-w-none select-none"
+                                      draggable={false}
+                                      style={{
+                                        width: `${photoEditorLayout.scaledWidth}px`,
+                                        height: `${photoEditorLayout.scaledHeight}px`,
+                                        left: `${photoEditorLayout.imageLeft}px`,
+                                        top: `${photoEditorLayout.imageTop}px`,
+                                      }}
+                                    />
+                                    <div className="pointer-events-none absolute inset-0 border border-primary/50" />
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="space-y-3">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>Zoom</span>
+                                    <span>{photoEditorZoom.toFixed(2)}x</span>
+                                  </div>
+                                  <Slider value={[photoEditorZoom]} onValueChange={handlePhotoZoomChange} min={1} max={3} step={0.01} />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>Horizontal</span>
+                                    <span>{Math.round(photoEditorLayout?.clampedOffsetX ?? 0)}px</span>
+                                  </div>
+                                  <Slider
+                                    value={[photoEditorLayout?.clampedOffsetX ?? 0]}
+                                    onValueChange={(value) => setPhotoEditorOffsetX(value[0] ?? 0)}
+                                    min={-(photoEditorLayout?.maxOffsetX ?? 0)}
+                                    max={photoEditorLayout?.maxOffsetX ?? 0}
+                                    step={1}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>Vertical</span>
+                                    <span>{Math.round(photoEditorLayout?.clampedOffsetY ?? 0)}px</span>
+                                  </div>
+                                  <Slider
+                                    value={[photoEditorLayout?.clampedOffsetY ?? 0]}
+                                    onValueChange={(value) => setPhotoEditorOffsetY(value[0] ?? 0)}
+                                    min={-(photoEditorLayout?.maxOffsetY ?? 0)}
+                                    max={photoEditorLayout?.maxOffsetY ?? 0}
+                                    step={1}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-end gap-3 border-t border-border/60 pt-4">
+                                <Button type="button" variant="outline" onClick={closePhotoEditor} className="rounded-lg" disabled={isPhotoEditorApplying}>
+                                  Cancel
+                                </Button>
+                                <Button type="button" onClick={() => void handleApplyPhotoEdit()} className="rounded-lg" disabled={isPhotoEditorApplying || !photoEditorSource}>
+                                  {isPhotoEditorApplying ? "Applying..." : "Apply Photo"}
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

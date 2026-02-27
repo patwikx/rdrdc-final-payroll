@@ -108,7 +108,7 @@ export async function sendSupervisorRequestSubmissionEmail(
   }
 
   if (!input.supervisorEmail) {
-    return { ok: false, error: "Supervisor has no active email address." }
+    return { ok: false, error: "Supervisor has no active work email address." }
   }
 
   const detailLines = input.detailLines
@@ -133,18 +133,19 @@ export async function sendSupervisorRequestSubmissionEmail(
   const safeApprovalUrl = escapeHtml(approvalUrl)
   const submittedAt = escapeHtml(formatSubmissionDate())
 
-  // Build detail rows — label left, value right, tight widths
+  // Build detail rows in the same table style used by material-request notifications.
   const detailRowsHtml = detailLines
-    .map((line) => {
+    .map((line, index) => {
       const [label, value] = parseDetailLine(line)
+      const borderStyle = index === 0 ? "" : "border-top:1px solid #e2e8f0;"
       if (label) {
         return `<tr>
-          <td style="padding:7px 0;font-size:13px;color:#6b7280;width:110px;vertical-align:top;">${escapeHtml(label)}</td>
-          <td style="padding:7px 0;font-size:13px;color:#1e293b;font-weight:500;vertical-align:top;">${escapeHtml(value)}</td>
+          <td style="padding:10px 16px;font-size:13px;color:#6b7280;vertical-align:top;${borderStyle}">${escapeHtml(label)}</td>
+          <td style="padding:10px 16px;font-size:13px;font-weight:600;color:#1e293b;vertical-align:top;${borderStyle}">${escapeHtml(value)}</td>
         </tr>`
       }
       return `<tr>
-        <td colspan="2" style="padding:7px 0;font-size:13px;color:#1e293b;">${escapeHtml(value)}</td>
+        <td colspan="2" style="padding:10px 16px;font-size:13px;font-weight:600;color:#1e293b;${borderStyle}">${escapeHtml(value)}</td>
       </tr>`
     })
     .join("")
@@ -164,80 +165,33 @@ export async function sendSupervisorRequestSubmissionEmail(
       <td align="center">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
 
-          <!-- Header -->
           <tr>
             <td style="background-color:#2563eb;padding:20px 28px;border-radius:8px 8px 0 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td>
-                    <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:rgba(255,255,255,0.65);">${safeCompanyName}</p>
-                    <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#ffffff;">${safeRequestType} Submitted</p>
-                  </td>
-                  <td align="right" valign="top">
-                    <span style="display:inline-block;background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;text-transform:uppercase;letter-spacing:0.3px;">Pending</span>
-                  </td>
-                </tr>
-              </table>
+              <p style="margin:0;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:rgba(255,255,255,0.65);">${safeCompanyName}</p>
+              <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#ffffff;">${safeRequestType} Awaiting Approval</p>
             </td>
           </tr>
-
-          <!-- Body Card -->
           <tr>
             <td style="background-color:#ffffff;padding:24px 28px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-
-              <!-- Greeting -->
               <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#334155;">Hello <strong>${safeSupervisorName}</strong>,</p>
-              <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">A new <strong>${safeRequestType.toLowerCase()}</strong> has been submitted and requires your review.</p>
-
-              <!-- Request Info Box -->
+              <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">
+                A <strong>${safeRequestType.toLowerCase()}</strong> has been submitted and is now pending your approval.
+              </p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:20px;">
-                <!-- Request # and Submitter -->
-                <tr>
-                  <td style="padding:12px 16px;border-bottom:1px solid #e2e8f0;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td valign="top">
-                          <p style="margin:0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:#94a3b8;">Request No.</p>
-                          <p style="margin:2px 0 0;font-size:14px;font-weight:700;color:#0f172a;font-family:'Courier New',Courier,monospace;">${safeRequestNumber}</p>
-                        </td>
-                        <td valign="top" align="right">
-                          <p style="margin:0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:#94a3b8;">Submitted by</p>
-                          <p style="margin:2px 0 0;font-size:13px;font-weight:600;color:#0f172a;">${safeRequesterLabel}</p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- Detail Rows -->
-                <tr>
-                  <td style="padding:10px 16px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0">
-                      ${detailRowsHtml}
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- Timestamp -->
-                <tr>
-                  <td style="padding:8px 16px;border-top:1px solid #e2e8f0;">
-                    <p style="margin:0;font-size:11px;color:#94a3b8;">Submitted on ${submittedAt} (PHT)</p>
-                  </td>
-                </tr>
+                <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Request #</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#1e293b;">${safeRequestNumber}</td></tr>
+                <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #e2e8f0;">Requester</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#1e293b;border-top:1px solid #e2e8f0;">${safeRequesterLabel}</td></tr>
+                ${detailRowsHtml}
+                <tr><td colspan="2" style="padding:8px 16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;">Submitted on ${submittedAt} (PHT)</td></tr>
               </table>
-
-              <!-- CTA Button -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td align="center" style="padding:4px 0 0;">
-                    <a href="${safeApprovalUrl}" target="_blank" style="display:inline-block;background-color:#2563eb;padding:11px 36px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">Review Request</a>
+                  <td align="center">
+                    <a href="${safeApprovalUrl}" target="_blank" style="display:inline-block;background-color:#2563eb;padding:11px 36px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">Open Approval Queue</a>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
-
-          <!-- Footer -->
           <tr>
             <td style="padding:14px 28px;background-color:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
               <p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.5;text-align:center;">
@@ -257,16 +211,16 @@ export async function sendSupervisorRequestSubmissionEmail(
   const text = [
     `Hello ${input.supervisorName?.trim() || "Approver"},`,
     "",
-    `A new ${input.requestTypeLabel.toLowerCase()} has been submitted and requires your review.`,
+    `A ${input.requestTypeLabel.toLowerCase()} has been submitted and is now pending your approval.`,
     "",
     `Request #: ${input.requestNumber}`,
-    `Submitted by: ${requesterLabel}`,
+    `Requester: ${requesterLabel}`,
     "",
     ...detailLines.map((line) => `  ${line}`),
     "",
     `Submitted on ${formatSubmissionDate()} (PHT)`,
     "",
-    `Review: ${approvalUrl}`,
+    `Open Approval Queue: ${approvalUrl}`,
     "",
     "---",
     `${input.companyName} Payroll System`,

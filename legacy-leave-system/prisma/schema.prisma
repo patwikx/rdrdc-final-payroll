@@ -1,0 +1,1526 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================
+// LMS MODELS (UNCHANGED - KEEP AS IS)
+// ==========================================
+
+model BusinessUnit {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // LMS Relations (existing)
+  employees User[]
+
+  // Asset Management Relations (NEW - safe to add)
+  departments            Department[]
+  assets                 Asset[]
+  deployments            AssetDeployment[]
+  assetHistories         AssetHistory[]
+  depreciations          AssetDepreciation[]
+  assetDisposals         AssetDisposal[]
+  transfersFrom          AssetTransfer[]         @relation("TransferFromBusinessUnit")
+  transfersTo            AssetTransfer[]         @relation("TransferToBusinessUnit")
+  retirements            AssetRetirement[]
+  barcodeScanLogs        BarcodeScanLog[]
+  inventoryVerifications InventoryVerification[]
+  barcodeSettings        BarcodeSettings?
+  materialRequests       MaterialRequest[]
+  assetCategories        AssetCategory[]
+  depreciationSchedules  DepreciationSchedule[]
+  depreciationExecutions DepreciationExecution[]
+  damagedInventories     DamagedInventory[]
+}
+
+model User {
+  id             String                  @id @default(uuid())
+  employeeId     String                  @unique
+  email          String?
+  password       String
+  name           String
+  role           UserRole                @default(USER)
+  classification EmployeeClassification?
+  profilePicture String?
+  deptId         String?
+  isAcctg        Boolean                 @default(false)
+  isPurchaser    Boolean                 @default(false)
+  isRDHMRS       Boolean                 @default(false)
+  approverId     String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  businessUnitId String?
+
+  // LMS Relations (existing)
+  managedDepartments DepartmentManager[]
+  leaveBalances      LeaveBalance[]
+  leaveRequests      LeaveRequest[]
+  overtimeRequests   OvertimeRequest[]
+  approver           User?               @relation("UserApprover", fields: [approverId], references: [id])
+  reports            User[]              @relation("UserApprover")
+  businessUnit       BusinessUnit?       @relation(fields: [businessUnitId], references: [id])
+  department         Department?         @relation(fields: [deptId], references: [id])
+
+  // Asset Management Fields (NEW - all optional for safety)
+  position      String?
+  roleId        String?
+  isActive      Boolean?  @default(true)
+  hireDate      DateTime?
+  terminateDate DateTime?
+  emailVerified DateTime?
+  lastLoginAt   DateTime?
+
+  // Asset Management Relations (NEW - safe to add)
+  assetRole               Role?                   @relation(fields: [roleId], references: [id])
+  deployments             AssetDeployment[]       @relation("DeployedToEmployee")
+  accountingApprovals     AssetDeployment[]       @relation("AccountingApprover")
+  createdAssets           Asset[]                 @relation("AssetCreator")
+  assetHistories          AssetHistory[]          @relation("HistoryEmployee")
+  createdDisposals        AssetDisposal[]         @relation("AssetDisposalCreator")
+  approvedDisposals       AssetDisposal[]         @relation("AssetDisposalApprover")
+  requestedTransfers      AssetTransfer[]         @relation("TransferRequestedBy")
+  approvedTransfers       AssetTransfer[]         @relation("TransferApprovedBy")
+  rejectedTransfers       AssetTransfer[]         @relation("TransferRejectedBy")
+  handedOverTransfers     AssetTransfer[]         @relation("TransferHandedOverBy")
+  receivedTransfers       AssetTransfer[]         @relation("TransferReceivedBy")
+  createdTransfers        AssetTransfer[]         @relation("TransferCreatedBy")
+  approvedRetirements     AssetRetirement[]       @relation("RetirementApprovedBy")
+  createdRetirements      AssetRetirement[]       @relation("RetirementCreatedBy")
+  sessions                Session[]
+  accounts                Account[]
+  auditLogs               AuditLog[]              @relation("AuditLogEmployee")
+  createdVerifications    InventoryVerification[] @relation("VerificationCreator")
+  createdMRSRequests      MaterialRequest[]       @relation("MRSRequestCreator")
+  approverAssignments     DepartmentApprover[]
+  recMRSApprovals         MaterialRequest[]       @relation("MRSRecApprover")
+  finalMRSApprovals       MaterialRequest[]       @relation("MRSFinalApprover")
+  acknowledgedRequests    MaterialRequest[]       @relation("MRSAcknowledgedBy")
+  processedRequests       MaterialRequest[]       @relation("MRSProcessor")
+  receivedAcknowledgments MRSAcknowledgment[]     @relation("MRSReceiver")
+  createdSchedules        DepreciationSchedule[]  @relation("ScheduleCreator")
+  executedDepreciations   DepreciationExecution[] @relation("ExecutionExecutor")
+  markedForEditRequests   MaterialRequest[]       @relation("MRSMarkedForEditBy")
+  budgetApprovedRequests  MaterialRequest[]       @relation("MRSBudgetApprover")
+  reviewedMRSRequests     MaterialRequest[]       @relation("MRSReviewer")
+  materialRequests        MaterialRequest[]
+  reportedDamages         DamagedInventory[]      @relation("DamageReportedBy")
+  reviewedDamages         DamagedInventory[]      @relation("DamageReviewedBy")
+  approvedDamages         DamagedInventory[]      @relation("DamageApprovedBy")
+  assessedDamages         DamagedInventory[]      @relation("DamageAssessor")
+  damagedInventories      DamagedInventory[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // LMS Relations (existing)
+  managers DepartmentManager[]
+  members  User[]
+
+  // Asset Management Fields (NEW - optional)
+  code           String?
+  description    String?
+  businessUnitId String?
+  isActive       Boolean? @default(true)
+
+  // Asset Management Relations (NEW - safe to add)
+  businessUnit       BusinessUnit?        @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  assetHistories     AssetHistory[]
+  materialRequests   MaterialRequest[]
+  approvers          DepartmentApprover[]
+  assets             Asset[]
+  damagedInventories DamagedInventory[]
+}
+
+model DepartmentManager {
+  id           String     @id @default(cuid())
+  departmentId String
+  managerId    String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  manager      User       @relation(fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, managerId])
+}
+
+model LeaveType {
+  id                   String         @id @default(cuid())
+  name                 String         @unique
+  defaultAllocatedDays Float          @default(0)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  leaveBalances        LeaveBalance[]
+  leaveRequests        LeaveRequest[]
+}
+
+model LeaveRequest {
+  id              String        @id @default(cuid())
+  userId          String
+  leaveTypeId     String
+  startDate       DateTime      @db.Date
+  endDate         DateTime      @db.Date
+  reason          String
+  status          RequestStatus @default(PENDING_MANAGER)
+  session         LeaveSession  @default(FULL_DAY)
+  managerActionBy String?
+  managerActionAt DateTime?
+  managerComments String?
+  hrActionBy      String?
+  hrActionAt      DateTime?
+  hrComments      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  leaveType       LeaveType     @relation(fields: [leaveTypeId], references: [id])
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OvertimeRequest {
+  id              String        @id @default(cuid())
+  userId          String
+  startTime       DateTime
+  endTime         DateTime
+  reason          String
+  status          RequestStatus @default(PENDING_MANAGER)
+  managerActionBy String?
+  managerActionAt DateTime?
+  managerComments String?
+  hrActionBy      String?
+  hrActionAt      DateTime?
+  hrComments      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LeaveBalance {
+  id            String    @id @default(cuid())
+  userId        String
+  leaveTypeId   String
+  year          Int
+  allocatedDays Float
+  usedDays      Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  leaveType     LeaveType @relation(fields: [leaveTypeId], references: [id])
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, leaveTypeId, year])
+}
+
+// LMS Enums (keep original names for backward compatibility)
+enum UserRole {
+  USER
+  MANAGER
+  HR
+  ADMIN
+  ACCTG
+  ACCTG_MANAGER
+  PURCHASER
+  PURCHASING_MANAGER
+  MRS_COORDINATOR
+}
+
+enum EmployeeClassification {
+  RDRDC
+  RDHFSI
+  TWC
+}
+
+enum RequestStatus {
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveSession {
+  FULL_DAY
+  MORNING
+  AFTERNOON
+}
+
+// ==========================================
+// ASSET MANAGEMENT & MRS MODELS (NEW)
+// ==========================================
+
+// Roles (for asset management permissions)
+model Role {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  description String?
+  permissions Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  employees   User[]
+
+  @@map("roles")
+}
+
+// Asset Categories
+model AssetCategory {
+  id             String   @id @default(uuid())
+  name           String
+  code           String
+  description    String?
+  businessUnitId String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  defaultAssetAccountId               String?
+  defaultDepreciationExpenseAccountId String?
+  defaultAccumulatedDepAccountId      String?
+
+  businessUnit         BusinessUnit? @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  assets               Asset[]
+  defaultAssetAccount  GLAccount?    @relation("CategoryAssetAccount", fields: [defaultAssetAccountId], references: [id])
+  defaultDepExpAccount GLAccount?    @relation("CategoryDepExpAccount", fields: [defaultDepreciationExpenseAccountId], references: [id])
+  defaultAccDepAccount GLAccount?    @relation("CategoryAccDepAccount", fields: [defaultAccumulatedDepAccountId], references: [id])
+
+  @@unique([code, businessUnitId])
+  @@map("asset_categories")
+}
+
+// Main Assets Table
+model Asset {
+  id             String      @id @default(uuid())
+  itemCode       String      @unique
+  description    String
+  serialNumber   String?
+  modelNumber    String?
+  brand          String?
+  specifications Json?
+  purchaseDate   DateTime?
+  purchasePrice  Decimal?    @db.Decimal(12, 2)
+  warrantyExpiry DateTime?
+  categoryId     String
+  businessUnitId String
+  departmentId   String?
+  quantity       Int         @default(1)
+  status         AssetStatus @default(AVAILABLE)
+  location       String?
+  notes          String?
+  createdById    String
+  isActive       Boolean     @default(true)
+
+  assetAccountId               String?
+  depreciationExpenseAccountId String?
+  accumulatedDepAccountId      String?
+
+  depreciationMethod DepreciationMethod? @default(STRAIGHT_LINE)
+  usefulLifeYears    Int?
+  usefulLifeMonths   Int?
+  salvageValue       Decimal?            @default(0) @db.Decimal(12, 2)
+
+  // Pre-depreciation tracking for assets entered after partial depreciation
+  originalPurchaseDate     DateTime? // When asset was originally purchased (may differ from purchaseDate)
+  originalPurchasePrice    Decimal?  @db.Decimal(12, 2) // Original cost (may differ from purchasePrice)
+  originalUsefulLifeYears  Int? // Original expected life in years
+  originalUsefulLifeMonths Int? // Original expected life in months
+
+  priorDepreciationAmount Decimal   @default(0) @db.Decimal(12, 2) // Depreciation before system entry
+  priorDepreciationMonths Int       @default(0) // Months depreciated before system
+  systemEntryDate         DateTime? // When asset was entered into system
+  systemEntryBookValue    Decimal?  @db.Decimal(12, 2) // Book value at system entry
+
+  remainingUsefulLifeYears  Int? // Remaining years to depreciate
+  remainingUsefulLifeMonths Int? // Remaining months to depreciate
+
+  isPreDepreciated      Boolean @default(false) // Asset had prior depreciation
+  useSystemEntryAsStart Boolean @default(false) // Start depreciation from system entry date
+
+  currentBookValue        Decimal? @db.Decimal(12, 2)
+  accumulatedDepreciation Decimal  @default(0) @db.Decimal(12, 2)
+
+  depreciationStartDate DateTime?
+  lastDepreciationDate  DateTime?
+  nextDepreciationDate  DateTime?
+  monthlyDepreciation   Decimal?  @db.Decimal(12, 2)
+  isFullyDepreciated    Boolean   @default(false)
+
+  depreciationRate    Decimal? @db.Decimal(8, 4)
+  totalExpectedUnits  Int?
+  currentUnits        Int      @default(0)
+  depreciationPerUnit Decimal? @db.Decimal(12, 6)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  barcodeValue     String?   @unique
+  barcodeType      String?
+  barcodeGenerated DateTime?
+  tagNumber        String?   @unique
+
+  currentlyAssignedTo String?
+  currentDeploymentId String?
+  lastAssignedDate    DateTime?
+
+  materialRequestId    String?
+  acknowledgmentItemId String?
+
+  category            AssetCategory       @relation(fields: [categoryId], references: [id])
+  businessUnit        BusinessUnit        @relation(fields: [businessUnitId], references: [id])
+  department          Department?         @relation(fields: [departmentId], references: [id])
+  createdBy           User                @relation("AssetCreator", fields: [createdById], references: [id])
+  deployments         AssetDeployment[]
+  assetHistories      AssetHistory[]
+  maintenanceRecords  AssetMaintenance[]
+  depreciationHistory AssetDepreciation[]
+  disposal            AssetDisposal?
+  transfers           AssetTransfer[]
+  retirement          AssetRetirement?
+  replacementFor      AssetRetirement[]   @relation("ReplacementAsset")
+  scanLogs            BarcodeScanLog[]
+  verificationItems   VerificationItem[]
+
+  sourceRequest        MaterialRequest?             @relation("CreatedFromMRS", fields: [materialRequestId], references: [id])
+  sourceAcknowledgment MRSAcknowledgmentItem[]      @relation("AcknowledgmentAsset")
+  executionAssets      DepreciationExecutionAsset[]
+
+  assetAccount               GLAccount? @relation("AssetGLAccount", fields: [assetAccountId], references: [id])
+  depreciationExpenseAccount GLAccount? @relation("DepExpenseAccount", fields: [depreciationExpenseAccountId], references: [id])
+  accumulatedDepAccount      GLAccount? @relation("AccDepAccount", fields: [accumulatedDepAccountId], references: [id])
+
+  @@index([nextDepreciationDate])
+  @@index([isFullyDepreciated, status])
+  @@index([depreciationMethod])
+  @@map("assets")
+}
+
+model AssetDepreciation {
+  id             String @id @default(uuid())
+  assetId        String
+  businessUnitId String
+
+  depreciationDate DateTime
+  periodStartDate  DateTime
+  periodEndDate    DateTime
+
+  bookValueStart          Decimal @db.Decimal(12, 2)
+  depreciationAmount      Decimal @db.Decimal(12, 2)
+  bookValueEnd            Decimal @db.Decimal(12, 2)
+  accumulatedDepreciation Decimal @db.Decimal(12, 2)
+
+  method           DepreciationMethod
+  calculationBasis Json?
+
+  unitsStart    Int?
+  unitsEnd      Int?
+  unitsInPeriod Int?
+
+  isAdjustment     Boolean  @default(false)
+  adjustmentReason String?
+  originalAmount   Decimal? @db.Decimal(12, 2)
+
+  // Prior period depreciation tracking
+  isPriorPeriodAdjustment Boolean   @default(false) // For recording prior depreciation
+  priorPeriodStartDate    DateTime? // Start of prior period
+  priorPeriodEndDate      DateTime? // End of prior period
+
+  calculatedBy String?
+  calculatedAt DateTime @default(now())
+  notes        String?
+
+  createdAt DateTime @default(now())
+
+  asset           Asset                        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  businessUnit    BusinessUnit                 @relation(fields: [businessUnitId], references: [id])
+  executionAssets DepreciationExecutionAsset[]
+
+  @@index([assetId, depreciationDate])
+  @@index([depreciationDate])
+  @@index([businessUnitId, depreciationDate])
+  @@map("asset_depreciations")
+}
+
+model AssetDisposal {
+  id             String @id @default(uuid())
+  assetId        String @unique
+  businessUnitId String
+
+  disposalDate     DateTime
+  reason           AssetDisposalReason
+  disposalMethod   String?
+  disposalLocation String?
+
+  disposalValue    Decimal? @db.Decimal(12, 2)
+  disposalCost     Decimal? @db.Decimal(12, 2)
+  netDisposalValue Decimal? @db.Decimal(12, 2)
+
+  bookValueAtDisposal Decimal  @db.Decimal(12, 2)
+  gainLoss            Decimal? @db.Decimal(12, 2)
+
+  approvedBy        String?
+  approvedAt        DateTime?
+  documentationUrl  String?
+  certificateNumber String?
+
+  recipientName    String?
+  recipientContact String?
+  recipientAddress String?
+
+  environmentalCompliance Boolean @default(false)
+  dataWiped               Boolean @default(false)
+  complianceNotes         String?
+
+  condition         String?
+  notes             String?
+  internalReference String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset              Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  businessUnit       BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  createdByEmployee  User         @relation("AssetDisposalCreator", fields: [createdBy], references: [id])
+  approvedByEmployee User?        @relation("AssetDisposalApprover", fields: [approvedBy], references: [id])
+
+  @@index([disposalDate])
+  @@index([reason])
+  @@index([businessUnitId, disposalDate])
+  @@index([approvedBy, approvedAt])
+  @@map("asset_disposals")
+}
+
+model AssetTransfer {
+  id             String @id @default(uuid())
+  assetId        String
+  transferNumber String @unique
+
+  fromBusinessUnitId String
+  toBusinessUnitId   String
+  fromLocation       String?
+  toLocation         String?
+
+  transferDate  DateTime
+  requestedDate DateTime            @default(now())
+  completedDate DateTime?
+  status        AssetTransferStatus @default(PENDING_APPROVAL)
+
+  reason           String
+  transferMethod   String?
+  trackingNumber   String?
+  estimatedArrival DateTime?
+
+  requestedBy     String
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+
+  conditionBefore  String?
+  conditionAfter   String?
+  transferNotes    String?
+  documentationUrl String?
+
+  transferCost   Decimal? @db.Decimal(10, 2)
+  insuranceValue Decimal? @db.Decimal(12, 2)
+
+  handedOverBy String?
+  handedOverAt DateTime?
+  receivedBy   String?
+  receivedAt   DateTime?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset                Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fromBusinessUnit     BusinessUnit @relation("TransferFromBusinessUnit", fields: [fromBusinessUnitId], references: [id])
+  toBusinessUnit       BusinessUnit @relation("TransferToBusinessUnit", fields: [toBusinessUnitId], references: [id])
+  requestedByEmployee  User         @relation("TransferRequestedBy", fields: [requestedBy], references: [id])
+  approvedByEmployee   User?        @relation("TransferApprovedBy", fields: [approvedBy], references: [id])
+  rejectedByEmployee   User?        @relation("TransferRejectedBy", fields: [rejectedBy], references: [id])
+  handedOverByEmployee User?        @relation("TransferHandedOverBy", fields: [handedOverBy], references: [id])
+  receivedByEmployee   User?        @relation("TransferReceivedBy", fields: [receivedBy], references: [id])
+  createdByEmployee    User         @relation("TransferCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([transferDate])
+  @@index([status])
+  @@index([fromBusinessUnitId, toBusinessUnitId])
+  @@index([approvedBy, approvedAt])
+  @@index([transferNumber])
+  @@map("asset_transfers")
+}
+
+model AssetDeployment {
+  id                 String           @id @default(uuid())
+  transmittalNumber  String           @unique
+  assetId            String
+  employeeId         String
+  businessUnitId     String
+  deployedDate       DateTime?
+  expectedReturnDate DateTime?
+  returnedDate       DateTime?
+  status             DeploymentStatus @default(PENDING_ACCOUNTING_APPROVAL)
+  deploymentNotes    String?
+  returnNotes        String?
+
+  accountingApproverId String?
+  accountingApprovedAt DateTime?
+  accountingNotes      String?
+
+  deploymentCondition String?
+  returnCondition     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset              Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  employee           User         @relation("DeployedToEmployee", fields: [employeeId], references: [id])
+  businessUnit       BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  accountingApprover User?        @relation("AccountingApprover", fields: [accountingApproverId], references: [id])
+
+  @@map("asset_deployments")
+}
+
+model AssetHistory {
+  id      String             @id @default(uuid())
+  assetId String
+  action  AssetHistoryAction
+
+  employeeId     String?
+  departmentId   String?
+  businessUnitId String?
+
+  deploymentId String?
+
+  previousStatus   AssetStatus?
+  newStatus        AssetStatus?
+  previousLocation String?
+  newLocation      String?
+
+  previousBookValue  Decimal? @db.Decimal(12, 2)
+  newBookValue       Decimal? @db.Decimal(12, 2)
+  depreciationAmount Decimal? @db.Decimal(12, 2)
+
+  notes    String?
+  metadata Json?
+
+  performedById String?
+  performedAt   DateTime @default(now())
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  createdAt DateTime @default(now())
+
+  asset        Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  employee     User?         @relation("HistoryEmployee", fields: [employeeId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  businessUnit BusinessUnit? @relation(fields: [businessUnitId], references: [id])
+
+  @@index([assetId, performedAt])
+  @@index([employeeId, performedAt])
+  @@index([action, performedAt])
+  @@map("asset_histories")
+}
+
+model AssetMaintenance {
+  id              String    @id @default(uuid())
+  assetId         String
+  maintenanceType String
+  description     String
+  scheduledDate   DateTime?
+  startDate       DateTime?
+  completedDate   DateTime?
+  performedBy     String?
+  cost            Decimal?  @db.Decimal(10, 2)
+  notes           String?
+  isCompleted     Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("asset_maintenance")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  tableName String
+  recordId  String
+  action    String
+  oldValues Json?
+  newValues Json?
+  userId    String
+  timestamp DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+
+  employee User @relation("AuditLogEmployee", fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  type           String
+  parameters     Json?
+  data           Json
+  generatedBy    String
+  generatedAt    DateTime @default(now())
+  businessUnitId String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("reports")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipientId String
+  title       String
+  message     String
+  type        String
+  relatedId   String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model AssetRetirement {
+  id                 String                @id @default(uuid())
+  assetId            String                @unique
+  businessUnitId     String
+  retirementDate     DateTime
+  reason             AssetRetirementReason
+  retirementMethod   String?
+  condition          String?
+  notes              String?
+  replacementAssetId String?
+  disposalPlanned    Boolean               @default(false)
+  disposalDate       DateTime?
+
+  approvedBy String?
+  approvedAt DateTime?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset              Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  businessUnit       BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  replacementAsset   Asset?       @relation("ReplacementAsset", fields: [replacementAssetId], references: [id])
+  approvedByEmployee User?        @relation("RetirementApprovedBy", fields: [approvedBy], references: [id])
+  createdByEmployee  User         @relation("RetirementCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([retirementDate])
+  @@index([reason])
+  @@index([businessUnitId])
+  @@index([approvedBy, approvedAt])
+  @@map("asset_retirements")
+}
+
+model BarcodeScanLog {
+  id             String   @id @default(uuid())
+  assetId        String
+  scannedValue   String
+  scannedBy      String
+  scannedAt      DateTime @default(now())
+  businessUnitId String
+  location       String?
+  notes          String?
+
+  asset        Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id])
+
+  @@index([scannedAt])
+  @@index([scannedBy])
+  @@index([businessUnitId])
+  @@map("barcode_scan_logs")
+}
+
+model InventoryVerification {
+  id               String             @id @default(uuid())
+  businessUnitId   String
+  verificationName String
+  description      String?
+  startDate        DateTime
+  endDate          DateTime?
+  status           VerificationStatus @default(PLANNED)
+  totalAssets      Int                @default(0)
+  scannedAssets    Int                @default(0)
+  verifiedAssets   Int                @default(0)
+  discrepancies    Int                @default(0)
+  createdBy        String
+  assignedTo       String[]
+  locations        String[]
+  categories       String[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  businessUnit      BusinessUnit       @relation(fields: [businessUnitId], references: [id])
+  createdByEmployee User               @relation("VerificationCreator", fields: [createdBy], references: [id])
+  verificationItems VerificationItem[]
+
+  @@index([businessUnitId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("inventory_verifications")
+}
+
+model VerificationItem {
+  id               String                 @id @default(uuid())
+  verificationId   String
+  assetId          String
+  expectedLocation String
+  actualLocation   String?
+  expectedAssignee String?
+  actualAssignee   String?
+  scannedAt        DateTime?
+  scannedBy        String?
+  status           VerificationItemStatus @default(PENDING)
+  notes            String?
+  photos           String[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  verification InventoryVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  asset        Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([verificationId])
+  @@index([assetId])
+  @@index([status])
+  @@map("verification_items")
+}
+
+model BarcodeSettings {
+  id                          String      @id @default(uuid())
+  businessUnitId              String      @unique
+  defaultBarcodeType          BarcodeType @default(QR_CODE)
+  includeCompanyLogo          Boolean     @default(false)
+  autoGenerateOnAssetCreation Boolean     @default(false)
+  barcodePrefix               String      @default("AST")
+  createdAt                   DateTime    @default(now())
+  updatedAt                   DateTime    @updatedAt
+
+  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+
+  @@map("barcode_settings")
+}
+
+model GLAccount {
+  id          String      @id @default(uuid())
+  accountCode String      @unique
+  accountName String
+  accountType AccountType
+  isActive    Boolean     @default(true)
+  description String?
+
+  normalBalance DebitCredit @default(DEBIT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categoryAssetAccounts  AssetCategory[] @relation("CategoryAssetAccount")
+  categoryDepExpAccounts AssetCategory[] @relation("CategoryDepExpAccount")
+  categoryAccDepAccounts AssetCategory[] @relation("CategoryAccDepAccount")
+
+  assetAccounts             Asset[] @relation("AssetGLAccount")
+  depreciationExpenseAssets Asset[] @relation("DepExpenseAccount")
+  accumulatedDepAssets      Asset[] @relation("AccDepAccount")
+
+  @@index([accountCode])
+  @@index([accountType])
+  @@map("gl_accounts")
+}
+
+model DepartmentApprover {
+  id           String       @id @default(uuid())
+  departmentId String
+  employeeId   String
+  employee     User         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  approverType ApproverType
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([departmentId, employeeId, approverType])
+  @@map("department_approvers")
+}
+
+model MaterialRequest {
+  id     String           @id @default(uuid())
+  docNo  String           @unique
+  series String
+  type   RequestType
+  status MRSRequestStatus @default(DRAFT)
+
+  datePrepared DateTime
+  dateRequired DateTime
+  dateReceived DateTime?
+  dateApproved DateTime?
+  datePosted   DateTime?
+  dateRevised  DateTime?
+
+  businessUnitId String
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+
+  chargeTo String?
+  bldgCode String?
+
+  purpose   String?
+  remarks   String?
+  deliverTo String?
+  freight   Decimal @default(0) @db.Decimal(10, 2)
+  discount  Decimal @default(0) @db.Decimal(10, 2)
+  total     Decimal @default(0) @db.Decimal(10, 2)
+
+  isStoreUse Boolean @default(false)
+
+  confirmationNo String?
+
+  supplierBPCode      String?
+  supplierName        String?
+  purchaseOrderNumber String?
+  processedBy         String?
+  processedAt         DateTime?
+
+  requestedById String
+  requestedBy   User   @relation("MRSRequestCreator", fields: [requestedById], references: [id])
+
+  budgetApproverId     String?
+  budgetApprover       User?           @relation("MRSBudgetApprover", fields: [budgetApproverId], references: [id])
+  budgetApprovalDate   DateTime?
+  budgetApprovalStatus ApprovalStatus?
+  isWithinBudget       Boolean?
+  budgetRemarks        String?         @db.Text
+
+  recApproverId      String?
+  recApprover        User?           @relation("MRSRecApprover", fields: [recApproverId], references: [id])
+  recApprovalDate    DateTime?
+  recApprovalStatus  ApprovalStatus?
+  recApprovalRemarks String?         @db.Text
+
+  finalApproverId      String?
+  finalApprover        User?           @relation("MRSFinalApprover", fields: [finalApproverId], references: [id])
+  finalApprovalDate    DateTime?
+  finalApprovalStatus  ApprovalStatus?
+  finalApprovalRemarks String?         @db.Text
+
+  processor User? @relation("MRSProcessor", fields: [processedBy], references: [id])
+
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  acknowledgedBy   User?     @relation("MRSAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  signatureData    String?   @db.Text
+
+  servedAt    DateTime?
+  servedBy    String?
+  servedNotes String?   @db.Text
+
+  // For Return/Edit tracking
+  isMarkedForEdit     Boolean   @default(false)
+  markedForEditAt     DateTime?
+  markedForEditBy     String?
+  markedForEditByUser User?     @relation("MRSMarkedForEditBy", fields: [markedForEditBy], references: [id])
+  markedForEditReason String?   @db.Text
+  editCompletedAt     DateTime?
+  editAcknowledgedAt  DateTime?
+
+  // Store Use Review Fields
+  reviewerId    String?
+  reviewer      User?           @relation("MRSReviewer", fields: [reviewerId], references: [id])
+  reviewedAt    DateTime?
+  reviewStatus  ApprovalStatus?
+  reviewRemarks String?         @db.Text
+
+  items              MaterialRequestItem[]
+  createdAssets      Asset[]               @relation("CreatedFromMRS")
+  acknowledgmentForm MRSAcknowledgment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+
+  @@index([businessUnitId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([series])
+  @@index([datePrepared])
+  @@map("material_requests")
+}
+
+model MaterialRequestItem {
+  id                String          @id @default(uuid())
+  materialRequestId String
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+
+  itemCode       String?
+  description    String
+  uom            String
+  quantity       Decimal  @db.Decimal(10, 2)
+  quantityServed Decimal? @default(0) @db.Decimal(10, 2)
+  unitPrice      Decimal? @db.Decimal(10, 2)
+  totalPrice     Decimal? @db.Decimal(10, 2)
+  remarks        String?
+
+  acknowledgmentItems MRSAcknowledgmentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("material_request_items")
+}
+
+model MRSAcknowledgment {
+  id                String @id @default(uuid())
+  materialRequestId String @unique
+  acknowledgmentNo  String @unique
+
+  deliveryDate DateTime
+  receivedBy   String
+  deliveredBy  String?
+
+  items MRSAcknowledgmentItem[]
+
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+
+  materialRequest    MaterialRequest @relation(fields: [materialRequestId], references: [id])
+  receivedByEmployee User            @relation("MRSReceiver", fields: [receivedBy], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mrs_acknowledgments")
+}
+
+model MRSAcknowledgmentItem {
+  id                    String @id @default(uuid())
+  acknowledgmentId      String
+  materialRequestItemId String
+
+  quantityRequested Decimal @db.Decimal(10, 2)
+  quantityReceived  Decimal @db.Decimal(10, 2)
+
+  assetId      String?
+  serialNumber String?
+  condition    String?
+
+  acknowledgment      MRSAcknowledgment   @relation(fields: [acknowledgmentId], references: [id])
+  materialRequestItem MaterialRequestItem @relation(fields: [materialRequestItemId], references: [id])
+  createdAsset        Asset?              @relation("AcknowledgmentAsset", fields: [assetId], references: [id])
+
+  @@map("mrs_acknowledgment_items")
+}
+
+// ==========================================
+// ASSET MANAGEMENT ENUMS
+// ==========================================
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  DECLINING_BALANCE
+  UNITS_OF_PRODUCTION
+  SUM_OF_YEARS_DIGITS
+}
+
+enum AssetStatus {
+  AVAILABLE
+  DEPLOYED
+  IN_MAINTENANCE
+  RETIRED
+  LOST
+  DAMAGED
+  FULLY_DEPRECIATED
+  DISPOSED
+}
+
+enum AssetHistoryAction {
+  CREATED
+  DEPLOYED
+  RETURNED
+  TRANSFERRED
+  STATUS_CHANGED
+  MAINTENANCE_START
+  MAINTENANCE_END
+  RETIRED
+  LOST
+  DAMAGED
+  REPAIRED
+  LOCATION_CHANGED
+  UPDATED
+  DEPRECIATION_CALCULATED
+  DISPOSED
+}
+
+enum AssetDisposalReason {
+  SOLD
+  DONATED
+  SCRAPPED
+  LOST
+  STOLEN
+  TRANSFERRED
+  END_OF_LIFE
+  DAMAGED_BEYOND_REPAIR
+  OBSOLETE
+  REGULATORY_COMPLIANCE
+}
+
+enum AssetTransferStatus {
+  PENDING_APPROVAL
+  APPROVED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum DeploymentStatus {
+  PENDING_ACCOUNTING_APPROVAL
+  APPROVED
+  DEPLOYED
+  RETURNED
+  CANCELLED
+}
+
+enum AssetRetirementReason {
+  END_OF_USEFUL_LIFE
+  FULLY_DEPRECIATED
+  OBSOLETE
+  DAMAGED_BEYOND_REPAIR
+  POLICY_CHANGE
+  UPGRADE_REPLACEMENT
+}
+
+enum BarcodeType {
+  QR_CODE
+  CODE_128
+  CODE_39
+  EAN_13
+}
+
+enum ApproverType {
+  RECOMMENDING
+  FINAL
+}
+
+enum RequestType {
+  ITEM
+  SERVICE
+}
+
+enum MRSRequestStatus {
+  DRAFT
+  FOR_REVIEW
+  PENDING_BUDGET_APPROVAL
+  FOR_REC_APPROVAL
+  REC_APPROVED
+  FOR_FINAL_APPROVAL
+  FINAL_APPROVED
+  FOR_POSTING
+  POSTED
+  FOR_SERVING
+  SERVED
+  RECEIVED
+  TRANSMITTED
+  CANCELLED
+  DISAPPROVED
+  FOR_EDIT
+  ACKNOWLEDGED
+  DEPLOYED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DISAPPROVED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum DebitCredit {
+  DEBIT
+  CREDIT
+}
+
+enum VerificationStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum VerificationItemStatus {
+  PENDING
+  VERIFIED
+  DISCREPANCY
+  NOT_FOUND
+}
+
+// ==========================================
+// AUTOMATED DEPRECIATION SCHEDULING MODELS
+// ==========================================
+
+model DepreciationSchedule {
+  id             String       @id @default(uuid())
+  businessUnitId String
+  name           String
+  description    String?
+  scheduleType   ScheduleType @default(MONTHLY)
+  executionDay   Int          @default(30) // Day of month to run (30 or 31)
+  isActive       Boolean      @default(true)
+
+  // Category filters
+  includeCategories String[] // Array of category IDs to include
+  excludeCategories String[] // Array of category IDs to exclude
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businessUnit BusinessUnit            @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  creator      User                    @relation("ScheduleCreator", fields: [createdBy], references: [id])
+  executions   DepreciationExecution[]
+
+  @@index([businessUnitId])
+  @@index([isActive])
+  @@index([scheduleType])
+  @@map("depreciation_schedules")
+}
+
+model DepreciationExecution {
+  id             String          @id @default(uuid())
+  scheduleId     String
+  businessUnitId String
+  executionDate  DateTime
+  scheduledDate  DateTime
+  status         ExecutionStatus @default(PENDING)
+
+  // Execution results
+  totalAssetsProcessed    Int     @default(0)
+  successfulCalculations  Int     @default(0)
+  failedCalculations      Int     @default(0)
+  totalDepreciationAmount Decimal @default(0) @db.Decimal(15, 2)
+
+  // Execution metadata
+  executionDurationMs Int?
+  errorMessage        String?
+  executionSummary    Json?
+  executedBy          String? // NULL for automated runs, user ID for manual runs
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  schedule     DepreciationSchedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  businessUnit BusinessUnit                 @relation(fields: [businessUnitId], references: [id])
+  executor     User?                        @relation("ExecutionExecutor", fields: [executedBy], references: [id])
+  assetDetails DepreciationExecutionAsset[]
+
+  @@index([scheduleId])
+  @@index([businessUnitId])
+  @@index([executionDate])
+  @@index([status])
+  @@index([scheduledDate])
+  @@map("depreciation_executions")
+}
+
+model DepreciationExecutionAsset {
+  id                   String  @id @default(uuid())
+  executionId          String
+  assetId              String
+  depreciationRecordId String? // Links to actual AssetDepreciation record
+
+  status             ExecutionAssetStatus
+  depreciationAmount Decimal              @default(0) @db.Decimal(12, 2)
+  bookValueBefore    Decimal              @db.Decimal(12, 2)
+  bookValueAfter     Decimal              @db.Decimal(12, 2)
+  errorMessage       String?
+  calculationDetails Json?
+
+  createdAt DateTime @default(now())
+
+  execution          DepreciationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  asset              Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  depreciationRecord AssetDepreciation?    @relation(fields: [depreciationRecordId], references: [id])
+
+  @@index([executionId])
+  @@index([assetId])
+  @@index([status])
+  @@map("depreciation_execution_assets")
+}
+
+// ==========================================
+// NEW ENUMS FOR DEPRECIATION SCHEDULING
+// ==========================================
+
+enum ScheduleType {
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionAssetStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+  FULLY_DEPRECIATED
+  NO_SETUP
+}
+
+// ==========================================
+// DAMAGED INVENTORY RECOVERY SYSTEM
+// ==========================================
+
+model DamagedInventory {
+  id             String  @id @default(uuid())
+  damageNumber   String  @unique
+  businessUnitId String
+  departmentId   String?
+
+  // Damage Details
+  damageType     DamageType
+  damageDate     DateTime
+  discoveredDate DateTime       @default(now())
+  location       String?
+  damageSeverity DamageSeverity
+
+  // Responsible Party
+  tenantName       String?
+  tenantContact    String?
+  responsibleParty String?
+
+  // Financial Tracking (Auto-calculated from items)
+  totalAcquisitionCost Decimal @db.Decimal(12, 2)
+  totalRecoveredAmount Decimal @default(0) @db.Decimal(12, 2)
+  totalLossAmount      Decimal @default(0) @db.Decimal(12, 2)
+
+  // Compensation from Responsible Party
+  compensationClaimed  Decimal?           @db.Decimal(12, 2)
+  compensationReceived Decimal?           @db.Decimal(12, 2)
+  compensationStatus   CompensationStatus @default(PENDING)
+  compensationDate     DateTime?
+  paymentMethod        String?
+  receiptNumber        String?
+
+  // Recovery/Sale Details
+  recoveryStatus RecoveryStatus  @default(PENDING_ASSESSMENT)
+  assessmentDate DateTime?
+  assessedBy     String?
+  recoveryMethod RecoveryMethod?
+  saleDate       DateTime?
+  soldTo         String?
+  soldToContact  String?
+
+  // Documentation
+  incidentReport  String?  @db.Text
+  assessmentNotes String?  @db.Text
+  remarks         String?  @db.Text
+  attachments     String[]
+
+  // Approval/Review
+  reportedById String
+  reviewedById String?
+  reviewedAt   DateTime?
+  approvedById String?
+  approvedAt   DateTime?
+
+  // Status
+  status DamagedInventoryStatus @default(REPORTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  businessUnit BusinessUnit           @relation(fields: [businessUnitId], references: [id])
+  department   Department?            @relation(fields: [departmentId], references: [id])
+  reportedBy   User                   @relation("DamageReportedBy", fields: [reportedById], references: [id])
+  reviewedBy   User?                  @relation("DamageReviewedBy", fields: [reviewedById], references: [id])
+  approvedBy   User?                  @relation("DamageApprovedBy", fields: [approvedById], references: [id])
+  assessor     User?                  @relation("DamageAssessor", fields: [assessedBy], references: [id])
+  items        DamagedInventoryItem[]
+  user         User?                  @relation(fields: [userId], references: [id])
+  userId       String?
+
+  @@map("damaged_inventory")
+}
+
+model DamagedInventoryItem {
+  id                 String @id @default(uuid())
+  damagedInventoryId String
+
+  // Item Details
+  itemCode    String?
+  description String
+  quantity    Int
+  uom         String
+
+  // Cost Tracking
+  unitAcquisitionCost  Decimal  @db.Decimal(12, 2)
+  totalAcquisitionCost Decimal  @db.Decimal(12, 2)
+  unitRecoveredPrice   Decimal? @db.Decimal(12, 2)
+  totalRecoveredAmount Decimal  @default(0) @db.Decimal(12, 2)
+  unitLossAmount       Decimal  @default(0) @db.Decimal(12, 2)
+  totalLossAmount      Decimal  @default(0) @db.Decimal(12, 2)
+
+  // Damage Assessment
+  damageCondition        String?
+  isServiceable          Boolean  @default(true)
+  estimatedRecoveryValue Decimal? @db.Decimal(12, 2)
+
+  // Sale Details
+  soldQuantity Int?
+  saleDate     DateTime?
+  saleNotes    String?   @db.Text
+
+  remarks String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  damagedInventory DamagedInventory @relation(fields: [damagedInventoryId], references: [id], onDelete: Cascade)
+
+  @@map("damaged_inventory_items")
+}
+
+// Damaged Inventory Enums
+enum DamageType {
+  WATER_DAMAGE
+  FIRE_DAMAGE
+  PHYSICAL_DAMAGE
+  NATURAL_DISASTER
+  ACCIDENT
+  WEAR_AND_TEAR
+  OTHER
+}
+
+enum DamageSeverity {
+  MINOR
+  MODERATE
+  SEVERE
+  TOTAL_LOSS
+}
+
+enum RecoveryStatus {
+  PENDING_ASSESSMENT
+  ASSESSED
+  LISTED_FOR_SALE
+  PARTIALLY_SOLD
+  FULLY_SOLD
+  SCRAPPED
+  DISPOSED
+}
+
+enum RecoveryMethod {
+  SOLD_AS_IS
+  REPAIRED_THEN_SOLD
+  SOLD_FOR_PARTS
+  SCRAPPED
+  DISPOSED
+  DONATED
+}
+
+enum CompensationStatus {
+  PENDING
+  CLAIMED
+  PARTIAL
+  FULL
+  WAIVED
+  DISPUTED
+}
+
+enum DamagedInventoryStatus {
+  REPORTED
+  UNDER_REVIEW
+  APPROVED
+  RECOVERY_IN_PROGRESS
+  RECOVERED
+  CLOSED
+  DISPUTED
+}

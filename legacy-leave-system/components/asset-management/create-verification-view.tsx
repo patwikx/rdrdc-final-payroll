@@ -1,0 +1,356 @@
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { CalendarIcon, ClipboardList, Loader2, Users, MapPin, Package, ArrowLeft } from "lucide-react"
+import { format } from "date-fns"
+import { cn } from "@/lib/utils"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
+import { 
+  createInventoryVerification,
+  CreateVerificationData
+} from "@/lib/actions/inventory-verification-actions"
+
+interface CreateVerificationViewProps {
+  businessUnit: {
+    id: string
+    name: string
+    code: string
+  }
+  businessUnitId: string
+  employees: any[]
+  locations: string[]
+  categories: any[]
+}
+
+export function CreateVerificationView({
+  businessUnit,
+  businessUnitId,
+  employees,
+  locations,
+  categories
+}: CreateVerificationViewProps) {
+  const router = useRouter()
+  const [verificationName, setVerificationName] = useState("")
+  const [description, setDescription] = useState("")
+  const [startDate, setStartDate] = useState<Date>(new Date())
+  const [endDate, setEndDate] = useState<Date | undefined>()
+  const [assignedTo, setAssignedTo] = useState<string[]>([])
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!verificationName.trim()) {
+      toast.error("Verification name is required")
+      return
+    }
+
+    if (assignedTo.length === 0) {
+      toast.error("Please assign at least one employee")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const verificationData: CreateVerificationData = {
+        verificationName,
+        description: description || undefined,
+        startDate,
+        endDate,
+        assignedTo,
+        locations: selectedLocations,
+        categories: selectedCategories,
+        businessUnitId
+      }
+
+      const result = await createInventoryVerification(verificationData)
+
+      if (result.error) {
+        toast.error(result.error)
+      } else if ('success' in result) {
+        toast.success(result.success)
+        router.push(`/${businessUnitId}/asset-management/inventory`)
+      }
+    } catch (error) {
+      console.error("Error creating verification:", error)
+      toast.error("Failed to create verification")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleEmployeeToggle = (employeeId: string, checked: boolean) => {
+    if (checked) {
+      setAssignedTo(prev => [...prev, employeeId])
+    } else {
+      setAssignedTo(prev => prev.filter(id => id !== employeeId))
+    }
+  }
+
+  const handleLocationToggle = (location: string, checked: boolean) => {
+    if (checked) {
+      setSelectedLocations(prev => [...prev, location])
+    } else {
+      setSelectedLocations(prev => prev.filter(l => l !== location))
+    }
+  }
+
+  const handleCategoryToggle = (categoryId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedCategories(prev => [...prev, categoryId])
+    } else {
+      setSelectedCategories(prev => prev.filter(id => id !== categoryId))
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Create Inventory Verification</h1>
+          <p className="text-sm text-muted-foreground">
+            Set up a new inventory verification cycle for {businessUnit.name}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Form */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Basic Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" />
+                Basic Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="verification-name">Verification Name *</Label>
+                <Input
+                  id="verification-name"
+                  value={verificationName}
+                  onChange={(e) => setVerificationName(e.target.value)}
+                  placeholder="e.g., Q4 2024 Physical Count"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Optional description of this verification cycle..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Start Date *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !startDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={(date) => date && setStartDate(date)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>End Date (Optional)</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !endDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={setEndDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Team Assignment */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Team Assignment ({assignedTo.length} selected)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {employees.map((employee) => (
+                  <div key={employee.id} className="flex items-center space-x-3 p-2 border rounded hover:bg-muted/50">
+                    <Checkbox
+                      id={`employee-${employee.id}`}
+                      checked={assignedTo.includes(employee.id)}
+                      onCheckedChange={(checked) => handleEmployeeToggle(employee.id, checked === true)}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor={`employee-${employee.id}`} className="text-sm font-medium cursor-pointer">
+                        {employee.name}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        ID: {employee.employeeId}
+                        {employee.department && ` • ${employee.department.name}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters Sidebar */}
+        <div className="space-y-6">
+          {/* Locations Filter */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MapPin className="h-4 w-4" />
+                Locations ({selectedLocations.length > 0 ? `${selectedLocations.length} selected` : 'All'})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {locations.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No locations found</p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto space-y-2">
+                  {locations.map((location) => (
+                    <div key={location} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`location-${location}`}
+                        checked={selectedLocations.includes(location)}
+                        onCheckedChange={(checked) => handleLocationToggle(location, checked === true)}
+                      />
+                      <Label htmlFor={`location-${location}`} className="text-sm cursor-pointer">
+                        {location}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Leave empty to include all locations
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Categories Filter */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="h-4 w-4" />
+                Categories ({selectedCategories.length > 0 ? `${selectedCategories.length} selected` : 'All'})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-40 overflow-y-auto space-y-2">
+                {categories.map((category) => (
+                  <div key={category.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`category-${category.id}`}
+                      checked={selectedCategories.includes(category.id)}
+                      onCheckedChange={(checked) => handleCategoryToggle(category.id, checked === true)}
+                    />
+                    <Label htmlFor={`category-${category.id}`} className="text-sm cursor-pointer">
+                      {category.name} ({category.assetCount} assets)
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Leave empty to include all categories
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Team Members:</span>
+                <span className="font-medium">{assignedTo.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Locations:</span>
+                <span className="font-medium">
+                  {selectedLocations.length > 0 ? selectedLocations.length : 'All'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Categories:</span>
+                <span className="font-medium">
+                  {selectedCategories.length > 0 ? selectedCategories.length : 'All'}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-4 pt-6 border-t">
+        <Button 
+          variant="outline" 
+          onClick={() => router.back()}
+          disabled={isLoading}
+        >
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={isLoading}>
+          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Create Verification
+        </Button>
+      </div>
+    </div>
+  )
+}

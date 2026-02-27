@@ -248,15 +248,15 @@ export function LoginPage() {
           transition={{ delay: 0.6, duration: 0.5 }}
         >
           <span className="inline-flex items-center gap-1">
-            <IconShieldCheck className="size-3 text-primary" />
+         
             RD Realty Development Corporation
           </span>
           <span className="inline-flex items-center gap-1">
-            <IconShieldCheck className="size-3 text-primary" />
+           
             RD Hardware &amp; Fishing Supply, Inc.
           </span>
           <span className="inline-flex items-center gap-1">
-            <IconShieldCheck className="size-3 text-primary" />
+        
             Tropicana Worldwide Corporation
           </span>
         </motion.div>
@@ -306,7 +306,7 @@ export function LoginPage() {
             {/* Identifier field */}
             <motion.div className="space-y-2" variants={formItemVariants}>
               <Label htmlFor="identifier" className="text-xs font-medium">
-                Work email or username
+                Employee ID or Work email
               </Label>
               <InputGroup className="h-9">
                 <InputGroupAddon align="inline-start">

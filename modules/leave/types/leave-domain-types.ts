@@ -1,9 +1,11 @@
 export type LeaveBalanceWorkspaceRow = {
+  leaveBalanceId: string
   employeeId: string
   employeeName: string
   employeeNumber: string
   photoUrl: string | null
   departmentName: string
+  leaveTypeId: string
   leaveTypeName: string
   currentBalance: number
   availableBalance: number

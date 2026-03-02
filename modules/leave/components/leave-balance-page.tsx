@@ -9,6 +9,7 @@ import {
   IconClockHour4,
   IconFilter,
   IconHistory,
+  IconPencil,
   IconPrinter,
   IconRoute,
   IconSearch,
@@ -18,18 +19,22 @@ import {
 } from "@tabler/icons-react"
 import { RequestStatus } from "@prisma/client"
 import Link from "next/link"
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getPhMonthIndex, getPhYear } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import { getLeaveBalanceHistoryPageAction } from "@/modules/leave/actions/get-leave-balance-history-page-action"
+import { updateLeaveBalanceAction } from "@/modules/leave/actions/update-leave-balance-action"
 import type {
   LeaveBalanceWorkspaceHistoryPage,
   LeaveBalanceWorkspaceRow,
@@ -50,6 +55,8 @@ const monthLabel = new Intl.DateTimeFormat("en-PH", { month: "short", timeZone: 
 const toStatusLabel = (status: string): string => status.replace(/_/g, " ")
 const normalizeLeaveType = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, "")
 const HISTORY_PAGE_SIZE = 10
+const MAX_BALANCE_VALUE = 9999.99
+const roundTo2 = (value: number): number => Math.round(value * 100) / 100
 
 const buildEmptyHistoryPage = (): LeaveBalanceWorkspaceHistoryPage => ({
   rows: [],
@@ -75,6 +82,7 @@ const leaveHistoryStatusBadgeClass = (status: string): string => {
 }
 
 export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, statusCodes }: Props) {
+  const [balanceRowsState, setBalanceRowsState] = useState<LeaveBalanceWorkspaceRow[]>(balanceRows)
   const [search, setSearch] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("all")
   const [leaveTypeFilter, setLeaveTypeFilter] = useState("all")
@@ -89,9 +97,17 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
     key: "",
     page: 1,
   })
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingBalanceRowId, setEditingBalanceRowId] = useState<string | null>(null)
+  const [editedCurrentBalance, setEditedCurrentBalance] = useState("")
+  const [isSavingBalance, startSavingBalance] = useTransition()
   const [historyPageData, setHistoryPageData] = useState<LeaveBalanceWorkspaceHistoryPage>(() => buildEmptyHistoryPage())
   const latestHistoryRequestRef = useRef(0)
   const deferredSearch = useDeferredValue(search)
+
+  useEffect(() => {
+    setBalanceRowsState(balanceRows)
+  }, [balanceRows])
 
   const {
     departments,
@@ -115,7 +131,7 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
     const balanceRowsMap = new Map<string, LeaveBalanceWorkspaceRow[]>()
     const leaveTypeMap = new Map<string, Set<string>>()
 
-    for (const row of balanceRows) {
+    for (const row of balanceRowsState) {
       departmentSet.add(row.departmentName)
       leaveTypeSet.add(row.leaveTypeName)
 
@@ -149,7 +165,7 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
       balanceRowsByEmployee: balanceRowsMap,
       leaveTypesByEmployee: leaveTypeMap,
     }
-  }, [balanceRows])
+  }, [balanceRowsState])
 
   const statuses = useMemo(() => [...statusCodes].sort((a, b) => a.localeCompare(b)), [statusCodes])
 
@@ -181,6 +197,37 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
     if (!selectedEmployee) return []
     return balanceRowsByEmployee.get(selectedEmployee.employeeId) ?? []
   }, [selectedEmployee, balanceRowsByEmployee])
+
+  const editingBalanceRow = useMemo(
+    () =>
+      selectedEmployeeAllBalanceRows.find((row) => row.leaveBalanceId === editingBalanceRowId) ??
+      null,
+    [selectedEmployeeAllBalanceRows, editingBalanceRowId]
+  )
+
+  const parsedEditedCurrentBalance = Number(editedCurrentBalance)
+  const isEditedCurrentBalanceValid =
+    Number.isFinite(parsedEditedCurrentBalance) &&
+    parsedEditedCurrentBalance >= 0 &&
+    parsedEditedCurrentBalance <= MAX_BALANCE_VALUE
+  const computedEditedAvailableBalance =
+    editingBalanceRow && isEditedCurrentBalanceValid
+      ? roundTo2(parsedEditedCurrentBalance - editingBalanceRow.pendingRequests)
+      : null
+  const canSaveEditedBalance =
+    Boolean(editingBalanceRow) &&
+    isEditedCurrentBalanceValid &&
+    computedEditedAvailableBalance !== null &&
+    computedEditedAvailableBalance >= 0 &&
+    !isSavingBalance
+
+  useEffect(() => {
+    if (!isEditDialogOpen) return
+    if (editingBalanceRow) return
+    setIsEditDialogOpen(false)
+    setEditingBalanceRowId(null)
+    setEditedCurrentBalance("")
+  }, [isEditDialogOpen, editingBalanceRow])
 
   const historyQueryKey = `${resolvedSelectedEmployeeId ?? "none"}|${leaveTypeFilter}|${statusFilter}|${selectedYear}`
   const effectiveHistoryPage = historyPageState.key === historyQueryKey ? historyPageState.page : 1
@@ -269,6 +316,65 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
     if (previousMonth < safeTimelineWindowStart) {
       setTimelineWindowStart((current) => Math.max(current - 1, 0))
     }
+  }
+
+  const handleOpenEditBalanceDialog = (row: LeaveBalanceWorkspaceRow) => {
+    setEditingBalanceRowId(row.leaveBalanceId)
+    setEditedCurrentBalance(row.currentBalance.toFixed(2))
+    setIsEditDialogOpen(true)
+  }
+
+  const handleCloseEditBalanceDialog = () => {
+    if (isSavingBalance) return
+    setIsEditDialogOpen(false)
+    setEditingBalanceRowId(null)
+    setEditedCurrentBalance("")
+  }
+
+  const handleSaveLeaveBalanceEdit = () => {
+    if (!editingBalanceRow) return
+
+    if (!isEditedCurrentBalanceValid) {
+      toast.error("Enter a valid current balance between 0.00 and 9999.99.")
+      return
+    }
+
+    if (computedEditedAvailableBalance === null || computedEditedAvailableBalance < 0) {
+      toast.error(
+        `Current balance cannot be lower than pending requests (${days.format(
+          editingBalanceRow.pendingRequests
+        )}).`
+      )
+      return
+    }
+
+    startSavingBalance(async () => {
+      const result = await updateLeaveBalanceAction({
+        companyId,
+        leaveBalanceId: editingBalanceRow.leaveBalanceId,
+        currentBalance: parsedEditedCurrentBalance,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setBalanceRowsState((currentRows) =>
+        currentRows.map((row) => {
+          if (row.leaveBalanceId !== result.data.leaveBalanceId) return row
+          return {
+            ...row,
+            currentBalance: result.data.currentBalance,
+            availableBalance: result.data.availableBalance,
+            pendingRequests: result.data.pendingRequests,
+          }
+        })
+      )
+
+      toast.success(result.message)
+      handleCloseEditBalanceDialog()
+    })
   }
 
   const selectedMonthMetrics = historyByMonth[timelineSelectedMonth] ?? { month: timelineSelectedMonth, filed: 0, used: 0 }
@@ -477,6 +583,55 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
               <section className="border border-border/60 bg-background">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
                   <p className="inline-flex items-center gap-2 text-sm font-medium">
+                    <IconChartBar className="size-4" /> Balance Breakdown
+                  </p>
+                  <p className="text-xs text-muted-foreground">Edit current balance per leave type for this employee.</p>
+                </div>
+                <div className="p-4">
+                  {selectedEmployeeAllBalanceRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No leave balance rows found for this employee and year.</p>
+                  ) : (
+                    <div className="overflow-x-auto border border-border/60">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Leave Type</TableHead>
+                            <TableHead className="text-right">Current</TableHead>
+                            <TableHead className="text-right">Pending</TableHead>
+                            <TableHead className="text-right">Available</TableHead>
+                            <TableHead className="w-[110px] text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedEmployeeAllBalanceRows.map((row) => (
+                            <TableRow key={row.leaveBalanceId}>
+                              <TableCell className="font-medium text-foreground">{row.leaveTypeName}</TableCell>
+                              <TableCell className="text-right text-foreground">{days.format(row.currentBalance)}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">{days.format(row.pendingRequests)}</TableCell>
+                              <TableCell className="text-right text-foreground">{days.format(row.availableBalance)}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 px-2"
+                                  onClick={() => handleOpenEditBalanceDialog(row)}
+                                >
+                                  <IconPencil className="size-3.5" /> Edit
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="border border-border/60 bg-background">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+                  <p className="inline-flex items-center gap-2 text-sm font-medium">
                     <IconRoute className="size-4" /> Leave Journey Timeline
                   </p>
                   <p className="text-xs text-muted-foreground">Use the controls to navigate yearly trends.</p>
@@ -674,6 +829,62 @@ export function LeaveBalancePage({ companyId, selectedYear, years, balanceRows, 
           )}
         </motion.section>
       </div>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => (open ? setIsEditDialogOpen(true) : handleCloseEditBalanceDialog())}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Leave Balance</DialogTitle>
+            <DialogDescription>
+              {editingBalanceRow
+                ? `Update current balance for ${editingBalanceRow.leaveTypeName}. Available balance is computed automatically.`
+                : "Select a leave balance row to edit."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingBalanceRow ? (
+            <div className="space-y-3">
+              <div className="grid gap-2">
+                <Label htmlFor="current-balance-input">
+                  Current Balance <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="current-balance-input"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={MAX_BALANCE_VALUE}
+                  value={editedCurrentBalance}
+                  onChange={(event) => setEditedCurrentBalance(event.target.value)}
+                  disabled={isSavingBalance}
+                />
+                <p className="text-xs text-muted-foreground">Pending Requests: {days.format(editingBalanceRow.pendingRequests)}</p>
+                <p
+                  className={cn(
+                    "text-xs",
+                    computedEditedAvailableBalance !== null && computedEditedAvailableBalance >= 0
+                      ? "text-muted-foreground"
+                      : "text-destructive"
+                  )}
+                >
+                  Computed Available Balance:{" "}
+                  {computedEditedAvailableBalance !== null
+                    ? days.format(computedEditedAvailableBalance)
+                    : "--"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleCloseEditBalanceDialog} disabled={isSavingBalance}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSaveLeaveBalanceEdit} disabled={!canSaveEditedBalance}>
+              {isSavingBalance ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

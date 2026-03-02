@@ -66,7 +66,9 @@ export async function getLeaveBalanceWorkspaceData(params: {
       },
       orderBy: [{ employee: { lastName: "asc" } }, { employee: { firstName: "asc" } }, { leaveType: { displayOrder: "asc" } }],
       select: {
+        id: true,
         employeeId: true,
+        leaveTypeId: true,
         currentBalance: true,
         availableBalance: true,
         pendingRequests: true,
@@ -116,11 +118,13 @@ export async function getLeaveBalanceWorkspaceData(params: {
   ])
 
   const balanceRows: LeaveBalanceWorkspaceRow[] = balanceRowsRaw.map((row) => ({
+    leaveBalanceId: row.id,
     employeeId: row.employeeId,
     employeeName: `${row.employee.firstName} ${row.employee.lastName}`,
     employeeNumber: row.employee.employeeNumber,
     photoUrl: row.employee.photoUrl,
     departmentName: row.employee.department?.name ?? "Unassigned",
+    leaveTypeId: row.leaveTypeId,
     leaveTypeName: row.leaveType.name,
     currentBalance: Number(row.currentBalance),
     availableBalance: Number(row.availableBalance),

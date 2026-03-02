@@ -10,6 +10,33 @@ import {
 
 type ActionResult = { ok: true; message: string } | { ok: false; error: string }
 
+const formatPhoneLabel = (countryCode: string | null | undefined, number: string | null | undefined): string =>
+  [countryCode?.trim(), number?.trim()].filter((value): value is string => Boolean(value)).join(" ").trim()
+
+const splitPhoneForStorage = (input: string): { countryCode: string | null; number: string } => {
+  const normalized = input.trim().replace(/\s+/g, " ")
+  if (!normalized) {
+    return { countryCode: null, number: "" }
+  }
+
+  if (normalized.startsWith("+63")) {
+    const localNumber = normalized.slice(3).trim()
+    if (localNumber) {
+      return { countryCode: "+63", number: localNumber }
+    }
+  }
+
+  const spacedCodeMatch = normalized.match(/^(\+\d{1,4})\s+(.+)$/)
+  if (spacedCodeMatch) {
+    return {
+      countryCode: spacedCodeMatch[1],
+      number: spacedCodeMatch[2].trim(),
+    }
+  }
+
+  return { countryCode: null, number: normalized }
+}
+
 export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfServiceInput): Promise<ActionResult> {
   const parsed = updateEmployeeSelfServiceInputSchema.safeParse(input)
   if (!parsed.success) {
@@ -88,6 +115,7 @@ export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfS
     }
 
     if (payload.phone) {
+      const parsedPhone = splitPhoneForStorage(payload.phone)
       const existingPrimaryContact = await tx.employeeContact.findFirst({
         where: { employeeId: employee.id, isPrimary: true },
         select: { id: true, countryCode: true, number: true },
@@ -98,28 +126,28 @@ export async function updateEmployeeSelfServiceAction(input: UpdateEmployeeSelfS
           where: { id: existingPrimaryContact.id },
           data: {
             contactTypeId: "MOBILE",
-            countryCode: payload.phoneCountryCode || "+63",
-            number: payload.phone,
+            countryCode: parsedPhone.countryCode,
+            number: parsedPhone.number,
             isActive: true,
           },
         })
         auditChanges.push({
           fieldName: "primaryPhone",
-          oldValue: `${existingPrimaryContact.countryCode ?? ""} ${existingPrimaryContact.number}`.trim(),
-          newValue: `${payload.phoneCountryCode || "+63"} ${payload.phone}`.trim(),
+          oldValue: formatPhoneLabel(existingPrimaryContact.countryCode, existingPrimaryContact.number),
+          newValue: formatPhoneLabel(parsedPhone.countryCode, parsedPhone.number),
         })
       } else {
         await tx.employeeContact.create({
           data: {
             employeeId: employee.id,
             contactTypeId: "MOBILE",
-            countryCode: payload.phoneCountryCode || "+63",
-            number: payload.phone,
+            countryCode: parsedPhone.countryCode,
+            number: parsedPhone.number,
             isPrimary: true,
             isActive: true,
           },
         })
-        auditChanges.push({ fieldName: "primaryPhone", oldValue: null, newValue: `${payload.phoneCountryCode || "+63"} ${payload.phone}`.trim() })
+        auditChanges.push({ fieldName: "primaryPhone", oldValue: null, newValue: formatPhoneLabel(parsedPhone.countryCode, parsedPhone.number) })
       }
     }
 

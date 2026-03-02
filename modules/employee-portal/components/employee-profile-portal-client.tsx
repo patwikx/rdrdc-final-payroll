@@ -146,6 +146,8 @@ const PHOTO_EDITOR_VIEWPORT_SIZE = 288
 const PROFILE_PHOTO_OUTPUT_SIZE = 640
 
 const enumLabel = (value: string | null | undefined): string => (value ? value.replace(/_/g, " ") : "N/A")
+const formatContactPhone = (countryCode: string | null | undefined, number: string | null | undefined): string =>
+  [countryCode?.trim(), number?.trim()].filter((value): value is string => Boolean(value)).join(" ").trim()
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))
 
@@ -208,8 +210,7 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
   }, [employee.governmentIds])
 
   const [editEmail, setEditEmail] = useState(primaryEmail?.email ?? "")
-  const [editPhone, setEditPhone] = useState(primaryContact?.number ?? "")
-  const [editPhoneCountryCode, setEditPhoneCountryCode] = useState(primaryContact?.countryCode ?? "+63")
+  const [editPhone, setEditPhone] = useState(formatContactPhone(primaryContact?.countryCode, primaryContact?.number))
   const [editStreet, setEditStreet] = useState(primaryAddress?.street ?? "")
   const [editBarangay, setEditBarangay] = useState(primaryAddress?.barangay ?? "")
   const [editCity, setEditCity] = useState(primaryAddress?.city ?? "")
@@ -277,7 +278,6 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
         companyId,
         email: editEmail || undefined,
         phone: editPhone || undefined,
-        phoneCountryCode: editPhoneCountryCode || undefined,
         address: {
           street: editStreet || undefined,
           barangay: editBarangay || undefined,
@@ -576,10 +576,12 @@ export function EmployeeProfilePortalClient({ companyId, employee }: Props) {
                 </div>
                 <div className="space-y-3">
                   <Label className="text-xs text-foreground">Phone Number</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input value={editPhoneCountryCode} onChange={(event) => setEditPhoneCountryCode(event.target.value)} className="rounded-lg text-sm" />
-                    <Input value={editPhone} onChange={(event) => setEditPhone(event.target.value)} className="col-span-2 rounded-lg text-sm" />
-                  </div>
+                  <Input
+                    value={editPhone}
+                    onChange={(event) => setEditPhone(event.target.value)}
+                    placeholder="e.g. +63 917 123 4567"
+                    className="rounded-lg text-sm"
+                  />
                 </div>
                 <div className="space-y-3 border-t border-border/60 pt-4">
                   <p className="text-xs text-muted-foreground">Primary Address</p>

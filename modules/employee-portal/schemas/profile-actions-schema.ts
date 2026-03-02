@@ -5,7 +5,6 @@ export const updateEmployeeSelfServiceInputSchema = z.object({
   profilePhotoDataUrl: z.string().trim().max(12_000_000).optional(),
   email: z.string().email().optional(),
   phone: z.string().trim().min(3).max(30).optional(),
-  phoneCountryCode: z.string().trim().max(8).optional(),
   address: z
     .object({
       street: z.string().trim().max(200).optional(),

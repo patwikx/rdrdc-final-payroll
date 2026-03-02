@@ -14,8 +14,52 @@ export type EmployeePortalChangeLogEntry = {
 // Curated release notes derived from repository history and legacy feature parity checks.
 export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] = [
   {
+    id: "2026-03-02-approval-queue-optimistic-refresh",
+    version: "3.1.1",
+    date: "2026-03-02",
+    commit: "c09381b",
+    type: "patch",
+    module: "LEAVE_OVERTIME",
+    title: "Approval Queue Immediate Clearing",
+    changes: [
+      "Approver queue now clears approved leave and overtime rows immediately in-page.",
+      "Follow-up optimistic update fix was added to remove stale rows without router refresh.",
+    ],
+    legacyParity: false,
+    relatedRoute: "/employee-portal/approvers",
+  },
+  {
+    id: "2026-03-02-approval-queue-optimistic-updates",
+    version: "3.1.1",
+    date: "2026-03-02",
+    commit: "a2d8a23",
+    type: "patch",
+    module: "LEAVE_OVERTIME",
+    title: "Optimistic Leave & Overtime Approvals",
+    changes: [
+      "Leave and overtime approvals now update the request list optimistically after action completion.",
+      "Approver pages keep pending queues in sync without hard page refresh behavior.",
+    ],
+    legacyParity: false,
+    relatedRoute: "/employee-portal/approvers",
+  },
+  {
+    id: "2026-03-02-leave-balance-inline-editing",
+    version: "3.1.1",
+    date: "2026-03-02",
+    commit: "acce630",
+    type: "minor",
+    module: "LEAVE_OVERTIME",
+    title: "Per-Employee Leave Balance Editing",
+    changes: [
+      "Leave balances page now supports direct per-employee leave balance edits.",
+      "Balance maintenance flow was streamlined for HR update actions.",
+    ],
+    legacyParity: false,
+  },
+  {
     id: "2026-02-24-supplier-item-api",
-    version: "2.7.3",
+    version: "3.1.1",
     date: "2026-02-24",
     commit: "331218e",
     type: "patch",
@@ -31,7 +75,7 @@ export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] 
   },
   {
     id: "2026-02-24-material-request-item-supplier-ux",
-    version: "2.7.2",
+    version: "3.1.1",
     date: "2026-02-24",
     commit: "53db6b5",
     type: "major",
@@ -47,7 +91,7 @@ export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] 
   },
   {
     id: "2026-02-24-cross-company-approvals",
-    version: "2.7.0",
+    version: "3.1.1",
     date: "2026-02-24",
     commit: "03b8ab6",
     type: "major",
@@ -63,7 +107,7 @@ export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] 
   },
   {
     id: "2026-02-23-consolidated-approval-history",
-    version: "2.6.4",
+    version: "3.1.0",
     date: "2026-02-23",
     commit: "0d3ffdc",
     type: "minor",
@@ -79,7 +123,7 @@ export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] 
   },
   {
     id: "2026-02-23-material-request-receipt-hardening",
-    version: "2.6.2",
+    version: "3.1.0",
     date: "2026-02-23",
     commit: "b2f1619",
     type: "patch",
@@ -139,5 +183,3 @@ export const EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES: EmployeePortalChangeLogEntry[] 
     relatedRoute: "/employee-portal",
   },
 ]
-
-export const EMPLOYEE_PORTAL_CHANGE_LOG_LATEST_ID = EMPLOYEE_PORTAL_CHANGE_LOG_ENTRIES[0]?.id ?? "v1"

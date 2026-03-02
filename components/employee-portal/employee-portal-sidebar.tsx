@@ -20,6 +20,7 @@ import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -197,6 +198,8 @@ export function EmployeePortalSidebar({
   }
 
   const isAdminRole = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN"
+  const changeLogHref = `/${activeCompanyId}/employee-portal/change-log`
+  const isChangeLogActive = pathname === changeLogHref || pathname.startsWith(`${changeLogHref}/`)
   const visibleMenuItems = menuItems.filter((item) => (item.roles as readonly PortalRole[]).includes(companyRole))
   const visibleApproverItems = (canApproveRequests || isAdminRole)
     ? approverMenuItems.filter((item) => item.roles.includes(companyRole))
@@ -316,6 +319,20 @@ export function EmployeePortalSidebar({
           </SidebarGroup>
         ) : null}
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-border/40 px-3 py-2">
+        <div className="flex items-center justify-end">
+          <Link
+            href={changeLogHref}
+            className={cn(
+              "text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline group-data-[collapsible=icon]:hidden",
+              isChangeLogActive ? "text-foreground underline" : ""
+            )}
+          >
+            Change Log
+          </Link>
+        </div>
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

@@ -307,7 +307,7 @@ export function LoginPage() {
                   name="identifier"
                   type="text"
                   autoComplete="username"
-                  placeholder="you@company.com"
+                  placeholder="Employee ID"
                   required
                 />
               </InputGroup>

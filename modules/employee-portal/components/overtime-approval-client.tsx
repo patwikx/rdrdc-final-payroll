@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { format } from "date-fns"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   IconCalendarEvent,
@@ -100,7 +99,6 @@ export function OvertimeApprovalClient({
   initialHistoryPageSize,
   view = "both",
 }: OvertimeApprovalClientProps) {
-  const router = useRouter()
   const queueRequestTokenRef = useRef(0)
   const queueSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
@@ -120,7 +118,8 @@ export function OvertimeApprovalClient({
   const [historyDepartmentId, setHistoryDepartmentId] = useState<string>("ALL")
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
-  const [isPending, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
+  const [pendingDecisionIds, setPendingDecisionIds] = useState<Set<string>>(() => new Set())
   const [isQueuePending, startQueueTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
   const [rowsPage, setRowsPage] = useState(initialQueuePage)
@@ -136,6 +135,7 @@ export function OvertimeApprovalClient({
   const queueItemsPerPage = initialQueuePageSize
   const historyItemsPerPage = Number(historyPageSize)
   const selected = useMemo(() => queueRowsState.find((row) => row.id === selectedId) ?? null, [queueRowsState, selectedId])
+  const isSelectedDecisionPending = selectedId ? isRowDecisionPending(selectedId) : false
   const stats = useMemo(() => {
     const totalHours = queueRowsState.reduce((sum, row) => sum + row.hours, 0)
     const employeeCount = new Set(queueRowsState.map((row) => row.employeeNumber)).size
@@ -174,6 +174,10 @@ export function OvertimeApprovalClient({
     Boolean(historyToDate)
   const showQueueSection = view !== "history"
   const showHistorySection = view !== "queue"
+
+  function isRowDecisionPending(rowId: string): boolean {
+    return pendingDecisionIds.has(rowId)
+  }
 
   const clearHistorySearchTimer = () => {
     if (!historySearchTimerRef.current) return
@@ -312,6 +316,7 @@ export function OvertimeApprovalClient({
   }, [])
 
   const openDecision = (rowId: string, requestCompanyId: string, type: "approve" | "reject") => {
+    if (isRowDecisionPending(rowId)) return
     setSelectedId(rowId)
     setSelectedRequestCompanyId(requestCompanyId)
     setActionType(type)
@@ -322,24 +327,65 @@ export function OvertimeApprovalClient({
   const submit = () => {
     if (!selectedId) return
 
+    const resolvedSelectedId = selectedId
+    const resolvedRemarks = remarks
+    const requestCompanyId = selectedRequestCompanyId ?? companyId
+    const optimisticIndex = queueRowsState.findIndex((row) => row.id === resolvedSelectedId)
+    const optimisticRow = optimisticIndex >= 0 ? queueRowsState[optimisticIndex] : null
+
+    if (!optimisticRow) {
+      toast.error("The selected overtime request is no longer in the queue.")
+      setOpen(false)
+      setSelectedId(null)
+      setSelectedRequestCompanyId(null)
+      setRemarks("")
+      return
+    }
+
+    queueRequestTokenRef.current += 1
+    setQueueRowsState((currentRows) => currentRows.filter((row) => row.id !== resolvedSelectedId))
+    setQueueTotal((currentTotal) => Math.max(0, currentTotal - 1))
+    setPendingDecisionIds((current) => {
+      const next = new Set(current)
+      next.add(resolvedSelectedId)
+      return next
+    })
+    setOpen(false)
+    setSelectedId(null)
+    setSelectedRequestCompanyId(null)
+    setRemarks("")
+
     startTransition(async () => {
-      const requestCompanyId = selectedRequestCompanyId ?? companyId
       const response = isHR
         ? actionType === "approve"
-          ? await approveOvertimeByHrAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
-          : await rejectOvertimeByHrAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
+          ? await approveOvertimeByHrAction({ companyId: requestCompanyId, requestId: resolvedSelectedId, remarks: resolvedRemarks })
+          : await rejectOvertimeByHrAction({ companyId: requestCompanyId, requestId: resolvedSelectedId, remarks: resolvedRemarks })
         : actionType === "approve"
-          ? await approveOvertimeBySupervisorAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
-          : await rejectOvertimeBySupervisorAction({ companyId: requestCompanyId, requestId: selectedId, remarks })
+          ? await approveOvertimeBySupervisorAction({ companyId: requestCompanyId, requestId: resolvedSelectedId, remarks: resolvedRemarks })
+          : await rejectOvertimeBySupervisorAction({ companyId: requestCompanyId, requestId: resolvedSelectedId, remarks: resolvedRemarks })
 
       if (!response.ok) {
+        setQueueRowsState((currentRows) => {
+          if (currentRows.some((row) => row.id === resolvedSelectedId)) {
+            return currentRows
+          }
+
+          const nextRows = [...currentRows]
+          const insertIndex = Math.max(0, Math.min(optimisticIndex, nextRows.length))
+          nextRows.splice(insertIndex, 0, optimisticRow)
+          return nextRows
+        })
+        setQueueTotal((currentTotal) => currentTotal + 1)
         toast.error(response.error)
-        return
+      } else {
+        toast.success(response.message)
       }
 
-      toast.success(response.message)
-      setOpen(false)
-      router.refresh()
+      setPendingDecisionIds((current) => {
+        const next = new Set(current)
+        next.delete(resolvedSelectedId)
+        return next
+      })
     })
   }
 
@@ -606,7 +652,7 @@ export function OvertimeApprovalClient({
                           <div className="mt-3 grid grid-cols-2 gap-2">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
+                                <Button variant="destructive" size="sm" className="rounded-lg text-xs" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isRowDecisionPending(row.id)}>
                                   <IconX className="mr-1 h-3.5 w-3.5" />
                                   Reject
                                 </Button>
@@ -617,7 +663,7 @@ export function OvertimeApprovalClient({
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
+                                <Button size="sm" className="rounded-lg bg-green-600 text-xs hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isRowDecisionPending(row.id)}>
                                   <IconCheck className="mr-1 h-3.5 w-3.5" />
                                   Approve
                                 </Button>
@@ -667,7 +713,7 @@ export function OvertimeApprovalClient({
                           <div className="col-span-2 flex justify-end gap-2">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isPending}>
+                                <Button variant="destructive" size="sm" className="rounded-lg" onClick={() => openDecision(row.id, row.companyId, "reject")} disabled={isRowDecisionPending(row.id)}>
                                   <IconX className="mr-1 h-3.5 w-3.5" />
                                   Reject
                                 </Button>
@@ -678,7 +724,7 @@ export function OvertimeApprovalClient({
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isPending}>
+                                <Button size="sm" className="rounded-lg bg-green-600 hover:bg-green-700" onClick={() => openDecision(row.id, row.companyId, "approve")} disabled={isRowDecisionPending(row.id)}>
                                   <IconCheck className="mr-1 h-3.5 w-3.5" />
                                   Approve
                                 </Button>
@@ -1319,13 +1365,13 @@ export function OvertimeApprovalClient({
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-3 sm:flex-row sm:justify-end">
-              <Button variant="outline" className="rounded-lg sm:min-w-[96px]" onClick={() => setOpen(false)} disabled={isPending}>Cancel</Button>
+              <Button variant="outline" className="rounded-lg sm:min-w-[96px]" onClick={() => setOpen(false)} disabled={isSelectedDecisionPending}>Cancel</Button>
               <Button
                 className={cn("rounded-lg sm:min-w-[96px]", actionType === "reject" && "bg-destructive hover:bg-destructive/90")}
                 onClick={submit}
-                disabled={isPending || (actionType === "reject" && !remarks.trim())}
+                disabled={isSelectedDecisionPending || (actionType === "reject" && !remarks.trim())}
               >
-                {isPending ? <IconClockHour4 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isSelectedDecisionPending ? <IconClockHour4 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {actionType === "approve" ? "Approve" : "Reject"}
               </Button>
             </div>

@@ -49,8 +49,9 @@ export function NavUser({
   inSidebar = true,
   workspaceItems = [],
   accountHref,
-  compactOnMobile = false,
-  squareAvatar = false,
+  accountLabel = "Account",
+  compactOnMobile,
+  squareAvatar,
 }: {
   user: {
     name: string
@@ -60,6 +61,7 @@ export function NavUser({
   inSidebar?: boolean
   workspaceItems?: WorkspaceMenuItem[]
   accountHref?: string
+  accountLabel?: string
   compactOnMobile?: boolean
   squareAvatar?: boolean
 }) {
@@ -68,6 +70,8 @@ export function NavUser({
   const { resolvedTheme, setTheme } = useTheme()
   const [isLoggingOut, startLogoutTransition] = useTransition()
   const isDarkMode = resolvedTheme === "dark"
+  const isCompactOnMobile = compactOnMobile ?? !inSidebar
+  const isSquareAvatar = squareAvatar ?? !inSidebar
 
   const handleLogout = () => {
     startLogoutTransition(async () => {
@@ -84,9 +88,9 @@ export function NavUser({
 
   const triggerContent = (
     <>
-      <Avatar className={cn("h-8 w-8 rounded-lg", squareAvatar && "rounded-md after:rounded-md")}>
-        <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(squareAvatar && "!rounded-md")} />
-        <AvatarFallback className={cn("rounded-lg", squareAvatar && "rounded-md")}>{initials}</AvatarFallback>
+      <Avatar className={cn("h-8 w-8 rounded-lg", isSquareAvatar && "rounded-md after:rounded-md")}>
+        <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(isSquareAvatar && "!rounded-md")} />
+        <AvatarFallback className={cn("rounded-lg", isSquareAvatar && "rounded-md")}>{initials}</AvatarFallback>
       </Avatar>
       <div
         className={
@@ -94,14 +98,14 @@ export function NavUser({
             ? "grid flex-1 text-left text-sm leading-tight"
             : cn(
                 "grid w-[170px] text-left text-sm leading-tight",
-                compactOnMobile && "hidden sm:grid"
+                isCompactOnMobile && "hidden sm:grid"
               )
         }
       >
         <span className="truncate font-medium text-foreground">{user.name}</span>
         <span className="truncate text-xs text-muted-foreground">{user.email}</span>
       </div>
-      <IconSelector className={cn("ml-auto size-4", compactOnMobile && "hidden sm:block")} />
+      <IconSelector className={cn("ml-auto size-4", isCompactOnMobile && "hidden sm:block")} />
     </>
   )
 
@@ -114,9 +118,9 @@ export function NavUser({
     >
       <DropdownMenuLabel className="p-0 font-normal">
         <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-          <Avatar className={cn("h-8 w-8 rounded-lg", squareAvatar && "rounded-md after:rounded-md")}>
-            <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(squareAvatar && "!rounded-md")} />
-            <AvatarFallback className={cn("rounded-lg", squareAvatar && "rounded-md")}>{initials}</AvatarFallback>
+          <Avatar className={cn("h-8 w-8 rounded-lg", isSquareAvatar && "rounded-md after:rounded-md")}>
+            <AvatarImage src={user.avatar ?? undefined} alt={user.name} className={cn(isSquareAvatar && "!rounded-md")} />
+            <AvatarFallback className={cn("rounded-lg", isSquareAvatar && "rounded-md")}>{initials}</AvatarFallback>
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium text-foreground">{user.name}</span>
@@ -133,7 +137,7 @@ export function NavUser({
             }}
           >
             <IconRosetteDiscountCheck />
-            Account
+            {accountLabel}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem>
@@ -185,7 +189,7 @@ export function NavUser({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className={cn("h-10 w-auto min-w-0 px-2", compactOnMobile && "px-1.5 sm:px-2")}>
+          <Button variant="ghost" className={cn("h-10 w-auto min-w-0 px-2", isCompactOnMobile && "px-1.5 sm:px-2")}>
             {triggerContent}
           </Button>
         </DropdownMenuTrigger>

@@ -66,7 +66,8 @@ export default async function EmployeePortalLayout({ children, params }: Employe
           <EmployeePortalHeader
             companyId={context.companyId}
             dashboardHref={canSwitchToDashboard ? `/${context.companyId}/dashboard` : null}
-            accountHref={`/${context.companyId}/account`}
+            accountHref={`/${context.companyId}/employee-portal/profile`}
+            accountLabel="Profile"
             user={{
               name: userName,
               email: userEmail,

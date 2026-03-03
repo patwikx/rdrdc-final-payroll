@@ -204,15 +204,9 @@ export async function releaseReservedLeaveBalanceForRequest(
   const availableBalance = toNumber(leaveBalance.availableBalance)
   const amount = chargeAmount.amount
 
-  if (pendingRequests < amount) {
-    return {
-      ok: false,
-      error: "Leave balance reservation is inconsistent. Pending requests are lower than the request duration.",
-    }
-  }
-
-  const nextPendingRequests = roundTo2(pendingRequests - amount)
-  const nextAvailableBalance = roundTo2(availableBalance + amount)
+  const actualPendingToRelease = Math.min(pendingRequests, amount)
+  const nextPendingRequests = roundTo2(pendingRequests - actualPendingToRelease)
+  const nextAvailableBalance = roundTo2(availableBalance + actualPendingToRelease)
 
   await tx.leaveBalance.update({
     where: { id: leaveBalance.id },
@@ -226,11 +220,14 @@ export async function releaseReservedLeaveBalanceForRequest(
     data: {
       leaveBalanceId: leaveBalance.id,
       transactionType: "ADJUSTMENT",
-      amount: toDecimalText(amount),
+      amount: toDecimalText(actualPendingToRelease),
       runningBalance: leaveBalance.currentBalance,
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Released ${toDecimalText(amount)} ${chargeAmount.unitLabel} back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
+      remarks:
+        actualPendingToRelease < amount
+          ? `Released ${toDecimalText(actualPendingToRelease)} ${chargeAmount.unitLabel} back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName}) - Legacy request with partial/no reservation`
+          : `Released ${toDecimalText(actualPendingToRelease)} ${chargeAmount.unitLabel} back to available balance for ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })
@@ -273,13 +270,6 @@ export async function consumeReservedLeaveBalanceForRequest(
   const creditsUsed = toNumber(leaveBalance.creditsUsed)
   const amount = chargeAmount.amount
 
-  if (pendingRequests < amount) {
-    return {
-      ok: false,
-      error: "Leave balance reservation is inconsistent. Pending requests are lower than the request duration.",
-    }
-  }
-
   if (currentBalance < amount) {
     return {
       ok: false,
@@ -287,8 +277,9 @@ export async function consumeReservedLeaveBalanceForRequest(
     }
   }
 
+  const actualPendingToRelease = Math.min(pendingRequests, amount)
   const nextCurrentBalance = roundTo2(currentBalance - amount)
-  const nextPendingRequests = roundTo2(pendingRequests - amount)
+  const nextPendingRequests = roundTo2(pendingRequests - actualPendingToRelease)
   const nextCreditsUsed = roundTo2(creditsUsed + amount)
   const nextAvailableBalance = roundTo2(nextCurrentBalance - nextPendingRequests)
 
@@ -317,7 +308,10 @@ export async function consumeReservedLeaveBalanceForRequest(
       runningBalance: toDecimalText(nextCurrentBalance),
       referenceType: "LEAVE_REQUEST",
       referenceId: input.requestId,
-      remarks: `Consumed ${toDecimalText(amount)} ${chargeAmount.unitLabel} for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
+      remarks:
+        actualPendingToRelease < amount
+          ? `Consumed ${toDecimalText(amount)} ${chargeAmount.unitLabel} for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName}) - Legacy request with partial/no reservation`
+          : `Consumed ${toDecimalText(amount)} ${chargeAmount.unitLabel} for approved leave request ${input.requestNumber} (${chargeDecision.sourceLeaveTypeName})`,
       processedById: input.processedById,
     },
   })

@@ -328,13 +328,7 @@ const getRequesterEmployeeForCompanyAccess = async (params: {
   }
 }
 
-const ensureEmployeeRole = (companyRole: CompanyRole): MaterialRequestActionResult => {
-  if (companyRole !== "EMPLOYEE") {
-    return { ok: false, error: "Only employees can submit material requests in this portal." }
-  }
 
-  return { ok: true, message: "Employee role validated." }
-}
 
 const isHrRole = (role: CompanyRole): boolean => {
   return role === "COMPANY_ADMIN" || role === "HR_ADMIN" || role === "PAYROLL_ADMIN"
@@ -386,12 +380,6 @@ export async function createMaterialRequestDraftAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
-
-  const employeeRoleValidation = ensureEmployeeRole(companyRole)
-  if (!employeeRoleValidation.ok) {
-    return employeeRoleValidation
-  }
 
   const requesterEmployee = await getRequesterEmployeeForCompanyAccess({
     userId: context.userId,
@@ -559,12 +547,6 @@ export async function updateMaterialRequestDraftAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
-
-  const employeeRoleValidation = ensureEmployeeRole(companyRole)
-  if (!employeeRoleValidation.ok) {
-    return employeeRoleValidation
-  }
 
   const [requesterEmployee, existingRequest] = await Promise.all([
     getRequesterEmployeeForCompanyAccess({
@@ -975,12 +957,6 @@ export async function submitMaterialRequestAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
-
-  const employeeRoleValidation = ensureEmployeeRole(companyRole)
-  if (!employeeRoleValidation.ok) {
-    return employeeRoleValidation
-  }
 
   const materialRequest = await db.materialRequest.findFirst({
     where: {
@@ -1278,12 +1254,6 @@ export async function cancelMaterialRequestAction(
 
   const payload = parsed.data
   const context = await getActiveCompanyContext({ companyId: payload.companyId })
-  const companyRole = context.companyRole as CompanyRole
-
-  const employeeRoleValidation = ensureEmployeeRole(companyRole)
-  if (!employeeRoleValidation.ok) {
-    return employeeRoleValidation
-  }
 
   const request = await db.materialRequest.findFirst({
     where: {

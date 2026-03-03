@@ -87,12 +87,14 @@ export async function GET(request: Request, context: RouteContext) {
             },
             deductions: {
               select: {
+                referenceType: true,
                 description: true,
                 amount: true,
                 deductionType: {
                   select: {
                     code: true,
                     name: true,
+                    reportingContributionType: true,
                   },
                 },
               },
@@ -107,32 +109,37 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const csv = buildPayrollRegisterCsv({
-      rows: run.payslips.map((payslip) => ({
-        employeeNumber: payslip.employee.employeeNumber,
-        employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
-        departmentName: payslip.departmentSnapshotName ?? payslip.employee.department?.name ?? null,
-        periodStart: run.payPeriod.cutoffStartDate,
-        periodEnd: run.payPeriod.cutoffEndDate,
-        basicPay: payslip.basicPay,
-        grossPay: payslip.grossPay,
-        sss: payslip.sssEmployee,
-        philHealth: payslip.philHealthEmployee,
-        pagIbig: payslip.pagIbigEmployee,
-        tax: payslip.withholdingTax,
-        netPay: payslip.netPay,
-        earnings: payslip.earnings.map((line) => ({
-          code: line.earningType.code,
-          name: line.earningType.name,
-          description: line.description ?? line.earningType.name,
-          amount: line.amount,
-        })),
-        deductions: payslip.deductions.map((line) => ({
-          code: line.deductionType.code,
-          name: line.deductionType.name,
-          description: line.description ?? line.deductionType.name,
-          amount: line.amount,
-        })),
-      })),
+      rows: run.payslips.map((payslip) => {
+        return {
+          employeeNumber: payslip.employee.employeeNumber,
+          employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
+          departmentName: payslip.departmentSnapshotName ?? payslip.employee.department?.name ?? null,
+          periodStart: run.payPeriod.cutoffStartDate,
+          periodEnd: run.payPeriod.cutoffEndDate,
+          basicPay: payslip.basicPay,
+          grossPay: payslip.grossPay,
+          sss: payslip.sssEmployee,
+          philHealth: payslip.philHealthEmployee,
+          pagIbig: payslip.pagIbigEmployee,
+          tax: payslip.withholdingTax,
+          netPay: payslip.netPay,
+          earnings: payslip.earnings.map((line) => ({
+            code: line.earningType.code,
+            name: line.earningType.name,
+            description: line.description ?? line.earningType.name,
+            amount: line.amount,
+          })),
+          deductions: payslip.deductions.map((line) => {
+            const mappedName = line.deductionType.name
+            return {
+              code: line.deductionType.code,
+              name: mappedName,
+              description: line.description ?? mappedName,
+              amount: line.amount,
+            }
+          }),
+        }
+      }),
     })
 
     await createAuditLog({

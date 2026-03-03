@@ -36,6 +36,7 @@ export function CloseRunStep({ companyId, runId, statusCode, totalEmployees, tot
   const [isPending, startTransition] = useTransition()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [isLocked, setIsLocked] = useState(statusCode === "PAID")
+  const [blockingIssues, setBlockingIssues] = useState<string[]>([])
 
   const lockMessage = useMemo(() => {
     if (isLocked) {
@@ -48,12 +49,17 @@ export function CloseRunStep({ companyId, runId, statusCode, totalEmployees, tot
     startTransition(async () => {
       const result = await closePayrollRunAction({ companyId, runId })
       if (!result.ok) {
+        if (result.code === "PAGIBIG_MAPPING_BLOCK") {
+          setBlockingIssues(result.errorDetails ?? [])
+          setConfirmOpen(false)
+        }
         toast.error(result.error)
         return
       }
 
       setConfirmOpen(false)
       setIsLocked(true)
+      setBlockingIssues([])
       toast.success(result.message)
       router.refresh()
     })
@@ -68,6 +74,19 @@ export function CloseRunStep({ companyId, runId, statusCode, totalEmployees, tot
       </div>
 
       <div className="space-y-4 rounded-lg border border-border/60 bg-card p-5">
+        {blockingIssues.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-destructive/60 bg-destructive/10 p-3 text-xs">
+            <p className="inline-flex items-center gap-1 font-medium text-destructive">
+              <IconAlertTriangle className="h-3.5 w-3.5" />
+              Close run is blocked by Pag-IBIG mapping issues.
+            </p>
+            <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+              {blockingIssues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="flex flex-col items-center gap-2 text-center">
           <span><IconAlertTriangle className="h-5 w-5 text-amber-600" /></span>
           <div className="space-y-0.5">
@@ -83,7 +102,12 @@ export function CloseRunStep({ companyId, runId, statusCode, totalEmployees, tot
           </Button>
           <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
             <AlertDialogTrigger asChild>
-              <Button type="button" variant="destructive" className="min-w-44" disabled={isPending || isLocked}>
+              <Button
+                type="button"
+                variant="destructive"
+                className="min-w-44"
+                disabled={isPending || isLocked || blockingIssues.length > 0}
+              >
                 <IconLock className="mr-1.5 h-4 w-4" /> {isLocked ? "Period Locked" : "Close Pay Period"}
               </Button>
             </AlertDialogTrigger>

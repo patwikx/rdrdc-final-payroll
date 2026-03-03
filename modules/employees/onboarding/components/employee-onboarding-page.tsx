@@ -63,6 +63,7 @@ import {
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { createOnboardingSelectEntityAction } from "@/modules/employees/onboarding/actions/create-onboarding-select-entity-action"
 import { createEmployeeOnboardingAction } from "@/modules/employees/onboarding/actions/create-employee-onboarding-action"
+import { getNextEmployeeNumberAction } from "@/modules/employees/onboarding/actions/get-next-employee-number-action"
 import {
   civilStatusOptions,
   documentTypeOptions,
@@ -251,6 +252,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
   const [step, setStep] = useState<StepKey>("stepOne")
   const [isPending, startTransition] = useTransition()
   const [isCreatingOption, startCreateOption] = useTransition()
+  const [isGeneratingEmployeeNumber, startGenerateEmployeeNumber] = useTransition()
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false)
   const [isPhotoEditorApplying, setIsPhotoEditorApplying] = useState(false)
@@ -261,6 +263,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
   const [photoEditorFileName, setPhotoEditorFileName] = useState<string | null>(null)
   const [createTarget, setCreateTarget] = useState<DynamicCreateTarget | null>(null)
   const [createName, setCreateName] = useState("")
+  const [isEmployeeNumberManual, setIsEmployeeNumberManual] = useState(false)
   const profileInputRef = useRef<HTMLInputElement | null>(null)
   const documentsInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -298,14 +301,50 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
     }))
   }
 
+  const handleEmployeeNumberChange = (value: string) => {
+    const normalizedValue = value.toUpperCase().replace(/\s+/g, "")
+    updateSection("identity", "employeeNumber", normalizedValue)
+    setIsEmployeeNumberManual(normalizedValue.length > 0)
+  }
+
+  const handleAutoGenerateEmployeeNumber = (lastNameInput?: string) => {
+    if (isEmployeeNumberManual || isGeneratingEmployeeNumber) {
+      return
+    }
+
+    const sourceLastName = (lastNameInput ?? form.identity.lastName).trim()
+    if (sourceLastName.length === 0 || !/[A-Za-z]/.test(sourceLastName)) {
+      return
+    }
+
+    startGenerateEmployeeNumber(async () => {
+      const result = await getNextEmployeeNumberAction({
+        companyId: form.companyId,
+        lastName: sourceLastName,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        identity: {
+          ...prev.identity,
+          employeeNumber: result.employeeNumber,
+        },
+      }))
+    })
+  }
+
   const completion = useMemo(() => {
     const stepOneComplete = Boolean(
       form.identity.employeeNumber &&
         form.identity.firstName &&
         form.identity.lastName &&
         form.identity.birthDate &&
-        form.contact.mobileNumber &&
-        form.contact.personalEmail
+        form.contact.mobileNumber
     )
     const stepTwoComplete = Boolean(
       form.employment.hireDate &&
@@ -485,6 +524,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
 
       toast.success(result.message)
       setForm(initialData)
+      setIsEmployeeNumberManual(false)
       setStep("stepOne")
       router.refresh()
     })
@@ -758,10 +798,28 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <Field label="Employee ID" required><Input value={form.identity.employeeNumber} onChange={(event) => updateSection("identity", "employeeNumber", event.target.value)} /></Field>
+                        <Field label="Employee ID" required>
+                          <div className="space-y-1">
+                            <Input
+                              value={form.identity.employeeNumber}
+                              onChange={(event) => handleEmployeeNumberChange(event.target.value)}
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              {isGeneratingEmployeeNumber
+                                ? "Generating from last name convention..."
+                                : "Auto-generated from last name initial (e.g. M-000)."}
+                            </p>
+                          </div>
+                        </Field>
                         <Field label="First Name" required><Input value={form.identity.firstName} onChange={(event) => updateSection("identity", "firstName", event.target.value)} /></Field>
                         <Field label="Middle Name"><Input value={form.identity.middleName ?? ""} onChange={(event) => updateSection("identity", "middleName", event.target.value || undefined)} /></Field>
-                        <Field label="Last Name" required><Input value={form.identity.lastName} onChange={(event) => updateSection("identity", "lastName", event.target.value)} /></Field>
+                        <Field label="Last Name" required>
+                          <Input
+                            value={form.identity.lastName}
+                            onChange={(event) => updateSection("identity", "lastName", event.target.value)}
+                            onBlur={(event) => handleAutoGenerateEmployeeNumber(event.target.value)}
+                          />
+                        </Field>
                         <Field label="Suffix"><Input value={form.identity.suffix ?? ""} onChange={(event) => updateSection("identity", "suffix", event.target.value || undefined)} /></Field>
                         <Field label="Nickname"><Input value={form.identity.nickname ?? ""} onChange={(event) => updateSection("identity", "nickname", event.target.value || undefined)} /></Field>
                         <DateField label="Birth Date" required value={form.identity.birthDate} onChange={(value) => updateSection("identity", "birthDate", value)} />
@@ -788,7 +846,7 @@ export function EmployeeOnboardingPage({ companyName, initialData, options }: Em
               </div>
               <div className="grid gap-3 px-5 pb-5 pt-4 sm:grid-cols-2 lg:grid-cols-4">
                       <Field label="Mobile Number" required><Input value={form.contact.mobileNumber} onChange={(event) => updateSection("contact", "mobileNumber", event.target.value)} /></Field>
-                      <Field label="Personal Email" required><Input type="email" value={form.contact.personalEmail} onChange={(event) => updateSection("contact", "personalEmail", event.target.value)} /></Field>
+                      <Field label="Personal Email"><Input type="email" value={form.contact.personalEmail ?? ""} onChange={(event) => updateSection("contact", "personalEmail", event.target.value || undefined)} /></Field>
                       <Field label="Work Email"><Input type="email" value={form.contact.workEmail ?? ""} onChange={(event) => updateSection("contact", "workEmail", event.target.value || undefined)} /></Field>
                       <Field label="Street"><Input value={form.contact.street ?? ""} onChange={(event) => updateSection("contact", "street", event.target.value || undefined)} /></Field>
                       <Field label="Barangay"><Input value={form.contact.barangay ?? ""} onChange={(event) => updateSection("contact", "barangay", event.target.value || undefined)} /></Field>

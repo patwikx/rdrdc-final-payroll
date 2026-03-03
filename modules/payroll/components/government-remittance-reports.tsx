@@ -2,16 +2,22 @@ import styles from "@/modules/payroll/components/government-remittance-reports.m
 import { getPhYear } from "@/lib/ph-time"
 
 export type PhilHealthRemittanceRow = {
-  idNumber: string
-  employeeName: string
+  employeeId: string
+  surname: string
+  firstName: string
+  middleName: string
+  birthDate: Date | null
   pin: string
   employeeShare: number
   employerShare: number
 }
 
 export type SssRemittanceRow = {
-  idNumber: string
-  employeeName: string
+  employeeId: string
+  surname: string
+  firstName: string
+  middleName: string
+  birthDate: Date | null
   sssNumber: string
   employeeShare: number
   employerShare: number
@@ -24,13 +30,19 @@ export type PagIbigContributionRow = {
   middleName: string
   birthDate: Date
   pagIbigNumber: string
-  employeeShare: number
+  mandatoryEmployeeShare?: number
+  additionalEmployeeShare?: number
+  totalEmployeeShare?: number
+  employeeShare?: number
   employerShare: number
 }
 
 export type Dole13thMonthRow = {
   employeeId: string
-  employeeName: string
+  surname: string
+  firstName: string
+  middleName: string
+  birthDate: Date | null
   annualBasicSalary: number
   thirteenthMonthPay: number
 }
@@ -48,18 +60,27 @@ export type GovernmentRemittanceReportsProps = {
   dole13thRows?: Dole13thMonthRow[]
   birAlphalistRows?: Array<{
     employeeId: string
-    employeeName: string
+    surname: string
+    firstName: string
+    middleName: string
+    birthDate: Date | null
     tinNumber: string
     sssEmployee: number
     philHealthEmployee: number
-    pagIbigEmployee: number
+    pagIbigMandatoryEmployee?: number
+    pagIbigAdditionalEmployee?: number
+    pagIbigTotalEmployee?: number
+    pagIbigEmployee?: number
     grossCompensation: number
     taxableCompensation: number
     withholdingTax: number
   }>
   birMonthlyWtaxRows?: Array<{
     employeeId: string
-    employeeName: string
+    surname: string
+    firstName: string
+    middleName: string
+    birthDate: Date | null
     tinNumber: string
     grossCompensation: number
     withholdingTax: number
@@ -149,11 +170,23 @@ export function GovernmentRemittanceReports({
 
   const pagIbigTotals = pagIbigRows.reduce(
     (acc, row) => {
-      acc.employeeShare += row.employeeShare
+      const mandatoryEmployeeShare = row.mandatoryEmployeeShare ?? row.employeeShare ?? 0
+      const additionalEmployeeShare = row.additionalEmployeeShare ?? 0
+      const totalEmployeeShare =
+        row.totalEmployeeShare ?? ((row.employeeShare ?? 0) + additionalEmployeeShare)
+
+      acc.mandatoryEmployeeShare += mandatoryEmployeeShare
+      acc.additionalEmployeeShare += additionalEmployeeShare
+      acc.totalEmployeeShare += totalEmployeeShare
       acc.employerShare += row.employerShare
       return acc
     },
-    { employeeShare: 0, employerShare: 0 }
+    {
+      mandatoryEmployeeShare: 0,
+      additionalEmployeeShare: 0,
+      totalEmployeeShare: 0,
+      employerShare: 0,
+    }
   )
 
   const sssTotals = sssRows.reduce(
@@ -176,9 +209,16 @@ export function GovernmentRemittanceReports({
 
   const birTotals = birAlphalistRows.reduce(
     (acc, row) => {
+      const pagIbigMandatoryEmployee = row.pagIbigMandatoryEmployee ?? row.pagIbigEmployee ?? 0
+      const pagIbigAdditionalEmployee = row.pagIbigAdditionalEmployee ?? 0
+      const pagIbigTotalEmployee =
+        row.pagIbigTotalEmployee ?? ((row.pagIbigEmployee ?? 0) + pagIbigAdditionalEmployee)
+
       acc.sssEmployee += row.sssEmployee
       acc.philHealthEmployee += row.philHealthEmployee
-      acc.pagIbigEmployee += row.pagIbigEmployee
+      acc.pagIbigMandatoryEmployee += pagIbigMandatoryEmployee
+      acc.pagIbigAdditionalEmployee += pagIbigAdditionalEmployee
+      acc.pagIbigTotalEmployee += pagIbigTotalEmployee
       acc.grossCompensation += row.grossCompensation
       acc.taxableCompensation += row.taxableCompensation
       acc.withholdingTax += row.withholdingTax
@@ -187,7 +227,9 @@ export function GovernmentRemittanceReports({
     {
       sssEmployee: 0,
       philHealthEmployee: 0,
-      pagIbigEmployee: 0,
+      pagIbigMandatoryEmployee: 0,
+      pagIbigAdditionalEmployee: 0,
+      pagIbigTotalEmployee: 0,
       grossCompensation: 0,
       taxableCompensation: 0,
       withholdingTax: 0,
@@ -220,21 +262,27 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
+              <col style={{ width: "8%" }} />
               <col style={{ width: "12%" }} />
-              <col style={{ width: "32%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "14%" }} />
             </colgroup>
-            <thead>
+            <thead className={styles.capsHeader}>
               <tr>
-                <th className={styles.leftText}>ID #</th>
-                <th className={styles.leftText}>Employee&apos;s Name</th>
-                <th className={styles.leftText}>PIN</th>
-                <th className={styles.rightText}>Employee Share</th>
-                <th className={styles.rightText}>Employer Share</th>
-                <th className={styles.rightText}>Totals</th>
+                <th className={styles.leftText}>EMPLOYEE ID</th>
+                <th className={styles.leftText}>SURNAME</th>
+                <th className={styles.leftText}>FIRST NAME</th>
+                <th className={styles.leftText}>MIDDLE NAME</th>
+                <th className={styles.centerText}>BIRTHDATE</th>
+                <th className={styles.leftText}>PHILHEALTH ID</th>
+                <th className={styles.rightText}>EMPLOYEE SHARE</th>
+                <th className={styles.rightText}>EMPLOYER SHARE</th>
+                <th className={styles.rightText}>TOTAL</th>
               </tr>
             </thead>
             <tbody>
@@ -242,9 +290,12 @@ export function GovernmentRemittanceReports({
                 const rowTotal = row.employeeShare + row.employerShare
 
                 return (
-                  <tr key={`${row.idNumber}-${row.pin}`}>
-                    <td className={styles.leftText}>{row.idNumber.toUpperCase()}</td>
-                    <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <tr key={`${row.employeeId}-${row.pin}`}>
+                    <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.surname.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.firstName.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
+                    <td className={styles.centerText}>{row.birthDate ? birthDateFormatter.format(row.birthDate) : ""}</td>
                     <td className={styles.leftText}>{row.pin.toUpperCase()}</td>
                     <td className={styles.rightText}>{formatMoney(row.employeeShare)}</td>
                     <td className={styles.rightText}>{formatMoney(row.employerShare)}</td>
@@ -255,7 +306,7 @@ export function GovernmentRemittanceReports({
             </tbody>
             <tfoot>
               <tr className={styles.totalsRow}>
-                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td colSpan={6} className={styles.leftText}>TOTAL</td>
                 <td className={styles.rightText}>{formatMoney(philHealthTotals.employeeShare)}</td>
                 <td className={styles.rightText}>{formatMoney(philHealthTotals.employerShare)}</td>
                 <td className={styles.rightText}>{formatMoney(philHealthTotals.employeeShare + philHealthTotals.employerShare)}</td>
@@ -288,15 +339,17 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "14%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "10%" }} />
-              <col style={{ width: "16%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "13%" }} />
               <col style={{ width: "8%" }} />
               <col style={{ width: "8%" }} />
-              <col style={{ width: "9%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "6%" }} />
             </colgroup>
             <thead className={`${styles.capsHeader} ${styles.doubleTopHeader}`}>
               <tr>
@@ -306,14 +359,20 @@ export function GovernmentRemittanceReports({
                 <th>MIDDLE NAME</th>
                 <th>BIRTHDATE</th>
                 <th>PAG-IBIG #</th>
-                <th>PAG-IBIG EE</th>
+                <th>PAG-IBIG EE (MAND)</th>
+                <th>PAG-IBIG EE (ADDL)</th>
+                <th>PAG-IBIG EE (TOTAL)</th>
                 <th>PAG-IBIG ER</th>
                 <th>TOTAL</th>
               </tr>
             </thead>
             <tbody>
               {pagIbigRows.map((row) => {
-                const rowTotal = row.employeeShare + row.employerShare
+                const mandatoryEmployeeShare = row.mandatoryEmployeeShare ?? row.employeeShare ?? 0
+                const additionalEmployeeShare = row.additionalEmployeeShare ?? 0
+                const totalEmployeeShare =
+                  row.totalEmployeeShare ?? ((row.employeeShare ?? 0) + additionalEmployeeShare)
+                const rowTotal = totalEmployeeShare + row.employerShare
 
                 return (
                   <tr key={`${row.employeeId}-${row.pagIbigNumber}`}>
@@ -323,7 +382,9 @@ export function GovernmentRemittanceReports({
                     <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
                     <td className={styles.centerText}>{birthDateFormatter.format(row.birthDate)}</td>
                     <td className={styles.leftText}>{formatPagIbigNumber(row.pagIbigNumber)}</td>
-                    <td className={styles.rightText}>{formatMoney(row.employeeShare)}</td>
+                    <td className={styles.rightText}>{formatMoney(mandatoryEmployeeShare)}</td>
+                    <td className={styles.rightText}>{formatMoney(additionalEmployeeShare)}</td>
+                    <td className={styles.rightText}>{formatMoney(totalEmployeeShare)}</td>
                     <td className={styles.rightText}>{formatMoney(row.employerShare)}</td>
                     <td className={styles.rightText}>{formatMoney(rowTotal)}</td>
                   </tr>
@@ -334,15 +395,19 @@ export function GovernmentRemittanceReports({
               <tr className={styles.totalsRow}>
                 <td colSpan={5} className={styles.leftText}>PAGE TOTAL</td>
                 <td className={`${styles.leftText} ${styles.headCount}`}>HEAD COUNT ({pagIbigRows.length})</td>
-                <td className={styles.rightText}>{formatMoney(pagIbigTotals.employeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.mandatoryEmployeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.additionalEmployeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.totalEmployeeShare)}</td>
                 <td className={styles.rightText}>{formatMoney(pagIbigTotals.employerShare)}</td>
-                <td className={styles.rightText}>{formatMoney(pagIbigTotals.employeeShare + pagIbigTotals.employerShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.totalEmployeeShare + pagIbigTotals.employerShare)}</td>
               </tr>
               <tr className={styles.totalsRow}>
                 <td colSpan={6} className={styles.leftText}>GRAND TOTAL</td>
-                <td className={styles.rightText}>{formatMoney(pagIbigTotals.employeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.mandatoryEmployeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.additionalEmployeeShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.totalEmployeeShare)}</td>
                 <td className={styles.rightText}>{formatMoney(pagIbigTotals.employerShare)}</td>
-                <td className={styles.rightText}>{formatMoney(pagIbigTotals.employeeShare + pagIbigTotals.employerShare)}</td>
+                <td className={styles.rightText}>{formatMoney(pagIbigTotals.totalEmployeeShare + pagIbigTotals.employerShare)}</td>
               </tr>
             </tfoot>
           </table>
@@ -371,21 +436,27 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "34%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "8%" }} />
               <col style={{ width: "12%" }} />
               <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
               <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "14%" }} />
             </colgroup>
-            <thead>
+            <thead className={styles.capsHeader}>
               <tr>
-                <th className={styles.leftText}>ID #</th>
-                <th className={styles.leftText}>EMPLOYEE NAME</th>
-                <th className={styles.leftText}>SSS #</th>
+                <th className={styles.leftText}>EMPLOYEE ID</th>
+                <th className={styles.leftText}>SURNAME</th>
+                <th className={styles.leftText}>FIRST NAME</th>
+                <th className={styles.leftText}>MIDDLE NAME</th>
+                <th className={styles.centerText}>BIRTHDATE</th>
+                <th className={styles.leftText}>SSS ID</th>
                 <th className={styles.rightText}>EMPLOYEE SHARE</th>
                 <th className={styles.rightText}>EMPLOYER SHARE</th>
-                <th className={styles.rightText}>TOTALS</th>
+                <th className={styles.rightText}>TOTAL</th>
               </tr>
             </thead>
             <tbody>
@@ -393,9 +464,12 @@ export function GovernmentRemittanceReports({
                 const rowTotal = row.employeeShare + row.employerShare
 
                 return (
-                  <tr key={`${row.idNumber}-${row.sssNumber}`}>
-                    <td className={styles.leftText}>{row.idNumber.toUpperCase()}</td>
-                    <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <tr key={`${row.employeeId}-${row.sssNumber}`}>
+                    <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.surname.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.firstName.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
+                    <td className={styles.centerText}>{row.birthDate ? birthDateFormatter.format(row.birthDate) : ""}</td>
                     <td className={styles.leftText}>{row.sssNumber.toUpperCase()}</td>
                     <td className={styles.rightText}>{formatMoney(row.employeeShare)}</td>
                     <td className={styles.rightText}>{formatMoney(row.employerShare)}</td>
@@ -406,7 +480,7 @@ export function GovernmentRemittanceReports({
             </tbody>
             <tfoot>
               <tr className={styles.totalsRow}>
-                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td colSpan={6} className={styles.leftText}>TOTAL</td>
                 <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare)}</td>
                 <td className={styles.rightText}>{formatMoney(sssTotals.employerShare)}</td>
                 <td className={styles.rightText}>{formatMoney(sssTotals.employeeShare + sssTotals.employerShare)}</td>
@@ -439,16 +513,22 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "35%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "14%" }} />
               <col style={{ width: "18%" }} />
-              <col style={{ width: "17%" }} />
-              <col style={{ width: "17%" }} />
+              <col style={{ width: "18%" }} />
             </colgroup>
             <thead className={styles.capsHeader}>
               <tr>
                 <th>EMPLOYEE ID</th>
-                <th>EMPLOYEE NAME</th>
+                <th>SURNAME</th>
+                <th>FIRST NAME</th>
+                <th>MIDDLE NAME</th>
+                <th>BIRTHDATE</th>
                 <th>TIN</th>
                 <th className={styles.rightText}>GROSS PAY</th>
                 <th className={styles.rightText}>WITHHOLDING TAX</th>
@@ -458,7 +538,10 @@ export function GovernmentRemittanceReports({
               {birMonthlyWtaxRows.map((row) => (
                 <tr key={`${row.employeeId}-${row.tinNumber}`}>
                   <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
-                  <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.surname.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.firstName.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
+                  <td className={styles.centerText}>{row.birthDate ? birthDateFormatter.format(row.birthDate) : ""}</td>
                   <td className={styles.leftText}>{row.tinNumber.toUpperCase()}</td>
                   <td className={styles.rightText}>{formatMoney(row.grossCompensation)}</td>
                   <td className={styles.rightText}>{formatMoney(row.withholdingTax)}</td>
@@ -467,7 +550,7 @@ export function GovernmentRemittanceReports({
             </tbody>
             <tfoot>
               <tr className={styles.totalsRow}>
-                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td colSpan={6} className={styles.leftText}>TOTAL</td>
                 <td className={styles.rightText}>{formatMoney(birMonthlyTotals.grossCompensation)}</td>
                 <td className={styles.rightText}>{formatMoney(birMonthlyTotals.withholdingTax)}</td>
               </tr>
@@ -499,50 +582,71 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "21%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "11%" }} />
-              <col style={{ width: "11%" }} />
+              <col style={{ width: "7%" }} />
               <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "8%" }} />
             </colgroup>
             <thead className={styles.capsHeader}>
               <tr>
                 <th>EMPLOYEE ID</th>
-                <th>EMPLOYEE NAME</th>
+                <th>SURNAME</th>
+                <th>FIRST NAME</th>
+                <th>MIDDLE NAME</th>
                 <th>TIN</th>
                 <th className={styles.rightText}>SSS EE</th>
                 <th className={styles.rightText}>PH EE</th>
-                <th className={styles.rightText}>PG EE</th>
+                <th className={styles.rightText}>PG MAND</th>
+                <th className={styles.rightText}>PG ADDL</th>
+                <th className={styles.rightText}>PG TOTAL</th>
                 <th className={styles.rightText}>GROSS COMPENSATION</th>
                 <th className={styles.rightText}>TAXABLE COMPENSATION</th>
                 <th className={styles.rightText}>WITHHOLDING TAX</th>
               </tr>
             </thead>
             <tbody>
-              {birAlphalistRows.map((row) => (
-                <tr key={`${row.employeeId}-${row.tinNumber}`}>
-                  <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
-                  <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
-                  <td className={styles.leftText}>{row.tinNumber.toUpperCase()}</td>
-                  <td className={styles.rightText}>{formatMoney(row.sssEmployee)}</td>
-                  <td className={styles.rightText}>{formatMoney(row.philHealthEmployee)}</td>
-                  <td className={styles.rightText}>{formatMoney(row.pagIbigEmployee)}</td>
-                  <td className={styles.rightText}>{formatMoney(row.grossCompensation)}</td>
-                  <td className={styles.rightText}>{formatMoney(row.taxableCompensation)}</td>
-                  <td className={styles.rightText}>{formatMoney(row.withholdingTax)}</td>
-                </tr>
-              ))}
+              {birAlphalistRows.map((row) => {
+                const pagIbigMandatoryEmployee = row.pagIbigMandatoryEmployee ?? row.pagIbigEmployee ?? 0
+                const pagIbigAdditionalEmployee = row.pagIbigAdditionalEmployee ?? 0
+                const pagIbigTotalEmployee =
+                  row.pagIbigTotalEmployee ?? ((row.pagIbigEmployee ?? 0) + pagIbigAdditionalEmployee)
+
+                return (
+                  <tr key={`${row.employeeId}-${row.tinNumber}`}>
+                    <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.surname.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.firstName.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
+                    <td className={styles.leftText}>{row.tinNumber.toUpperCase()}</td>
+                    <td className={styles.rightText}>{formatMoney(row.sssEmployee)}</td>
+                    <td className={styles.rightText}>{formatMoney(row.philHealthEmployee)}</td>
+                    <td className={styles.rightText}>{formatMoney(pagIbigMandatoryEmployee)}</td>
+                    <td className={styles.rightText}>{formatMoney(pagIbigAdditionalEmployee)}</td>
+                    <td className={styles.rightText}>{formatMoney(pagIbigTotalEmployee)}</td>
+                    <td className={styles.rightText}>{formatMoney(row.grossCompensation)}</td>
+                    <td className={styles.rightText}>{formatMoney(row.taxableCompensation)}</td>
+                    <td className={styles.rightText}>{formatMoney(row.withholdingTax)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
             <tfoot>
               <tr className={styles.totalsRow}>
-                <td colSpan={3} className={styles.leftText}>TOTAL</td>
+                <td colSpan={5} className={styles.leftText}>TOTAL</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.sssEmployee)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.philHealthEmployee)}</td>
-                <td className={styles.rightText}>{formatMoney(birTotals.pagIbigEmployee)}</td>
+                <td className={styles.rightText}>{formatMoney(birTotals.pagIbigMandatoryEmployee)}</td>
+                <td className={styles.rightText}>{formatMoney(birTotals.pagIbigAdditionalEmployee)}</td>
+                <td className={styles.rightText}>{formatMoney(birTotals.pagIbigTotalEmployee)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.grossCompensation)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.taxableCompensation)}</td>
                 <td className={styles.rightText}>{formatMoney(birTotals.withholdingTax)}</td>
@@ -575,24 +679,33 @@ export function GovernmentRemittanceReports({
         <div className={styles.tableWrap}>
           <table className={styles.reportTable}>
             <colgroup>
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "38%" }} />
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "24%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "16%" }} />
             </colgroup>
             <thead className={styles.capsHeader}>
               <tr>
                 <th>EMPLOYEE ID</th>
-                <th>EMPLOYEE NAME</th>
+                <th>SURNAME</th>
+                <th>FIRST NAME</th>
+                <th>MIDDLE NAME</th>
+                <th>BIRTHDATE</th>
                 <th className={styles.rightText}>ANNUAL BASIC SALARY</th>
                 <th className={styles.rightText}>13TH MONTH PAY</th>
               </tr>
             </thead>
             <tbody>
               {dole13thRows.map((row) => (
-                <tr key={`${row.employeeId}-${row.employeeName}`}>
+                <tr key={`${row.employeeId}-${row.surname}-${row.firstName}`}>
                   <td className={styles.leftText}>{row.employeeId.toUpperCase()}</td>
-                  <td className={styles.leftText}>{row.employeeName.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.surname.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.firstName.toUpperCase()}</td>
+                  <td className={styles.leftText}>{row.middleName.toUpperCase()}</td>
+                  <td className={styles.centerText}>{row.birthDate ? birthDateFormatter.format(row.birthDate) : ""}</td>
                   <td className={styles.rightText}>{formatMoney(row.annualBasicSalary)}</td>
                   <td className={styles.rightText}>{formatMoney(row.thirteenthMonthPay)}</td>
                 </tr>
@@ -600,7 +713,7 @@ export function GovernmentRemittanceReports({
             </tbody>
             <tfoot>
               <tr className={styles.totalsRow}>
-                <td colSpan={2} className={styles.leftText}>TOTAL</td>
+                <td colSpan={5} className={styles.leftText}>TOTAL</td>
                 <td className={styles.rightText}>{formatMoney(doleTotals.annualBasicSalary)}</td>
                 <td className={styles.rightText}>{formatMoney(doleTotals.thirteenthMonthPay)}</td>
               </tr>

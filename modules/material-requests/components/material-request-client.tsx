@@ -321,7 +321,7 @@ export function MaterialRequestClient({
               ) : null}
 
               {filteredRequests.length > 0 ? (
-                <div className="space-y-2 lg:hidden">
+                <div className="space-y-2 px-3 pb-3 pt-3 lg:hidden">
                   {paginatedRows.map((request) => {
                     const isExpanded = expandedRequestId === request.id
                     const hasApprovalHistory = request.approvalSteps.some(

@@ -250,7 +250,6 @@ export function UserAccessPage({
   }, [])
 
   const [createUsername, setCreateUsername] = useState("")
-  const [createEmail, setCreateEmail] = useState("")
   const [createPassword, setCreatePassword] = useState("")
   const [createApprover, setCreateApprover] = useState(false)
   const [createCompanyAccesses, setCreateCompanyAccesses] = useState<EditableCompanyAccess[]>(() =>
@@ -263,7 +262,6 @@ export function UserAccessPage({
   )
 
   const [editUsername, setEditUsername] = useState("")
-  const [editEmail, setEditEmail] = useState("")
   const [editPassword, setEditPassword] = useState("")
   const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
@@ -272,7 +270,6 @@ export function UserAccessPage({
   const [systemFirstName, setSystemFirstName] = useState("")
   const [systemLastName, setSystemLastName] = useState("")
   const [systemUsername, setSystemUsername] = useState("")
-  const [systemEmail, setSystemEmail] = useState("")
   const [systemPassword, setSystemPassword] = useState("")
   const [systemRole, setSystemRole] = useState<EditableCompanyAccess["role"]>("EMPLOYEE")
   const [systemApprover, setSystemApprover] = useState(false)
@@ -664,7 +661,6 @@ export function UserAccessPage({
       .replace(/\s+/g, "")
       .replace(/[^a-z0-9._-]/g, "")
     setCreateUsername(nameBase || `user.${row.employeeNumber.toLowerCase()}`)
-    setCreateEmail("")
     setCreatePassword("")
     setCreateApprover(false)
     setCreateCompanyAccesses(buildDefaultCompanyAccesses(companyOptions, companyId))
@@ -690,7 +686,6 @@ export function UserAccessPage({
     setSystemFirstName("")
     setSystemLastName("")
     setSystemUsername("")
-    setSystemEmail("")
     setSystemPassword("")
     setSystemRole("EMPLOYEE")
     setSystemApprover(false)
@@ -701,7 +696,6 @@ export function UserAccessPage({
 
   const openEdit = (row: UserAccessPreviewRow) => {
     setEditUsername(row.linkedUsername ?? "")
-    setEditEmail(row.linkedEmail ?? "")
     setEditPassword("")
     setEditApprover(row.requestApprover)
     setEditIsActive(row.linkedUserActive)
@@ -776,7 +770,6 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: createUsername,
-        email: createEmail,
         password: createPassword,
         companyRole: currentAccess.role,
         isRequestApprover: createApprover,
@@ -869,7 +862,6 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: editUsername,
-        email: editEmail,
         password: editPassword.trim().length > 0 ? editPassword : undefined,
         isActive: editIsActive,
         isRequestApprover: editApprover,
@@ -906,7 +898,6 @@ export function UserAccessPage({
         firstName: systemFirstName,
         lastName: systemLastName,
         username: systemUsername,
-        email: systemEmail,
         password: systemPassword,
         companyRole: systemRole,
         isRequestApprover: systemApprover,
@@ -987,7 +978,7 @@ export function UserAccessPage({
                   <Input
                     value={queryInput}
                     onChange={(event) => setQueryInput(event.target.value)}
-                    placeholder="Search employee, username, email"
+                    placeholder="Search employee or username"
                     className="h-9 pl-9"
                   />
                 </div>
@@ -1048,17 +1039,15 @@ export function UserAccessPage({
           </DialogHeader>
 
           <div className="grid gap-3">
-            <div className="space-y-2">
-              <Label>Username<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={createUsername} onChange={(e) => setCreateUsername(e.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
-              <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} disabled={isPending} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Username<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={createUsername} onChange={(e) => setCreateUsername(e.target.value)} disabled={isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
+                <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} disabled={isPending} />
+              </div>
             </div>
             <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
               <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
@@ -1289,17 +1278,15 @@ export function UserAccessPage({
                 <Input value={systemLastName} onChange={(event) => setSystemLastName(event.target.value)} disabled={isPending} />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Username<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={systemUsername} onChange={(event) => setSystemUsername(event.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={systemEmail} onChange={(event) => setSystemEmail(event.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
-              <Input type="password" value={systemPassword} onChange={(event) => setSystemPassword(event.target.value)} disabled={isPending} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Username<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={systemUsername} onChange={(event) => setSystemUsername(event.target.value)} disabled={isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
+                <Input type="password" value={systemPassword} onChange={(event) => setSystemPassword(event.target.value)} disabled={isPending} />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Company Role<span className="ml-1 text-destructive">*</span></Label>
@@ -1365,12 +1352,6 @@ export function UserAccessPage({
                   <Label className="text-xs">Username<span className="ml-1 text-destructive">*</span></Label>
                   <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} disabled={isPending} placeholder="e.g. john.doe" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Email<span className="ml-1 text-destructive">*</span></Label>
-                  <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} disabled={isPending} placeholder="e.g. john@company.com" />
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs">New Password</Label>
                   <Input

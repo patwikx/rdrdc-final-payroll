@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { RecurringDeductionType, type CompanyRole } from "@prisma/client"
+import { RecurringDeductionType, type CompanyRole, type ContributionType } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { parsePhDateInputToUtcDateOnly } from "@/lib/ph-time"
@@ -9,17 +9,23 @@ import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess } from "@/modules/auth/utils/authorization-policy"
 import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
+import { isPagIbigLikeDeductionType } from "@/modules/payroll/utils/pagibig-mapping-validator"
 import {
   createDeductionTypeInputSchema,
   createRecurringDeductionInputSchema,
+  updateDeductionTypeInputSchema,
   updateRecurringDeductionStatusInputSchema,
   type CreateDeductionTypeInput,
   type CreateRecurringDeductionInput,
+  type UpdateDeductionTypeInput,
   type UpdateRecurringDeductionStatusInput,
 } from "@/modules/payroll/schemas/recurring-deduction-schema"
 
 type ActionResult = { ok: true; message: string } | { ok: false; error: string }
 type CreateDeductionTypeResult =
+  | { ok: true; message: string; deductionTypeId: string }
+  | { ok: false; error: string }
+type UpdateDeductionTypeResult =
   | { ok: true; message: string; deductionTypeId: string }
   | { ok: false; error: string }
 
@@ -55,6 +61,31 @@ const ensurePayrollAccess = async (companyId: string) => {
 
 const revalidateRecurringDeductions = (companyId: string) => {
   revalidatePath(`/${companyId}/payroll/recurring-deductions`)
+}
+
+const normalizeReportingContributionType = (input: {
+  code: string
+  name: string
+  reportingContributionType?: "NONE" | "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX"
+}): { ok: true; value: ContributionType | null } | { ok: false; error: string } => {
+  const explicit = input.reportingContributionType
+  const normalized =
+    explicit === "NONE"
+      ? null
+      : explicit ?? inferReportingContributionType(input.code, input.name)
+
+  if (
+    isPagIbigLikeDeductionType(input.code, input.name) &&
+    normalized !== null &&
+    normalized !== "PAGIBIG"
+  ) {
+    return {
+      ok: false,
+      error: "Pag-IBIG-like deduction types must be mapped to Pag-IBIG Employee Share or None.",
+    }
+  }
+
+  return { ok: true, value: normalized }
 }
 
 export async function createRecurringDeductionAction(input: CreateRecurringDeductionInput): Promise<ActionResult> {
@@ -282,6 +313,15 @@ export async function createDeductionTypeAction(input: CreateDeductionTypeInput)
     return { ok: false, error: "Deduction type code already exists for this company." }
   }
 
+  const mapping = normalizeReportingContributionType({
+    code: payload.code,
+    name: payload.name,
+    reportingContributionType: payload.reportingContributionType,
+  })
+  if (!mapping.ok) {
+    return { ok: false, error: mapping.error }
+  }
+
   try {
     const created = await db.deductionType.create({
       data: {
@@ -292,8 +332,7 @@ export async function createDeductionTypeAction(input: CreateDeductionTypeInput)
         isMandatory: false,
         isPreTax: payload.isPreTax,
         payPeriodApplicability: payload.payPeriodApplicability,
-        reportingContributionType:
-          payload.reportingContributionType ?? inferReportingContributionType(payload.code, payload.name),
+        reportingContributionType: mapping.value,
         percentageBase: "GROSS",
       },
       select: { id: true },
@@ -322,5 +361,106 @@ export async function createDeductionTypeAction(input: CreateDeductionTypeInput)
       error,
     })
     return { ok: false, error: "Failed to create deduction type." }
+  }
+}
+
+export async function updateDeductionTypeAction(input: UpdateDeductionTypeInput): Promise<UpdateDeductionTypeResult> {
+  const parsed = updateDeductionTypeInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid deduction type payload." }
+  }
+
+  const payload = parsed.data
+  const access = await ensurePayrollAccess(payload.companyId)
+  if (!access.ok) return access
+  const { context } = access
+
+  const existing = await db.deductionType.findFirst({
+    where: {
+      id: payload.deductionTypeId,
+      companyId: context.companyId,
+      isMandatory: false,
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      isPreTax: true,
+      payPeriodApplicability: true,
+      reportingContributionType: true,
+    },
+  })
+  if (!existing) {
+    return { ok: false, error: "Deduction type not found or cannot be edited." }
+  }
+
+  const duplicate = await db.deductionType.findFirst({
+    where: {
+      companyId: context.companyId,
+      code: payload.code,
+      id: { not: payload.deductionTypeId },
+    },
+    select: { id: true },
+  })
+  if (duplicate) {
+    return { ok: false, error: "Deduction type code already exists for this company." }
+  }
+
+  const mapping = normalizeReportingContributionType({
+    code: payload.code,
+    name: payload.name,
+    reportingContributionType: payload.reportingContributionType,
+  })
+  if (!mapping.ok) {
+    return { ok: false, error: mapping.error }
+  }
+
+  try {
+    await db.deductionType.update({
+      where: { id: existing.id },
+      data: {
+        code: payload.code,
+        name: payload.name,
+        description: payload.description?.trim() || null,
+        isPreTax: payload.isPreTax,
+        payPeriodApplicability: payload.payPeriodApplicability,
+        reportingContributionType: mapping.value,
+      },
+    })
+
+    await createAuditLog({
+      tableName: "DeductionType",
+      recordId: existing.id,
+      action: "UPDATE",
+      userId: context.userId,
+      reason: "UPDATE_DEDUCTION_TYPE",
+      changes: [
+        { fieldName: "code", oldValue: existing.code, newValue: payload.code },
+        { fieldName: "name", oldValue: existing.name, newValue: payload.name },
+        { fieldName: "isPreTax", oldValue: existing.isPreTax, newValue: payload.isPreTax },
+        {
+          fieldName: "payPeriodApplicability",
+          oldValue: existing.payPeriodApplicability,
+          newValue: payload.payPeriodApplicability,
+        },
+        {
+          fieldName: "reportingContributionType",
+          oldValue: existing.reportingContributionType,
+          newValue: mapping.value,
+        },
+      ],
+    })
+
+    revalidateRecurringDeductions(context.companyId)
+    return { ok: true, message: "Deduction type updated successfully.", deductionTypeId: existing.id }
+  } catch (error) {
+    console.error("[updateDeductionTypeAction] Failed to update deduction type", {
+      companyId: context.companyId,
+      deductionTypeId: existing.id,
+      code: payload.code,
+      error,
+    })
+    return { ok: false, error: "Failed to update deduction type." }
   }
 }

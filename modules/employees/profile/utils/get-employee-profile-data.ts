@@ -242,7 +242,7 @@ export type EmployeeProfileViewModel = {
     taxStatusId: string
 
     contacts: Array<{ type: string; value: string; isPrimary: boolean }>
-    emails: Array<{ type: string; value: string; isPrimary: boolean }>
+    emails: Array<{ type: string; typeCode: string; value: string; isPrimary: boolean }>
     addresses: Array<{ type: string; line: string; isPrimary: boolean }>
     emergencyContacts: Array<{ name: string; relationship: string; mobile: string; email: string; priority: string }>
     dependents: Array<{
@@ -853,7 +853,12 @@ export async function getEmployeeProfileViewModel(companyId: string, employeeId:
       taxStatusId: employee.taxStatusId ?? "",
 
       contacts: employee.contacts.map((contact) => ({ type: humanizeCode(contact.contactTypeId), value: contact.number, isPrimary: contact.isPrimary })),
-      emails: employee.emails.map((email) => ({ type: humanizeCode(email.emailTypeId), value: email.email, isPrimary: email.isPrimary })),
+      emails: employee.emails.map((email) => ({
+        type: humanizeCode(email.emailTypeId),
+        typeCode: email.emailTypeId,
+        value: email.email,
+        isPrimary: email.isPrimary,
+      })),
       addresses: employee.addresses.map((address) => ({
         type: humanizeCode(address.addressTypeId),
         line: [address.street, address.barangay, address.city, address.province, address.postalCode]

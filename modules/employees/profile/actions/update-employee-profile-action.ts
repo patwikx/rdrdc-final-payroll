@@ -539,6 +539,7 @@ export async function updateEmployeeProfileAction(
       })
 
       const personalEmail = payload.personalEmail?.trim()
+      const workEmail = payload.workEmail?.trim()
 
       if (personalEmail && personalEmail.length > 0) {
         if (primaryEmail) {
@@ -553,6 +554,35 @@ export async function updateEmployeeProfileAction(
               emailTypeId: "PERSONAL",
               email: personalEmail,
               isPrimary: true,
+              isActive: true,
+            },
+          })
+        }
+      }
+
+      const primaryWorkEmail = await tx.employeeEmail.findFirst({
+        where: {
+          employeeId: employee.id,
+          emailTypeId: "WORK",
+          isActive: true,
+        },
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        select: { id: true },
+      })
+
+      if (workEmail && workEmail.length > 0) {
+        if (primaryWorkEmail) {
+          await tx.employeeEmail.update({
+            where: { id: primaryWorkEmail.id },
+            data: { email: workEmail },
+          })
+        } else {
+          await tx.employeeEmail.create({
+            data: {
+              employeeId: employee.id,
+              emailTypeId: "WORK",
+              email: workEmail,
+              isPrimary: false,
               isActive: true,
             },
           })

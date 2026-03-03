@@ -8,7 +8,6 @@ import {
   IconChecklist,
   IconChevronLeft,
   IconChevronRight,
-  IconDatabaseImport,
   IconGitPullRequest,
   IconInfoCircle,
   IconPlus,
@@ -347,24 +346,6 @@ export function MaterialRequestApprovalSettingsPage({ data }: MaterialRequestApp
               <Link href={`/${data.companyId}/settings/organization`}>
                 <IconSitemap className="size-4" />
                 Organization Setup
-              </Link>
-            </Button>
-            <Button asChild type="button" variant="ghost" size="sm" className="h-8 px-2">
-              <Link href={`/${data.companyId}/settings/material-requests/legacy-sync`}>
-                <IconDatabaseImport className="size-4" />
-                Legacy Sync
-              </Link>
-            </Button>
-            <Button
-              asChild
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 border-destructive/40 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Link href={`/${data.companyId}/settings/material-requests/legacy-cleanup`}>
-                <IconTrash className="size-4" />
-                Legacy Cleanup
               </Link>
             </Button>
             <Button

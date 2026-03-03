@@ -11,6 +11,7 @@ import {
   PayrollProcessStepName,
   PayrollProcessStepStatus,
   PayrollRunStatus,
+  RecurringDeductionStatus,
   type PayrollRunType,
   RequestStatus,
   TaxTableType,
@@ -39,8 +40,14 @@ import {
   parseThirteenthMonthFormula,
 } from "@/modules/payroll/utils/thirteenth-month-policy"
 import { inferReportingContributionType } from "@/modules/payroll/utils/deduction-reporting"
+import {
+  buildPagIbigMappingIssues,
+  formatPagIbigMappingIssues,
+} from "@/modules/payroll/utils/pagibig-mapping-validator"
 
-type ActionResult = { ok: true; message: string; runId?: string } | { ok: false; error: string }
+type ActionResult =
+  | { ok: true; message: string; runId?: string; warnings?: string[] }
+  | { ok: false; error: string; code?: "PAGIBIG_MAPPING_BLOCK"; errorDetails?: string[] }
 
 const toNumber = (value: Prisma.Decimal | null | undefined): number => {
   if (!value) return 0
@@ -182,6 +189,11 @@ const parseRunFilters = (remarks: string | null): PayrollRunFilters => {
   }
 }
 
+type PagIbigMappingPreflight = {
+  issueCount: number
+  issueMessages: string[]
+}
+
 const parseRunConfig = (
   runTypeCode: PayrollRunType,
   isTrialRun: boolean,
@@ -210,6 +222,24 @@ const parseRunConfig = (
   return {
     isTrialRun: true,
     baseRunType,
+  }
+}
+
+const parseStepPagIbigIssueMessages = (notes: string | null | undefined): string[] => {
+  if (!notes) return []
+
+  try {
+    const parsed = JSON.parse(notes) as {
+      pagIbigMappingDiagnostics?: {
+        issueMessages?: unknown
+      }
+    }
+    const issueMessages = parsed.pagIbigMappingDiagnostics?.issueMessages
+    if (!Array.isArray(issueMessages)) return []
+
+    return issueMessages.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+  } catch {
+    return []
   }
 }
 
@@ -499,6 +529,69 @@ const ensureRunForCompany = async (runId: string, companyId: string) => {
       },
     },
   })
+}
+
+const getPagIbigMappingPreflightForRun = async (
+  run: NonNullable<Awaited<ReturnType<typeof ensureRunForCompany>>>
+): Promise<PagIbigMappingPreflight> => {
+  const filters = parseRunFilters(run.remarks)
+
+  const employeeWhere: Prisma.EmployeeWhereInput = {
+    companyId: run.companyId,
+    isActive: true,
+    deletedAt: null,
+    employeeNumber: { not: "admin" },
+    payPeriodPatternId: run.payPeriod.patternId,
+  }
+
+  if (filters.departmentIds.length > 0) {
+    employeeWhere.departmentId = { in: filters.departmentIds }
+  }
+  if (filters.branchIds.length > 0) {
+    employeeWhere.branchId = { in: filters.branchIds }
+  }
+  if (filters.employeeIds.length > 0) {
+    employeeWhere.id = { in: filters.employeeIds }
+  }
+
+  const recurringCandidates = await db.recurringDeduction.findMany({
+    where: {
+      statusCode: RecurringDeductionStatus.ACTIVE,
+      effectiveFrom: { lte: run.payPeriod.cutoffEndDate },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gte: run.payPeriod.cutoffStartDate } }],
+      employee: employeeWhere,
+      deductionType: {
+        isActive: true,
+        OR: [{ companyId: run.companyId }, { companyId: null }],
+      },
+    },
+    select: {
+      deductionTypeId: true,
+      employeeId: true,
+      deductionType: {
+        select: {
+          code: true,
+          name: true,
+          reportingContributionType: true,
+        },
+      },
+    },
+  })
+
+  const issues = buildPagIbigMappingIssues(
+    recurringCandidates.map((candidate) => ({
+      deductionTypeId: candidate.deductionTypeId,
+      employeeId: candidate.employeeId,
+      deductionTypeCode: candidate.deductionType.code,
+      deductionTypeName: candidate.deductionType.name,
+      reportingContributionType: candidate.deductionType.reportingContributionType,
+    }))
+  )
+
+  return {
+    issueCount: issues.length,
+    issueMessages: formatPagIbigMappingIssues(issues, { maxItems: 6 }),
+  }
 }
 
 const getNextRunNumber = async (companyId: string): Promise<string> => {
@@ -933,6 +1026,32 @@ export async function proceedToCalculatePayrollRunAction(input: PayrollRunAction
   }
 }
 
+export async function getPagIbigMappingPreflightAction(
+  input: PayrollRunActionInput
+): Promise<{ ok: true; issueCount: number; warnings: string[] } | { ok: false; error: string }> {
+  const parsed = payrollRunActionInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid payload." }
+  }
+
+  const payload = parsed.data
+  const access = await ensurePayrollAccess(payload.companyId)
+  if (!access.ok) return access
+  const { context } = access
+
+  const run = await ensureRunForCompany(payload.runId, context.companyId)
+  if (!run) {
+    return { ok: false, error: "Payroll run not found." }
+  }
+
+  const preflight = await getPagIbigMappingPreflightForRun(run)
+  return {
+    ok: true,
+    issueCount: preflight.issueCount,
+    warnings: preflight.issueMessages,
+  }
+}
+
 export async function calculatePayrollRunAction(input: PayrollRunActionInput): Promise<ActionResult> {
   const parsed = payrollRunActionInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: "Invalid payload." }
@@ -947,6 +1066,7 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
 
   const step2 = run.processSteps.find((step) => step.stepNumber === 2)
   if (!step2?.isCompleted) return { ok: false, error: "Payroll run must pass validation before calculation." }
+  const pagIbigMappingPreflight = await getPagIbigMappingPreflightForRun(run)
 
   const filters = parseRunFilters(run.remarks)
   const runConfig = parseRunConfig(run.runTypeCode, run.isTrialRun, run.remarks)
@@ -2442,6 +2562,10 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
             processedEmployeeCount,
             skippedEmployeeCount,
             statutoryDiagnostics,
+            pagIbigMappingDiagnostics: {
+              issueCount: pagIbigMappingPreflight.issueCount,
+              issueMessages: pagIbigMappingPreflight.issueMessages,
+            },
             employeeSummaries,
             employeeCalculationTraces,
           }),
@@ -2473,6 +2597,14 @@ export async function calculatePayrollRunAction(input: PayrollRunActionInput): P
     })
 
     writeRunRevalidation(context.companyId, run.id)
+    if (pagIbigMappingPreflight.issueCount > 0) {
+      return {
+        ok: true,
+        message: `Payroll calculation completed with ${pagIbigMappingPreflight.issueCount} Pag-IBIG mapping warning(s).`,
+        warnings: pagIbigMappingPreflight.issueMessages,
+      }
+    }
+
     return { ok: true, message: "Payroll calculation completed." }
   } catch (error) {
     await db.$transaction(async (tx) => {
@@ -2831,6 +2963,27 @@ export async function closePayrollRunAction(input: PayrollRunActionInput): Promi
   const step5 = run.processSteps.find((step) => step.stepNumber === 5)
   if (!step5?.isCompleted) {
     return { ok: false, error: "Generate payslips step must be completed before closing run." }
+  }
+
+  const step3 = run.processSteps.find((step) => step.stepNumber === 3)
+  const step3IssueMessages = parseStepPagIbigIssueMessages(step3?.notes)
+  if (step3IssueMessages.length > 0) {
+    return {
+      ok: false,
+      code: "PAGIBIG_MAPPING_BLOCK",
+      error: "Close run blocked: Pag-IBIG mapping warnings were detected during calculation. Fix mapping and recalculate before closing.",
+      errorDetails: step3IssueMessages,
+    }
+  }
+
+  const pagIbigMappingPreflight = await getPagIbigMappingPreflightForRun(run)
+  if (pagIbigMappingPreflight.issueCount > 0) {
+    return {
+      ok: false,
+      code: "PAGIBIG_MAPPING_BLOCK",
+      error: "Close run blocked: active recurring deductions have Pag-IBIG mapping issues.",
+      errorDetails: pagIbigMappingPreflight.issueMessages,
+    }
   }
 
   try {

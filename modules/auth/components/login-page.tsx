@@ -296,7 +296,7 @@ export function LoginPage() {
             {/* Identifier field */}
             <motion.div className="space-y-2" variants={formItemVariants}>
               <Label htmlFor="identifier" className="text-xs font-medium">
-                Employee ID or Work email
+                Employee ID
               </Label>
               <InputGroup className="h-9">
                 <InputGroupAddon align="inline-start">

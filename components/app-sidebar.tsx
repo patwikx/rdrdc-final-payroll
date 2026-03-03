@@ -21,7 +21,6 @@ import {
   IconSettings,
   IconShieldCheck,
   IconSwitchHorizontal,
-  IconTrash,
   IconUserCheck,
   IconUserPlus,
   IconUsers,
@@ -139,14 +138,6 @@ const subItemIconMap: Record<string, ReactNode> = {
   "settings-statutory": <IconScale className="size-3.5" />,
   "settings-material-requests": <IconChecklist className="size-3.5" />,
   "settings-audit-logs": <IconFileText className="size-3.5" />,
-  "settings-legacy-employee-sync": <IconClipboardList className="size-3.5" />,
-  "settings-legacy-leave-ot-sync": <IconClipboardList className="size-3.5" />,
-  "settings-legacy-material-requests-sync": <IconClipboardList className="size-3.5" />,
-  "settings-legacy-material-requests-cleanup": <IconTrash className="size-3.5" />,
-}
-
-const isLegacySyncItemId = (itemId: string): boolean => {
-  return itemId.startsWith("settings-legacy-")
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -310,15 +301,6 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
           <SidebarGroupLabel>Modules</SidebarGroupLabel>
           <SidebarMenu>
             {navItems.map((item) => {
-              const legacySyncItems =
-                item.id === "system-settings"
-                  ? item.items.filter((sub) => isLegacySyncItemId(sub.id))
-                  : []
-              const primaryItems =
-                item.id === "system-settings"
-                  ? item.items.filter((sub) => !isLegacySyncItemId(sub.id))
-                  : item.items
-
               return (
                 <Collapsible
                   key={item.title}
@@ -344,7 +326,7 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
                     {openSection === item.title ? (
                       <CollapsibleContent forceMount>
                         <SidebarMenuSub>
-                          {primaryItems.map((sub) => (
+                          {item.items.map((sub) => (
                             <SidebarMenuSubItem key={sub.id}>
                               <SidebarMenuSubButton
                                 asChild
@@ -363,32 +345,6 @@ export function AppSidebar({ companies, activeCompanyId, className }: AppSidebar
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                           ))}
-                          {legacySyncItems.length > 0 ? (
-                            <>
-                              <SidebarMenuSubItem className="mt-2 px-2 text-[10px] font-medium uppercase tracking-[0.08em] text-sidebar-foreground/60">
-                                Legacy Tools
-                              </SidebarMenuSubItem>
-                              {legacySyncItems.map((sub) => (
-                                <SidebarMenuSubItem key={sub.id}>
-                                  <SidebarMenuSubButton
-                                    asChild
-                                    isActive={sub.isActive}
-                                  >
-                                    <Link
-                                      href={sub.url}
-                                      prefetch={false}
-                                      onMouseEnter={() => prefetchRoute(sub.url)}
-                                      onFocus={() => prefetchRoute(sub.url)}
-                                      onTouchStart={() => prefetchRoute(sub.url)}
-                                    >
-                                      {sub.icon}
-                                      <span>{sub.title}</span>
-                                    </Link>
-                                  </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                              ))}
-                            </>
-                          ) : null}
                         </SidebarMenuSub>
                       </CollapsibleContent>
                     ) : null}

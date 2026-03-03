@@ -10,7 +10,6 @@ import {
   IconEdit,
   IconKey,
   IconLink,
-  IconMail,
   IconPackage,
   IconPlus,
   IconShieldCheck,
@@ -168,7 +167,6 @@ export function UserAccessWorkspace({
                         {row.hasLinkedUser ? (
                           <div>
                             <p className="font-medium text-foreground">{row.linkedUsername}</p>
-                            <p className="text-[11px] text-muted-foreground">{row.linkedEmail}</p>
                           </div>
                         ) : (
                           <span className="text-muted-foreground">No linked account</span>
@@ -247,11 +245,10 @@ export function UserAccessWorkspace({
       {activeTab === "accounts" ? (
         <>
           <div className="overflow-x-auto">
-            <Table className="min-w-[980px] text-xs">
+            <Table className="min-w-[860px] text-xs">
               <TableHeader className="bg-muted/30">
                 <TableRow>
                   <TableHead><span className="inline-flex items-center gap-1.5"><IconUser className="size-3.5" />Account</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1.5"><IconMail className="size-3.5" />Email</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1.5"><IconShieldCheck className="size-3.5" />Role</span></TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead><span className="inline-flex items-center gap-1.5"><IconUserCheck className="size-3.5" />Approver</span></TableHead>
@@ -262,7 +259,7 @@ export function UserAccessWorkspace({
               <TableBody>
                 {systemUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
                       No system accounts found.
                     </TableCell>
                   </TableRow>
@@ -273,7 +270,6 @@ export function UserAccessWorkspace({
                         <p className="font-medium text-foreground">{user.displayName}</p>
                         <p className="text-[11px] text-muted-foreground">{user.username}</p>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
                       <TableCell><Badge variant="secondary">{user.companyRole}</Badge></TableCell>
                       <TableCell>
                         <Badge variant={user.isActive ? "default" : "destructive"}>

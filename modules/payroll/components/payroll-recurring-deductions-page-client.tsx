@@ -36,7 +36,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -51,12 +50,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { parsePhDateInputToPhDate, toPhDateInputValue } from "@/lib/ph-time"
 import { cn } from "@/lib/utils"
 import {
   createDeductionTypeAction,
   createRecurringDeductionAction,
+  updateDeductionTypeAction,
   updateRecurringDeductionStatusAction,
 } from "@/modules/payroll/actions/recurring-deduction-actions"
 
@@ -86,7 +88,16 @@ type RecurringDeductionsPageClientProps = {
   companyId: string
   companyName: string
   employees: Array<{ id: string; label: string }>
-  deductionTypes: Array<{ id: string; code: string; name: string }>
+  deductionTypes: Array<{
+    id: string
+    code: string
+    name: string
+    description: string | null
+    isPreTax: boolean
+    payPeriodApplicability: "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF"
+    reportingContributionType: "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX" | null
+    isCompanyOwned: boolean
+  }>
   records: RecurringDeductionRecord[]
   filters: {
     query: string
@@ -148,6 +159,15 @@ const getDefaultRecurringDeductionForm = (): RecurringDeductionForm => ({
   remarks: "",
 })
 
+const getDefaultDeductionTypeForm = (): DeductionTypeForm => ({
+  code: "",
+  name: "",
+  description: "",
+  isPreTax: true,
+  payPeriodApplicability: "EVERY_PAYROLL",
+  reportingContributionType: "NONE",
+})
+
 const statusBadgeClass = (status: RecurringDeductionStatus): string => {
   if (status === RecurringDeductionStatus.ACTIVE) return "bg-green-600 text-white hover:bg-green-600"
   if (status === RecurringDeductionStatus.CANCELLED) return "bg-red-600 text-white hover:bg-red-600"
@@ -178,14 +198,9 @@ export function PayrollRecurringDeductionsPageClient({
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
 
   const [deductionTypeDialogOpen, setDeductionTypeDialogOpen] = useState(false)
-  const [deductionTypeForm, setDeductionTypeForm] = useState<DeductionTypeForm>({
-    code: "",
-    name: "",
-    description: "",
-    isPreTax: true,
-    payPeriodApplicability: "EVERY_PAYROLL",
-    reportingContributionType: "NONE",
-  })
+  const [deductionTypeForm, setDeductionTypeForm] = useState<DeductionTypeForm>(getDefaultDeductionTypeForm())
+  const [selectedDeductionTypeId, setSelectedDeductionTypeId] = useState<string | null>(null)
+  const [deductionTypeSearch, setDeductionTypeSearch] = useState("")
 
   useEffect(() => {
     setQueryInput(filters.query)
@@ -200,12 +215,26 @@ export function PayrollRecurringDeductionsPageClient({
   }, [deductionTypes])
 
   useEffect(() => {
+    if (!selectedDeductionTypeId) return
+    if (deductionTypeOptions.some((entry) => entry.id === selectedDeductionTypeId)) return
+    setSelectedDeductionTypeId(null)
+    setDeductionTypeForm(getDefaultDeductionTypeForm())
+  }, [deductionTypeOptions, selectedDeductionTypeId])
+
+  useEffect(() => {
     if (!selectedRecordId) return
     if (optimisticRecords.some((record) => record.id === selectedRecordId)) return
 
     setSelectedRecordId(null)
     setForm(getDefaultRecurringDeductionForm())
   }, [optimisticRecords, selectedRecordId])
+
+  useEffect(() => {
+    if (deductionTypeDialogOpen) return
+    setDeductionTypeSearch("")
+    setSelectedDeductionTypeId(null)
+    setDeductionTypeForm(getDefaultDeductionTypeForm())
+  }, [deductionTypeDialogOpen])
 
   const updateRoute = useCallback(
     (updates: { q?: string; status?: RecurringDeductionStatus | "ALL"; page?: number }) => {
@@ -268,6 +297,18 @@ export function PayrollRecurringDeductionsPageClient({
     }
     return ""
   }, [employees, form.employeeId, selectedRecord])
+  const companyOwnedDeductionTypes = useMemo(
+    () => deductionTypeOptions.filter((entry) => entry.isCompanyOwned),
+    [deductionTypeOptions]
+  )
+  const filteredCompanyOwnedDeductionTypes = useMemo(() => {
+    const needle = deductionTypeSearch.trim().toLowerCase()
+    if (!needle) return companyOwnedDeductionTypes
+    return companyOwnedDeductionTypes.filter((entry) => {
+      const haystack = `${entry.code} ${entry.name}`.toLowerCase()
+      return haystack.includes(needle)
+    })
+  }, [companyOwnedDeductionTypes, deductionTypeSearch])
 
   const handleCreateNew = () => {
     setSelectedRecordId(null)
@@ -298,23 +339,46 @@ export function PayrollRecurringDeductionsPageClient({
     setForm((prev) => ({ ...prev, deductionTypeId: value }))
   }
 
-  const handleCreateDeductionType = () => {
+  const handleDeductionTypeRowSelect = (deductionTypeId: string) => {
+    const selectedType = deductionTypeOptions.find((entry) => entry.id === deductionTypeId)
+    if (!selectedType || !selectedType.isCompanyOwned) return
+
+    setSelectedDeductionTypeId(selectedType.id)
+    setDeductionTypeForm({
+      code: selectedType.code,
+      name: selectedType.name,
+      description: selectedType.description ?? "",
+      isPreTax: selectedType.isPreTax,
+      payPeriodApplicability: selectedType.payPeriodApplicability,
+      reportingContributionType: selectedType.reportingContributionType ?? "NONE",
+    })
+  }
+
+  const handleResetDeductionTypeForm = () => {
+    setSelectedDeductionTypeId(null)
+    setDeductionTypeForm(getDefaultDeductionTypeForm())
+  }
+
+  const handleSaveDeductionType = () => {
     const code = deductionTypeForm.code.trim().toUpperCase()
     const name = deductionTypeForm.name.trim()
 
     startTransition(async () => {
-      const result = await createDeductionTypeAction({
+      const payload = {
         companyId,
         code,
         name,
         description: deductionTypeForm.description || undefined,
         isPreTax: deductionTypeForm.isPreTax,
         payPeriodApplicability: deductionTypeForm.payPeriodApplicability,
-        reportingContributionType:
-          deductionTypeForm.reportingContributionType === "NONE"
-            ? undefined
-            : deductionTypeForm.reportingContributionType,
-      })
+        reportingContributionType: deductionTypeForm.reportingContributionType,
+      }
+      const result = selectedDeductionTypeId
+        ? await updateDeductionTypeAction({
+            ...payload,
+            deductionTypeId: selectedDeductionTypeId,
+          })
+        : await createDeductionTypeAction(payload)
 
       if (!result.ok) {
         toast.error(result.error)
@@ -322,20 +386,40 @@ export function PayrollRecurringDeductionsPageClient({
       }
 
       toast.success(result.message)
-      setDeductionTypeDialogOpen(false)
-      setDeductionTypeForm({
-        code: "",
-        name: "",
-        description: "",
-        isPreTax: true,
-        payPeriodApplicability: "EVERY_PAYROLL",
-        reportingContributionType: "NONE",
-      })
+
       setDeductionTypeOptions((prev) => {
-        if (prev.some((entry) => entry.id === result.deductionTypeId)) return prev
-        return [...prev, { id: result.deductionTypeId, code, name }].sort((a, b) => a.code.localeCompare(b.code))
+        const baseRecord = {
+          id: result.deductionTypeId,
+          code,
+          name,
+          description: deductionTypeForm.description || null,
+          isPreTax: deductionTypeForm.isPreTax,
+          payPeriodApplicability: deductionTypeForm.payPeriodApplicability,
+          reportingContributionType:
+            deductionTypeForm.reportingContributionType === "NONE"
+              ? null
+              : deductionTypeForm.reportingContributionType,
+          isCompanyOwned: true,
+        } as const
+
+        if (!prev.some((entry) => entry.id === result.deductionTypeId)) {
+          return [...prev, baseRecord].sort((a, b) => a.code.localeCompare(b.code))
+        }
+
+        return prev
+          .map((entry) =>
+            entry.id === result.deductionTypeId
+              ? {
+                  ...entry,
+                  ...baseRecord,
+                }
+              : entry
+          )
+          .sort((a, b) => a.code.localeCompare(b.code))
       })
       setForm((prev) => ({ ...prev, deductionTypeId: result.deductionTypeId }))
+      setSelectedDeductionTypeId(result.deductionTypeId)
+      router.refresh()
     })
   }
 
@@ -860,143 +944,240 @@ export function PayrollRecurringDeductionsPageClient({
       </section>
 
       <Dialog open={deductionTypeDialogOpen} onOpenChange={setDeductionTypeDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-[960px]">
           <DialogHeader>
-            <DialogTitle>Create Deduction Type</DialogTitle>
-            <DialogDescription>Add a reusable deduction type for recurring deductions.</DialogDescription>
+            <DialogTitle>Manage Deduction Types</DialogTitle>
+            <DialogDescription>
+              Create or update reusable deduction types. Select a row on the left to edit.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 py-2">
-            <div className="space-y-1.5">
-              <Label>
-                Code <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={deductionTypeForm.code}
-                onChange={(event) =>
-                  setDeductionTypeForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))
-                }
-                placeholder="e.g. HMO_CONTRIB"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>
-                Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={deductionTypeForm.name}
-                onChange={(event) =>
-                  setDeductionTypeForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                placeholder="e.g. HMO Contribution"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Input
-                value={deductionTypeForm.description}
-                onChange={(event) =>
-                  setDeductionTypeForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-                placeholder="Optional"
-              />
-            </div>
-            <div className="space-y-3 border border-border/60 bg-muted/10 px-3 py-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <div className="flex h-5 items-center">
-                    <Label>Payroll Timing</Label>
-                  </div>
-                  <Select
-                    value={deductionTypeForm.payPeriodApplicability}
-                    onValueChange={(value) =>
-                      setDeductionTypeForm((prev) => ({
-                        ...prev,
-                        payPeriodApplicability: value as "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF",
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue placeholder="Select payroll timing" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="EVERY_PAYROLL">Every Payroll</SelectItem>
-                      <SelectItem value="FIRST_HALF">First Half</SelectItem>
-                      <SelectItem value="SECOND_HALF">Second Half</SelectItem>
-                    </SelectContent>
-                  </Select>
+          <div className="grid gap-4 overflow-hidden py-2 md:grid-cols-2">
+            <section className="flex flex-col gap-3 overflow-hidden border border-border/60 bg-muted/10 p-2.5 md:min-w-0 md:h-[430px]">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Company Deduction Types
+                  </p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex text-muted-foreground hover:text-foreground">
+                        <IconInfoCircle className="size-3.5" aria-hidden />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={6} className="max-w-xs text-xs leading-relaxed">
+                      Click a row to edit. Shared/global deduction types are not editable here.
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex h-5 items-center gap-1.5">
-                    <Label>Report Mapping</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex text-muted-foreground hover:text-foreground">
-                          <IconInfoCircle className="size-3.5" aria-hidden />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" sideOffset={6} className="max-w-xs text-xs leading-relaxed">
-                        Controls which statutory report totals include this deduction type. For additional Pag-IBIG
-                        recurring deductions, choose Pag-IBIG Employee Share.
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Select
-                    value={deductionTypeForm.reportingContributionType}
-                    onValueChange={(value) =>
-                      setDeductionTypeForm((prev) => ({
-                        ...prev,
-                        reportingContributionType: value as "NONE" | "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX",
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue placeholder="Select report mapping" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">None (Not included in statutory reports)</SelectItem>
-                      <SelectItem value="SSS">SSS Employee Share</SelectItem>
-                      <SelectItem value="PHILHEALTH">PhilHealth Employee Share</SelectItem>
-                      <SelectItem value="PAGIBIG">Pag-IBIG Employee Share</SelectItem>
-                      <SelectItem value="TAX">Withholding Tax (BIR)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                  {filteredCompanyOwnedDeductionTypes.length}
+                </Badge>
+              </div>
+              <Input
+                value={deductionTypeSearch}
+                onChange={(event) => setDeductionTypeSearch(event.target.value)}
+                placeholder="Search code or name"
+                className="h-8 text-xs"
+              />
+              <div className="min-h-[300px] max-h-[340px] overflow-auto border border-border/60 bg-background md:flex-1 md:max-h-none">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-8 w-10 text-[11px]">Select</TableHead>
+                      <TableHead className="h-8 text-[11px]">Code</TableHead>
+                      <TableHead className="h-8 text-[11px]">Name</TableHead>
+                      <TableHead className="h-8 text-[11px]">Mapping</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCompanyOwnedDeductionTypes.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-16 text-center text-xs text-muted-foreground">
+                          No deduction types found.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredCompanyOwnedDeductionTypes.map((type) => (
+                        <TableRow
+                          key={type.id}
+                          className={cn(
+                            "cursor-pointer",
+                            selectedDeductionTypeId === type.id ? "bg-primary/10 hover:bg-primary/10" : ""
+                          )}
+                          onClick={() => handleDeductionTypeRowSelect(type.id)}
+                        >
+                          <TableCell className="w-10">
+                            <div className="flex items-center justify-center" onClick={(event) => event.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedDeductionTypeId === type.id}
+                                onCheckedChange={(checked) => {
+                                  if (checked === true) {
+                                    handleDeductionTypeRowSelect(type.id)
+                                    return
+                                  }
+                                  handleResetDeductionTypeForm()
+                                }}
+                                aria-label={`Select ${type.code} for editing`}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs font-medium">{type.code}</TableCell>
+                          <TableCell className="text-xs">{type.name}</TableCell>
+                          <TableCell className="text-xs">{type.reportingContributionType ?? "NONE"}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </section>
+
+            <section className="border border-border/60 bg-muted/10 p-2.5 md:min-w-0 md:h-[430px]">
+              <div className="flex h-full flex-col gap-3 overflow-hidden">
+                <div className="space-y-3 overflow-y-auto pr-1">
+              <div className="space-y-1.5">
+                <Label>
+                  Code <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={deductionTypeForm.code}
+                  onChange={(event) =>
+                    setDeductionTypeForm((prev) => ({ ...prev, code: event.target.value.toUpperCase() }))
+                  }
+                  placeholder="e.g. HMO_CONTRIB"
+                />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="deduction-type-pretax">Pre-tax Deduction</Label>
-                <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
-                  <span className="text-sm text-muted-foreground">Enabled</span>
-                  <Checkbox
-                    id="deduction-type-pretax"
-                    checked={deductionTypeForm.isPreTax}
-                    onCheckedChange={(checked) =>
-                      setDeductionTypeForm((prev) => ({ ...prev, isPreTax: checked === true }))
-                    }
-                  />
+                <Label>
+                  Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={deductionTypeForm.name}
+                  onChange={(event) =>
+                    setDeductionTypeForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="e.g. HMO Contribution"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Description</Label>
+                <Textarea
+                  value={deductionTypeForm.description}
+                  onChange={(event) =>
+                    setDeductionTypeForm((prev) => ({ ...prev, description: event.target.value }))
+                  }
+                  placeholder="Optional"
+                  className="h-20 resize-none"
+                />
+              </div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <div className="flex h-5 items-center">
+                      <Label>Payroll Timing</Label>
+                    </div>
+                    <Select
+                      value={deductionTypeForm.payPeriodApplicability}
+                      onValueChange={(value) =>
+                        setDeductionTypeForm((prev) => ({
+                          ...prev,
+                          payPeriodApplicability: value as "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF",
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue placeholder="Select payroll timing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EVERY_PAYROLL">Every Payroll</SelectItem>
+                        <SelectItem value="FIRST_HALF">First Half</SelectItem>
+                        <SelectItem value="SECOND_HALF">Second Half</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex h-5 items-center gap-1.5">
+                      <Label>Report Mapping</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex text-muted-foreground hover:text-foreground">
+                            <IconInfoCircle className="size-3.5" aria-hidden />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6} className="max-w-xs text-xs leading-relaxed">
+                          Controls which statutory report totals include this deduction type. For additional Pag-IBIG
+                          recurring deductions, choose Pag-IBIG Employee Share.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Select
+                      value={deductionTypeForm.reportingContributionType}
+                      onValueChange={(value) =>
+                        setDeductionTypeForm((prev) => ({
+                          ...prev,
+                          reportingContributionType: value as "NONE" | "SSS" | "PHILHEALTH" | "PAGIBIG" | "TAX",
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue placeholder="Select report mapping" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">None (Not included in statutory reports)</SelectItem>
+                        <SelectItem value="SSS">SSS Employee Share</SelectItem>
+                        <SelectItem value="PHILHEALTH">PhilHealth Employee Share</SelectItem>
+                        <SelectItem value="PAGIBIG">Pag-IBIG Employee Share</SelectItem>
+                        <SelectItem value="TAX">Withholding Tax (BIR)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="deduction-type-pretax">Pre-tax Deduction</Label>
+                  <div className="flex h-9 items-center justify-between border border-input bg-background px-3">
+                    <span className="text-sm text-muted-foreground">Enabled</span>
+                    <Checkbox
+                      id="deduction-type-pretax"
+                      checked={deductionTypeForm.isPreTax}
+                      onCheckedChange={(checked) =>
+                        setDeductionTypeForm((prev) => ({ ...prev, isPreTax: checked === true }))
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+                </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDeductionTypeDialogOpen(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="bg-blue-600 text-white hover:bg-blue-700"
-              onClick={handleCreateDeductionType}
-              disabled={isPending}
-            >
-              Create Deduction Type
-            </Button>
-          </DialogFooter>
+                <div className="mt-auto flex flex-wrap items-center justify-end gap-2 border-t border-border/60 pt-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleResetDeductionTypeForm}
+                    disabled={isPending}
+                  >
+                    New Type
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDeductionTypeDialogOpen(false)}
+                    disabled={isPending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={handleSaveDeductionType}
+                    disabled={isPending}
+                  >
+                    {isPending ? "Saving..." : selectedDeductionTypeId ? "Update Deduction Type" : "Create Deduction Type"}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          </div>
         </DialogContent>
       </Dialog>
     </main>

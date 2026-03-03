@@ -449,18 +449,68 @@ export function LeaveApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <div className="relative col-span-3 sm:w-[360px]">
-              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
-              <Input
-                placeholder="Search employee/request..."
-                value={queueSearch}
-                onChange={(event) => {
-                  scheduleQueueSearch(event.target.value)
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:contents">
+              <div className="relative w-full sm:w-[360px]">
+                <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
+                <Input
+                  placeholder="Search employee/request..."
+                  value={queueSearch}
+                  onChange={(event) => {
+                    scheduleQueueSearch(event.target.value)
+                  }}
+                  className="w-full rounded-lg pl-8 !text-xs/relaxed placeholder:text-xs/relaxed"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="rounded-lg sm:hidden"
+                onClick={() => {
+                  setQueueSearch("")
+                  setQueueStatus("ALL")
+                  setQueueCompanyId("ALL")
+                  setQueueDepartmentId("ALL")
+                  clearQueueSearchTimer()
+                  loadQueuePage({
+                    page: 1,
+                    search: "",
+                    status: "ALL",
+                    companyId: "ALL",
+                    departmentId: "ALL",
+                  })
                 }}
-                className="rounded-lg pl-8"
-              />
+                disabled={!hasActiveQueueFilters}
+                aria-label="Clear queue filters"
+              >
+                <IconFilterOff className="h-4 w-4" />
+              </Button>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="hidden rounded-lg text-xs sm:inline-flex sm:w-auto sm:text-sm"
+              onClick={() => {
+                setQueueSearch("")
+                setQueueStatus("ALL")
+                setQueueCompanyId("ALL")
+                setQueueDepartmentId("ALL")
+                clearQueueSearchTimer()
+                loadQueuePage({
+                  page: 1,
+                  search: "",
+                  status: "ALL",
+                  companyId: "ALL",
+                  departmentId: "ALL",
+                })
+              }}
+              disabled={!hasActiveQueueFilters}
+              aria-label="Clear queue filters"
+            >
+              <IconFilterOff className="h-4 w-4" />
+              <span>Clear</span>
+            </Button>
             <Select
               value={queueStatus}
               onValueChange={(value) => {
@@ -476,7 +526,7 @@ export function LeaveApprovalClient({
                 })
               }}
             >
-              <SelectTrigger className="w-full rounded-lg sm:w-[180px]">
+              <SelectTrigger className="w-full rounded-lg !text-xs/relaxed sm:w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent className="rounded-lg">
@@ -500,7 +550,7 @@ export function LeaveApprovalClient({
                 })
               }}
             >
-              <SelectTrigger className="w-full rounded-lg sm:w-[200px]">
+              <SelectTrigger className="w-full rounded-lg !text-xs/relaxed sm:w-[200px]">
                 <SelectValue placeholder="Company" />
               </SelectTrigger>
               <SelectContent className="rounded-lg">
@@ -526,7 +576,7 @@ export function LeaveApprovalClient({
                 })
               }}
             >
-              <SelectTrigger className="w-full rounded-lg sm:w-[220px]">
+              <SelectTrigger className="w-full rounded-lg !text-xs/relaxed sm:w-[220px]">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
               <SelectContent className="rounded-lg">
@@ -539,31 +589,8 @@ export function LeaveApprovalClient({
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full rounded-lg text-xs sm:w-auto sm:text-sm"
-              onClick={() => {
-                setQueueSearch("")
-                setQueueStatus("ALL")
-                setQueueCompanyId("ALL")
-                setQueueDepartmentId("ALL")
-                clearQueueSearchTimer()
-                loadQueuePage({
-                  page: 1,
-                  search: "",
-                  status: "ALL",
-                  companyId: "ALL",
-                  departmentId: "ALL",
-                })
-              }}
-              disabled={!hasActiveQueueFilters}
-            >
-              <IconFilterOff className="h-4 w-4" />
-              <span>Clear</span>
-            </Button>
             {view === "queue" ? (
-              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg sm:ml-auto sm:w-auto">
+              <Button asChild variant="outline" className="col-span-1 w-full rounded-lg sm:ml-auto sm:w-auto">
                 <Link href={`/${companyId}/employee-portal/approval-history`}>
                   View Approval History
                 </Link>
@@ -598,12 +625,11 @@ export function LeaveApprovalClient({
               <>
                 <div className="space-y-2 lg:hidden">
                   {queueRowsState.map((row) => (
-                        <div key={row.id} className="rounded-xl border border-border/60 bg-background p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[10px] uppercase tracking-wide text-foreground/60">Request</p>
-                              <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
-                            </div>
+	                        <div key={row.id} className="rounded-xl border border-border bg-background p-3">
+	                          <div className="flex items-start justify-between gap-3">
+	                            <div className="min-w-0">
+	                              <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
+	                            </div>
                             <Badge variant={row.statusCode === "PENDING" ? "secondary" : "default"} className="shrink-0 rounded-full text-[10px]">
                               {toLabel(row.statusCode)}
                             </Badge>
@@ -795,8 +821,8 @@ export function LeaveApprovalClient({
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-7 sm:gap-3">
-            <div className="relative col-span-3 sm:col-span-1">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-7 sm:gap-3">
+            <div className="relative col-span-1 sm:col-span-1">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/70" />
               <Input
                 placeholder="Search employee/request..."
@@ -804,9 +830,40 @@ export function LeaveApprovalClient({
                 onChange={(event) => {
                   scheduleHistorySearch(event.target.value)
                 }}
-                className="rounded-lg pl-8"
+                className="rounded-lg pl-8 !text-xs/relaxed placeholder:text-xs/relaxed"
               />
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="col-span-1 justify-self-end rounded-lg sm:w-auto sm:px-3"
+              onClick={() => {
+                setHistorySearch("")
+                setHistoryStatus("ALL")
+                setHistoryCompanyId("ALL")
+                setHistoryDepartmentId("ALL")
+                setHistoryFromDate("")
+                setHistoryToDate("")
+                setExpandedHistoryRequestId(null)
+                clearHistorySearchTimer()
+                loadHistoryPage({
+                  page: 1,
+                  pageSize: historyItemsPerPage,
+                  search: "",
+                  status: "ALL",
+                  companyId: "ALL",
+                  departmentId: "ALL",
+                  fromDate: "",
+                  toDate: "",
+                })
+              }}
+              disabled={!hasActiveHistoryFilters}
+              aria-label="Clear history filters"
+            >
+              <IconFilterOff className="h-4 w-4" />
+              <span className="sr-only sm:not-sr-only sm:ml-2">Clear Filters</span>
+            </Button>
             <div className="col-span-1">
               <Select
                 value={historyStatus}
@@ -827,7 +884,7 @@ export function LeaveApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg">
+                <SelectTrigger className="w-full rounded-lg !text-xs/relaxed">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -858,7 +915,7 @@ export function LeaveApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg">
+                <SelectTrigger className="w-full rounded-lg !text-xs/relaxed">
                   <SelectValue placeholder="Company" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -890,7 +947,7 @@ export function LeaveApprovalClient({
                   })
                 }}
               >
-                <SelectTrigger className="w-full rounded-lg">
+                <SelectTrigger className="w-full rounded-lg !text-xs/relaxed">
                   <SelectValue placeholder="Department" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -904,37 +961,7 @@ export function LeaveApprovalClient({
                 </SelectContent>
               </Select>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="col-span-1 w-full rounded-lg text-xs sm:text-sm"
-              onClick={() => {
-                setHistorySearch("")
-                setHistoryStatus("ALL")
-                setHistoryCompanyId("ALL")
-                setHistoryDepartmentId("ALL")
-                setHistoryFromDate("")
-                setHistoryToDate("")
-                setExpandedHistoryRequestId(null)
-                clearHistorySearchTimer()
-                loadHistoryPage({
-                  page: 1,
-                  pageSize: historyItemsPerPage,
-                  search: "",
-                  status: "ALL",
-                  companyId: "ALL",
-                  departmentId: "ALL",
-                  fromDate: "",
-                  toDate: "",
-                })
-              }}
-              disabled={!hasActiveHistoryFilters}
-            >
-              <IconFilterOff className="h-4 w-4" />
-              <span className="sm:hidden">Clear</span>
-              <span className="hidden sm:inline">Clear Filters</span>
-            </Button>
-            <div className="col-span-3 sm:col-span-1">
+            <div className="col-span-1 sm:col-span-1">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyFromDate && "text-foreground/70")}>
@@ -971,7 +998,7 @@ export function LeaveApprovalClient({
                 </PopoverContent>
               </Popover>
             </div>
-            <div className="col-span-3 sm:col-span-1">
+            <div className="col-span-1 sm:col-span-1">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={cn("w-full justify-start rounded-lg text-left", !historyToDate && "text-foreground/70")}>
@@ -1038,18 +1065,17 @@ export function LeaveApprovalClient({
                 {historyRowsState.map((row) => {
                   const isExpanded = expandedHistoryRequestId === row.id
                   return (
-                    <div key={`history-mobile-${row.id}`} className={cn("rounded-xl border border-border/60 bg-background transition-colors", isExpanded && "border-primary/40 bg-primary/10")}>
+                    <div key={`history-mobile-${row.id}`} className={cn("rounded-xl border border-border bg-background transition-colors", isExpanded && "border-primary/40 bg-primary/10")}>
                       <button
                         type="button"
                         className="w-full p-3 text-left"
                         onClick={() => setExpandedHistoryRequestId((current) => (current === row.id ? null : row.id))}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[11px] text-foreground/70">Request #</p>
-                            <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
-                            <p className="truncate text-xs text-foreground/70">
-                              {row.employeeName} • {row.leaveTypeName}
+	                      >
+	                        <div className="flex items-start justify-between gap-3">
+	                          <div className="min-w-0 flex-1">
+	                            <p className="truncate whitespace-nowrap text-sm font-medium text-foreground">{row.requestNumber}</p>
+	                            <p className="truncate text-xs text-foreground/70">
+	                              {row.employeeName} • {row.leaveTypeName}
                             </p>
                             <p className="mt-1 text-[11px] text-foreground/70">Decided: {row.decidedAtLabel}</p>
                           </div>
@@ -1287,33 +1313,33 @@ export function LeaveApprovalClient({
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="space-y-2">
-              <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
-                      <AvatarImage src={selected?.employeePhotoUrl ?? undefined} alt={selected?.employeeName ?? "Employee"} className="!rounded-md object-cover" />
-                      <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                        {getNameInitials(selected?.employeeName ?? "")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{selected?.employeeName ?? "-"}</p>
-                      <p className="truncate text-xs text-foreground/70">
-                        {selected?.employeeNumber ?? "-"} • {selected?.departmentName ?? "-"}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-foreground/70">Request {selected?.requestNumber ?? "-"}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1 sm:justify-end">
-                    {selected ? (
-                      <Badge variant={selected.statusCode === "REJECTED" ? "destructive" : "secondary"} className="rounded-full text-[10px]">
-                        {toLabel(selected.statusCode)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
+	            <div className="space-y-2">
+	              <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
+	                <div className="space-y-2">
+	                  <div className="flex items-start justify-between gap-2">
+	                    <p className="min-w-0 flex-1 truncate text-xs text-foreground/70">{selected?.requestNumber ?? "-"}</p>
+	                    {selected ? (
+	                      <Badge variant={selected.statusCode === "REJECTED" ? "destructive" : "secondary"} className="shrink-0 rounded-full text-[10px]">
+	                        {toLabel(selected.statusCode)}
+	                      </Badge>
+	                    ) : null}
+	                  </div>
+	                  <div className="flex min-w-0 items-start gap-3">
+	                    <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+	                      <AvatarImage src={selected?.employeePhotoUrl ?? undefined} alt={selected?.employeeName ?? "Employee"} className="!rounded-md object-cover" />
+	                      <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+	                        {getNameInitials(selected?.employeeName ?? "")}
+	                      </AvatarFallback>
+	                    </Avatar>
+	                    <div className="min-w-0 flex-1">
+	                      <p className="truncate text-sm font-medium text-foreground">{selected?.employeeName ?? "-"}</p>
+	                      <p className="truncate text-xs text-foreground/70">
+	                        {selected?.employeeNumber ?? "-"} • {selected?.departmentName ?? "-"}
+	                      </p>
+	                    </div>
+	                  </div>
+	                </div>
+	              </div>
 
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-muted/20 p-2.5 sm:grid-cols-3">
                 <div>

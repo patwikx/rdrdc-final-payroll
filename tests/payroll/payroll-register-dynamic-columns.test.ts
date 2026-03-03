@@ -64,11 +64,12 @@ test("buildPayrollRegisterReportData creates dynamic earning/deduction columns a
   assert.deepEqual(
     report.columns.map((column) => `${column.category}:${column.code}`),
     [
-      "EARNING:ADJ_MANUAL_ADJUSTMENT",
       "EARNING:ALLOWANCE",
+      "EARNING:MANUAL_ADJUSTMENT",
       "EARNING:OVERTIME",
       "DEDUCTION:CASH_ADVANCE",
       "DEDUCTION:OTHER_MISC",
+      "DEDUCTION:SSS_LOAN",
     ]
   )
 
@@ -77,19 +78,23 @@ test("buildPayrollRegisterReportData creates dynamic earning/deduction columns a
   assert.equal(finance?.employees.length, 2)
 
   const jane = finance?.employees.find((row) => row.employeeNumber === "E-001")
-  assert.equal(jane?.sssLoan, 100)
   assert.equal(jane?.late, 30)
   assert.equal(jane?.undertime, 20)
   assert.equal(jane?.dynamicEarningsTotal, 1050)
-  assert.equal(jane?.dynamicDeductionsTotal, 120)
+  assert.equal(jane?.dynamicDeductionsTotal, 1470)
+  assert.equal(jane?.dynamicAmountsByKey["EARNING:MANUAL_ADJUSTMENT"], 50)
   assert.equal(jane?.dynamicAmountsByKey["EARNING:ALLOWANCE"], 750)
   assert.equal(jane?.dynamicAmountsByKey["DEDUCTION:CASH_ADVANCE"], 80)
   assert.equal(jane?.dynamicAmountsByKey["DEDUCTION:OTHER_MISC"], 40)
+  assert.equal(jane?.dynamicAmountsByKey["DEDUCTION:SSS_LOAN"], 100)
 
   assert.equal(report.grandTotal.dynamicEarningsTotal, 1350)
-  assert.equal(report.grandTotal.dynamicDeductionsTotal, 140)
+  assert.equal(report.grandTotal.dynamicDeductionsTotal, 2570)
+  assert.equal(report.grandTotal.late, 30)
+  assert.equal(report.grandTotal.undertime, 20)
   assert.equal(report.grandTotal.dynamicAmountsByKey["DEDUCTION:CASH_ADVANCE"], 100)
   assert.equal(report.grandTotal.dynamicAmountsByKey["DEDUCTION:OTHER_MISC"], 40)
+  assert.equal(report.grandTotal.dynamicAmountsByKey["DEDUCTION:SSS_LOAN"], 100)
 })
 
 test("buildPayrollRegisterCsv exposes dynamic headers and removes OTH column", () => {
@@ -123,14 +128,86 @@ test("buildPayrollRegisterCsv exposes dynamic headers and removes OTH column", (
 
   const [header] = csv.split("\n")
   assert.ok(header.includes("+ ALLOWANCE"))
-  assert.ok(header.includes("+ Special Bonus"))
+  assert.ok(header.includes("+ SPECIAL_BONUS"))
   assert.ok(header.includes("- CASH_ADVANCE"))
-  assert.ok(header.includes("- Tax Correction"))
+  assert.ok(header.includes("- TAX_CORRECTION"))
+  assert.ok(!header.includes("+ ADJUSTMENT"))
+  assert.ok(!header.includes("- ADJUSTMENT"))
   assert.ok(header.includes("+ EARN TOTAL"))
   assert.ok(header.includes("- DED TOTAL"))
+  assert.ok(header.indexOf("+ EARN TOTAL") > header.indexOf("- CASH_ADVANCE"))
+  assert.ok(header.indexOf("GROSS") > header.indexOf("+ EARN TOTAL"))
+  assert.ok(header.indexOf("- DED TOTAL") > header.indexOf("GROSS"))
   assert.ok(!header.includes(",OTH,"))
-  assert.ok(!header.includes("E_ADJUSTMENT"))
-  assert.ok(!header.includes("D_ADJUSTMENT"))
-  assert.ok(!header.includes("E_ALLOWANCE"))
-  assert.ok(!header.includes("D_CASH_ADVANCE"))
+})
+
+test("buildPayrollRegisterReportData keeps HDMF separate from Pag-IBIG additional deductions", () => {
+  const report = buildPayrollRegisterReportData({
+    rows: [
+      {
+        employeeNumber: "E-100",
+        employeeName: "Cruz, Ana",
+        departmentName: "HR",
+        periodStart: new Date("2026-02-01T00:00:00.000Z"),
+        periodEnd: new Date("2026-02-15T00:00:00.000Z"),
+        basicPay: 12000,
+        grossPay: 12000,
+        sss: 0,
+        philHealth: 0,
+        pagIbig: 200,
+        tax: 0,
+        netPay: 11800,
+        earnings: [{ code: "BASIC_PAY", name: "Basic Pay", description: "Basic Pay", amount: 12000 }],
+        deductions: [
+          {
+            code: "PAGIBIG_ADDITIONAL",
+            name: "Pag-IBIG Additional Contribution",
+            description: "Pag-IBIG Additional Contribution",
+            amount: 50,
+          },
+        ],
+      },
+    ],
+  })
+
+  const row = report.departments[0]?.employees[0]
+  assert.ok(report.columns.some((column) => column.key === "DEDUCTION:PAGIBIG_ADDITIONAL"))
+  assert.equal(row?.pagIbig, 200)
+  assert.equal(row?.dynamicAmountsByKey["DEDUCTION:PAGIBIG_ADDITIONAL"], 50)
+  assert.equal(row?.dynamicDeductionsTotal, 250)
+})
+
+test("buildPayrollRegisterReportData creates separate adjustment columns from description code prefixes", () => {
+  const report = buildPayrollRegisterReportData({
+    rows: [
+      {
+        employeeNumber: "E-200",
+        employeeName: "Lopez, Marco",
+        departmentName: "Accounting",
+        periodStart: new Date("2026-02-01T00:00:00.000Z"),
+        periodEnd: new Date("2026-02-15T00:00:00.000Z"),
+        basicPay: 15000,
+        grossPay: 15200,
+        sss: 500,
+        philHealth: 200,
+        pagIbig: 100,
+        tax: 450,
+        netPay: 14250,
+        earnings: [
+          { code: "BASIC_PAY", name: "Basic Pay", description: "Basic Pay", amount: 15000 },
+          { code: "ADJUSTMENT", name: "Manual Adjustment", description: "CA - Rice", amount: 200 },
+        ],
+        deductions: [
+          { code: "ADJUSTMENT", name: "Manual Adjustment", description: "CP - Car Plan", amount: 150 },
+        ],
+      },
+    ],
+  })
+
+  assert.ok(report.columns.some((column) => column.key === "EARNING:CA"))
+  assert.ok(report.columns.some((column) => column.key === "DEDUCTION:CP"))
+
+  const row = report.departments[0]?.employees[0]
+  assert.equal(row?.dynamicAmountsByKey["EARNING:CA"], 200)
+  assert.equal(row?.dynamicAmountsByKey["DEDUCTION:CP"], 150)
 })

@@ -20,10 +20,6 @@ export default async function EditMaterialRequestPage({ params }: EditMaterialRe
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
-    redirect(`/${context.companyId}/dashboard`)
-  }
-
   const [requests, formOptions, requestNumberPreviewBySeries] = await Promise.all([
     getEmployeePortalMaterialRequestsReadModel({
       companyId: context.companyId,

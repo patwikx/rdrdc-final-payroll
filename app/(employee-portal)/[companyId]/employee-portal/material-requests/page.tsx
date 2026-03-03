@@ -16,10 +16,6 @@ export default async function MaterialRequestsPage({ params }: MaterialRequestsP
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
-    redirect(`/${context.companyId}/dashboard`)
-  }
-
   const requests = await getEmployeePortalMaterialRequestsReadModel({
     companyId: context.companyId,
     userId: context.userId,

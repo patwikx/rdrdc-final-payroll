@@ -19,10 +19,6 @@ export default async function NewMaterialRequestPage({ params }: NewMaterialRequ
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
-    redirect(`/${context.companyId}/dashboard`)
-  }
-
   const [formOptions, requestNumberPreviewBySeries] = await Promise.all([
     getEmployeePortalMaterialRequestFormOptions({
       companyId: context.companyId,

@@ -177,7 +177,6 @@ export async function getUserAccessPreviewData(
             { department: { is: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
             { position: { is: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
             { user: { is: { username: { contains: normalizedQuery, mode: "insensitive" as const } } } },
-            { user: { is: { email: { contains: normalizedQuery, mode: "insensitive" as const } } } },
           ],
         }
       : {}),
@@ -192,7 +191,6 @@ export async function getUserAccessPreviewData(
       ? {
           OR: [
             { user: { username: { contains: normalizedQuery, mode: "insensitive" as const } } },
-            { user: { email: { contains: normalizedQuery, mode: "insensitive" as const } } },
             { user: { firstName: { contains: normalizedQuery, mode: "insensitive" as const } } },
             { user: { lastName: { contains: normalizedQuery, mode: "insensitive" as const } } },
             { user: { employee: { is: { employeeNumber: { contains: normalizedQuery, mode: "insensitive" as const } } } } },

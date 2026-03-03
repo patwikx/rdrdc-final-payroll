@@ -111,6 +111,7 @@ type EmployeeProfileDraft = {
   weightKg: string
   mobileNumber: string
   personalEmail: string
+  workEmail: string
   biometricId: string
   rfidNumber: string
   numberOfDependents: string
@@ -777,6 +778,7 @@ export function EmployeeProfilePage({ data }: EmployeeProfilePageProps) {
         contractEndDate: draft.contractEndDate,
         mobileNumber: draft.mobileNumber,
         personalEmail: draft.personalEmail,
+        workEmail: draft.workEmail,
         biometricId: draft.biometricId,
         rfidNumber: draft.rfidNumber,
         numberOfDependents,
@@ -1239,6 +1241,19 @@ function OverviewTab({
   onDeactivate: () => void
   onTerminate: () => void
 }) {
+  const primaryMobile =
+    employee.contacts.find((row) => row.isPrimary)?.value
+    ?? employee.contacts[0]?.value
+    ?? "-"
+  const primaryPersonalEmail =
+    employee.emails.find((row) => row.typeCode === "PERSONAL" && row.isPrimary)?.value
+    ?? employee.emails.find((row) => row.typeCode === "PERSONAL")?.value
+    ?? "-"
+  const primaryWorkEmail =
+    employee.emails.find((row) => row.typeCode === "WORK" && row.isPrimary)?.value
+    ?? employee.emails.find((row) => row.typeCode === "WORK")?.value
+    ?? "-"
+
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -1276,14 +1291,29 @@ function OverviewTab({
       </FieldGrid>
 
       <SectionHeader title="Contact Channels" number="02" icon={IconUsers} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2">
-          {isEditing ? <Field label="Primary Mobile" value={employee.contacts.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.mobileNumber} onInputChange={(value) => setDraft((prev) => ({ ...prev, mobileNumber: value }))} /> : employee.contacts.length === 0 ? <Empty /> : employee.contacts.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
-        </div>
-        <div className="space-y-2">
-          {isEditing ? <Field label="Primary Personal Email" value={employee.emails.find((row) => row.isPrimary)?.value ?? "-"} editable inputValue={draft.personalEmail} onInputChange={(value) => setDraft((prev) => ({ ...prev, personalEmail: value }))} /> : employee.emails.length === 0 ? <Empty /> : employee.emails.map((row) => <RowCard key={`${row.type}-${row.value}`} title={row.value} subtitle={row.type} meta={row.isPrimary ? "Primary" : "Secondary"} />)}
-        </div>
-      </div>
+      <FieldGrid className="md:grid-cols-3">
+        <Field
+          label="Primary Mobile"
+          value={primaryMobile}
+          editable={isEditing}
+          inputValue={draft.mobileNumber}
+          onInputChange={(value) => setDraft((prev) => ({ ...prev, mobileNumber: value }))}
+        />
+        <Field
+          label="Primary Personal Email"
+          value={primaryPersonalEmail}
+          editable={isEditing}
+          inputValue={draft.personalEmail}
+          onInputChange={(value) => setDraft((prev) => ({ ...prev, personalEmail: value }))}
+        />
+        <Field
+          label="Work Email"
+          value={primaryWorkEmail}
+          editable={isEditing}
+          inputValue={draft.workEmail}
+          onInputChange={(value) => setDraft((prev) => ({ ...prev, workEmail: value }))}
+        />
+      </FieldGrid>
 
       <SectionHeader title="Addresses" number="03" icon={IconCalendar} />
       <div className="space-y-2">
@@ -2124,7 +2154,14 @@ function Empty({ message = "No records found." }: { message?: string }) {
 
 function buildInitialDraft(employee: EmployeeProfileViewModel["employee"]): EmployeeProfileDraft {
   const primaryMobile = employee.contacts.find((item) => item.isPrimary)?.value ?? ""
-  const primaryEmail = employee.emails.find((item) => item.isPrimary)?.value ?? ""
+  const primaryPersonalEmail =
+    employee.emails.find((item) => item.typeCode === "PERSONAL" && item.isPrimary)?.value
+    ?? employee.emails.find((item) => item.typeCode === "PERSONAL")?.value
+    ?? ""
+  const primaryWorkEmail =
+    employee.emails.find((item) => item.typeCode === "WORK" && item.isPrimary)?.value
+    ?? employee.emails.find((item) => item.typeCode === "WORK")?.value
+    ?? ""
 
   return {
     firstName: employee.firstName === "-" ? "" : employee.firstName,
@@ -2144,7 +2181,8 @@ function buildInitialDraft(employee: EmployeeProfileViewModel["employee"]): Empl
     heightCm: employee.heightCm === "-" ? "" : employee.heightCm,
     weightKg: employee.weightKg === "-" ? "" : employee.weightKg,
     mobileNumber: primaryMobile === "-" ? "" : primaryMobile,
-    personalEmail: primaryEmail === "-" ? "" : primaryEmail,
+    personalEmail: primaryPersonalEmail === "-" ? "" : primaryPersonalEmail,
+    workEmail: primaryWorkEmail === "-" ? "" : primaryWorkEmail,
     biometricId: employee.biometricId === "-" ? "" : employee.biometricId,
     rfidNumber: employee.rfidNumber === "-" ? "" : employee.rfidNumber,
     numberOfDependents: employee.dependentsCount === "-" ? "0" : employee.dependentsCount,

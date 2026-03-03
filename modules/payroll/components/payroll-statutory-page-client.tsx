@@ -89,6 +89,9 @@ type StatutoryMonthlyRow = {
   sssEmployer: string
   philHealthEmployee: string
   philHealthEmployer: string
+  pagIbigMandatoryEmployee: string
+  pagIbigAdditionalEmployee: string
+  pagIbigTotalEmployee: string
   pagIbigEmployee: string
   pagIbigEmployer: string
   withholdingTax: string
@@ -98,10 +101,14 @@ type StatutoryBirRow = {
   employeeId: string
   employeeName: string
   employeeNumber: string
+  birthDate: string | null
   tinNumber: string | null
   year: number
   sssEmployee: string
   philHealthEmployee: string
+  pagIbigMandatoryEmployee: string
+  pagIbigAdditionalEmployee: string
+  pagIbigTotalEmployee: string
   pagIbigEmployee: string
   grossCompensation: string
   nonTaxableBenefits: string
@@ -115,6 +122,7 @@ type StatutoryDoleRow = {
   employeeId: string
   employeeName: string
   employeeNumber: string
+  birthDate: string | null
   year: number
   annualBasicSalary: string
   thirteenthMonthPay: string
@@ -167,17 +175,16 @@ const birthDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "Asia/Manila",
 })
 
-const toPhMonthKey = (value: Date): string => {
-  const parts = new Intl.DateTimeFormat("en-PH", {
-    year: "numeric",
-    month: "2-digit",
+const MONTH_OPTIONS: Array<{ value: string; label: string }> = Array.from({ length: 12 }, (_, index) => {
+  const month = index + 1
+  const value = String(month).padStart(2, "0")
+  const label = new Date(Date.UTC(2000, index, 1)).toLocaleDateString("en-PH", {
+    month: "long",
     timeZone: "Asia/Manila",
-  }).formatToParts(value)
+  })
 
-  const year = parts.find((part) => part.type === "year")?.value ?? String(getPhYear())
-  const month = parts.find((part) => part.type === "month")?.value ?? "01"
-  return `${year}-${month}`
-}
+  return { value, label }
+})
 
 const extractNameParts = (fullName: string): { surname: string; firstName: string; middleName: string } => {
   const [surnamePart, firstPartRaw] = fullName.split(",")
@@ -247,7 +254,7 @@ export function PayrollStatutoryPageClient({
   const sourceBirRows = showTrialRuns ? trialBirRows : birRows
   const sourceDoleRows = showTrialRuns ? trialDoleRows : doleRows
 
-  const monthOptions = useMemo(() => {
+  const yearOptions = useMemo(() => {
     const yearSet = new Set<number>()
     for (const row of sourceRows) {
       const date = new Date(row.cutoffEndDateIso)
@@ -259,35 +266,23 @@ export function PayrollStatutoryPageClient({
 
     yearSet.add(getPhYear())
 
-    const sortedYears = Array.from(yearSet).sort((a, b) => a - b)
-    const options: Array<{ key: string; date: Date; label: string }> = []
-
-    for (const year of sortedYears) {
-      for (let month = 0; month <= 11; month += 1) {
-        const date = new Date(Date.UTC(year, month, 1))
-        const key = `${year}-${String(month + 1).padStart(2, "0")}`
-        options.push({
-          key,
-          date,
-          label: date.toLocaleDateString("en-PH", {
-            month: "long",
-            year: "numeric",
-            timeZone: "Asia/Manila",
-          }),
-        })
-      }
-    }
-
-    return options
+    return Array.from(yearSet).sort((a, b) => a - b).map((year) => String(year))
   }, [sourceRows])
 
-  const [selectedMonthKey, setSelectedMonthKey] = useState<string>("")
-  const currentMonthKey = useMemo(() => toPhMonthKey(new Date()), [])
-  const resolvedMonthKey = monthOptions.some((option) => option.key === selectedMonthKey)
-    ? selectedMonthKey
-    : monthOptions.some((option) => option.key === currentMonthKey)
-      ? currentMonthKey
-      : (monthOptions[0]?.key ?? "")
+  const [selectedMonth, setSelectedMonth] = useState<string>("")
+  const [selectedYear, setSelectedYear] = useState<string>("")
+  const currentPhDate = useMemo(() => toPhDateOnlyUtc(), [])
+  const currentMonth = String(currentPhDate.getUTCMonth() + 1).padStart(2, "0")
+  const currentYear = String(currentPhDate.getUTCFullYear())
+  const resolvedMonth = MONTH_OPTIONS.some((option) => option.value === selectedMonth)
+    ? selectedMonth
+    : currentMonth
+  const resolvedYear = yearOptions.includes(selectedYear)
+    ? selectedYear
+    : yearOptions.includes(currentYear)
+      ? currentYear
+      : (yearOptions[0] ?? currentYear)
+  const resolvedMonthKey = `${resolvedYear}-${resolvedMonth}`
 
   const filteredOptions = useMemo(() => {
     const normalized = searchText.trim().toLowerCase()
@@ -325,7 +320,7 @@ export function PayrollStatutoryPageClient({
     : (filteredRegisterRuns[0]?.runId ?? "")
   const selectedRegisterRun = filteredRegisterRuns.find((row) => row.runId === resolvedRegisterRunId) ?? null
 
-  const selectedMonthDate = monthOptions.find((option) => option.key === resolvedMonthKey)?.date ?? toPhDateOnlyUtc()
+  const selectedMonthDate = new Date(Date.UTC(Number(resolvedYear), Number(resolvedMonth) - 1, 1))
 
   const scopedRows = useMemo(() => {
     if (!resolvedMonthKey) {
@@ -340,6 +335,9 @@ export function PayrollStatutoryPageClient({
 
     for (const row of scopedRows) {
       const key = row.employeeId || row.employeeNumber || row.payslipId
+      const nameParts = extractNameParts(row.employeeName)
+      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+      const birthDate = parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime()) ? parsedBirthDate : null
       const pin = (row.philHealthPin ?? "").replace(/\D/g, "")
       const employeeShare = parseAmount(row.philHealthEmployee)
       const employerShare = parseAmount(row.philHealthEmployer)
@@ -347,8 +345,11 @@ export function PayrollStatutoryPageClient({
 
       if (!existing) {
         map.set(key, {
-          idNumber: row.employeeNumber,
-          employeeName: row.employeeName,
+          employeeId: row.employeeNumber,
+          surname: nameParts.surname,
+          firstName: nameParts.firstName,
+          middleName: nameParts.middleName,
+          birthDate,
           pin,
           employeeShare,
           employerShare,
@@ -361,9 +362,27 @@ export function PayrollStatutoryPageClient({
       if (!existing.pin && pin) {
         existing.pin = pin
       }
+      if (!existing.surname && nameParts.surname) {
+        existing.surname = nameParts.surname
+      }
+      if (!existing.firstName && nameParts.firstName) {
+        existing.firstName = nameParts.firstName
+      }
+      if (!existing.middleName && nameParts.middleName) {
+        existing.middleName = nameParts.middleName
+      }
+      if (!existing.birthDate && birthDate) {
+        existing.birthDate = birthDate
+      }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+    return Array.from(map.values()).sort((a, b) => {
+      const surnameCompare = a.surname.localeCompare(b.surname)
+      if (surnameCompare !== 0) {
+        return surnameCompare
+      }
+      return a.firstName.localeCompare(b.firstName)
+    })
   }, [scopedRows])
 
   const sssRows = useMemo<SssRemittanceRow[]>(() => {
@@ -371,6 +390,9 @@ export function PayrollStatutoryPageClient({
 
     for (const row of scopedRows) {
       const key = row.employeeId || row.employeeNumber || row.payslipId
+      const nameParts = extractNameParts(row.employeeName)
+      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+      const birthDate = parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime()) ? parsedBirthDate : null
       const sssNumber = row.sssNumber ?? ""
       const employeeShare = parseAmount(row.sssEmployee)
       const employerShare = parseAmount(row.sssEmployer)
@@ -378,8 +400,11 @@ export function PayrollStatutoryPageClient({
 
       if (!existing) {
         map.set(key, {
-          idNumber: row.employeeNumber,
-          employeeName: row.employeeName,
+          employeeId: row.employeeNumber,
+          surname: nameParts.surname,
+          firstName: nameParts.firstName,
+          middleName: nameParts.middleName,
+          birthDate,
           sssNumber,
           employeeShare,
           employerShare,
@@ -392,9 +417,27 @@ export function PayrollStatutoryPageClient({
       if (!existing.sssNumber && sssNumber) {
         existing.sssNumber = sssNumber
       }
+      if (!existing.surname && nameParts.surname) {
+        existing.surname = nameParts.surname
+      }
+      if (!existing.firstName && nameParts.firstName) {
+        existing.firstName = nameParts.firstName
+      }
+      if (!existing.middleName && nameParts.middleName) {
+        existing.middleName = nameParts.middleName
+      }
+      if (!existing.birthDate && birthDate) {
+        existing.birthDate = birthDate
+      }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+    return Array.from(map.values()).sort((a, b) => {
+      const surnameCompare = a.surname.localeCompare(b.surname)
+      if (surnameCompare !== 0) {
+        return surnameCompare
+      }
+      return a.firstName.localeCompare(b.firstName)
+    })
   }, [scopedRows])
 
   const pagIbigRows = useMemo<PagIbigContributionRow[]>(() => {
@@ -409,7 +452,9 @@ export function PayrollStatutoryPageClient({
           ? parsedBirthDate
           : new Date("2000-01-01")
       const pagIbigNumber = row.pagIbigNumber ?? ""
-      const employeeShare = parseAmount(row.pagIbigEmployee)
+      const mandatoryEmployeeShare = parseAmount(row.pagIbigMandatoryEmployee)
+      const additionalEmployeeShare = parseAmount(row.pagIbigAdditionalEmployee)
+      const totalEmployeeShare = parseAmount(row.pagIbigTotalEmployee)
       const employerShare = parseAmount(row.pagIbigEmployer)
       const existing = map.get(key)
 
@@ -421,13 +466,17 @@ export function PayrollStatutoryPageClient({
           middleName: nameParts.middleName,
           birthDate,
           pagIbigNumber,
-          employeeShare,
+          mandatoryEmployeeShare,
+          additionalEmployeeShare,
+          totalEmployeeShare,
           employerShare,
         })
         continue
       }
 
-      existing.employeeShare += employeeShare
+      existing.mandatoryEmployeeShare = (existing.mandatoryEmployeeShare ?? 0) + mandatoryEmployeeShare
+      existing.additionalEmployeeShare = (existing.additionalEmployeeShare ?? 0) + additionalEmployeeShare
+      existing.totalEmployeeShare = (existing.totalEmployeeShare ?? 0) + totalEmployeeShare
       existing.employerShare += employerShare
       if (!existing.pagIbigNumber && pagIbigNumber) {
         existing.pagIbigNumber = pagIbigNumber
@@ -460,12 +509,21 @@ export function PayrollStatutoryPageClient({
     const targetYear = selectedYearPrefix ? Number(selectedYearPrefix) : undefined
     const scoped = targetYear ? sourceDoleRows.filter((row) => row.year === targetYear) : sourceDoleRows
 
-    return scoped.map((row) => ({
-      employeeId: row.employeeNumber,
-      employeeName: row.employeeName,
-      annualBasicSalary: parseAmount(row.annualBasicSalary),
-      thirteenthMonthPay: parseAmount(row.thirteenthMonthPay),
-    }))
+    return scoped.map((row) => {
+      const nameParts = extractNameParts(row.employeeName)
+      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+      const birthDate = parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime()) ? parsedBirthDate : null
+
+      return {
+        employeeId: row.employeeNumber,
+        surname: nameParts.surname,
+        firstName: nameParts.firstName,
+        middleName: nameParts.middleName,
+        birthDate,
+        annualBasicSalary: parseAmount(row.annualBasicSalary),
+        thirteenthMonthPay: parseAmount(row.thirteenthMonthPay),
+      }
+    })
   }, [sourceDoleRows, selectedYearPrefix])
 
   const monthlyBirWtaxRows = useMemo(() => {
@@ -473,7 +531,10 @@ export function PayrollStatutoryPageClient({
       string,
       {
         employeeId: string
-        employeeName: string
+        surname: string
+        firstName: string
+        middleName: string
+        birthDate: Date | null
         tinNumber: string
         grossCompensation: number
         withholdingTax: number
@@ -482,6 +543,9 @@ export function PayrollStatutoryPageClient({
 
     for (const row of scopedRows) {
       const key = row.employeeId || row.employeeNumber || row.payslipId
+      const nameParts = extractNameParts(row.employeeName)
+      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+      const birthDate = parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime()) ? parsedBirthDate : null
       const grossPay = parseAmount(row.grossPay)
       const withholdingTax = parseAmount(row.withholdingTax)
       const existing = map.get(key)
@@ -489,7 +553,10 @@ export function PayrollStatutoryPageClient({
       if (!existing) {
         map.set(key, {
           employeeId: row.employeeNumber,
-          employeeName: row.employeeName,
+          surname: nameParts.surname,
+          firstName: nameParts.firstName,
+          middleName: nameParts.middleName,
+          birthDate,
           tinNumber: row.tinNumber ?? "",
           grossCompensation: grossPay,
           withholdingTax,
@@ -502,9 +569,27 @@ export function PayrollStatutoryPageClient({
       if (!existing.tinNumber && row.tinNumber) {
         existing.tinNumber = row.tinNumber
       }
+      if (!existing.surname && nameParts.surname) {
+        existing.surname = nameParts.surname
+      }
+      if (!existing.firstName && nameParts.firstName) {
+        existing.firstName = nameParts.firstName
+      }
+      if (!existing.middleName && nameParts.middleName) {
+        existing.middleName = nameParts.middleName
+      }
+      if (!existing.birthDate && birthDate) {
+        existing.birthDate = birthDate
+      }
     }
 
-    return Array.from(map.values()).sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+    return Array.from(map.values()).sort((a, b) => {
+      const surnameCompare = a.surname.localeCompare(b.surname)
+      if (surnameCompare !== 0) {
+        return surnameCompare
+      }
+      return a.firstName.localeCompare(b.firstName)
+    })
   }, [scopedRows])
 
   const exportCsvTemplate = (report: ReportKey) => {
@@ -524,12 +609,25 @@ export function PayrollStatutoryPageClient({
         ["PHILHEALTH REMMITTANCE"],
         [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
         [],
-        ["ID #", "EMPLOYEE'S NAME", "PIN", "EMPLOYEE SHARE", "EMPLOYER SHARE", "TOTALS"],
+        [
+          "EMPLOYEE ID",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
+          "BIRTHDATE",
+          "PHILHEALTH ID",
+          "EMPLOYEE SHARE",
+          "EMPLOYER SHARE",
+          "TOTAL",
+        ],
         ...philHealthRows.map((row) => {
           const rowTotal = row.employeeShare + row.employerShare
           return [
-            row.idNumber,
-            row.employeeName,
+            row.employeeId,
+            row.surname.toUpperCase(),
+            row.firstName.toUpperCase(),
+            row.middleName.toUpperCase(),
+            row.birthDate ? birthDateFormatter.format(row.birthDate) : "",
             row.pin,
             numberFormatter.format(row.employeeShare),
             numberFormatter.format(row.employerShare),
@@ -538,6 +636,9 @@ export function PayrollStatutoryPageClient({
         }),
         [
           "TOTAL",
+          "",
+          "",
+          "",
           "",
           "",
           numberFormatter.format(totals.ee),
@@ -554,11 +655,13 @@ export function PayrollStatutoryPageClient({
     if (report === "pagibig") {
       const totals = pagIbigRows.reduce(
         (acc, row) => {
-          acc.ee += row.employeeShare
+          acc.mandatoryEe += row.mandatoryEmployeeShare ?? 0
+          acc.additionalEe += row.additionalEmployeeShare ?? 0
+          acc.totalEe += row.totalEmployeeShare ?? 0
           acc.er += row.employerShare
           return acc
         },
-        { ee: 0, er: 0 }
+        { mandatoryEe: 0, additionalEe: 0, totalEe: 0, er: 0 }
       )
 
       const monthLabel = monthYearFormatter.format(reportMonth)
@@ -574,12 +677,17 @@ export function PayrollStatutoryPageClient({
           "MIDDLE NAME",
           "BIRTHDATE",
           "PAG-IBIG #",
-          "PAG-IBIG EE",
+          "PAG-IBIG EE (MANDATORY)",
+          "PAG-IBIG EE (ADDITIONAL)",
+          "PAG-IBIG EE (TOTAL)",
           "PAG-IBIG ER",
           "TOTAL",
         ],
         ...pagIbigRows.map((row) => {
-          const rowTotal = row.employeeShare + row.employerShare
+          const mandatoryEmployeeShare = row.mandatoryEmployeeShare ?? 0
+          const additionalEmployeeShare = row.additionalEmployeeShare ?? 0
+          const totalEmployeeShare = row.totalEmployeeShare ?? 0
+          const rowTotal = totalEmployeeShare + row.employerShare
           return [
             row.employeeId,
             row.surname.toUpperCase(),
@@ -587,7 +695,9 @@ export function PayrollStatutoryPageClient({
             row.middleName.toUpperCase(),
             birthDateFormatter.format(row.birthDate),
             row.pagIbigNumber,
-            numberFormatter.format(row.employeeShare),
+            numberFormatter.format(mandatoryEmployeeShare),
+            numberFormatter.format(additionalEmployeeShare),
+            numberFormatter.format(totalEmployeeShare),
             numberFormatter.format(row.employerShare),
             numberFormatter.format(rowTotal),
           ]
@@ -599,9 +709,11 @@ export function PayrollStatutoryPageClient({
           "",
           "",
           `HEAD COUNT (${pagIbigRows.length})`,
-          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.mandatoryEe),
+          numberFormatter.format(totals.additionalEe),
+          numberFormatter.format(totals.totalEe),
           numberFormatter.format(totals.er),
-          numberFormatter.format(totals.ee + totals.er),
+          numberFormatter.format(totals.totalEe + totals.er),
         ],
         [
           "GRAND TOTAL",
@@ -610,9 +722,11 @@ export function PayrollStatutoryPageClient({
           "",
           "",
           "",
-          numberFormatter.format(totals.ee),
+          numberFormatter.format(totals.mandatoryEe),
+          numberFormatter.format(totals.additionalEe),
+          numberFormatter.format(totals.totalEe),
           numberFormatter.format(totals.er),
-          numberFormatter.format(totals.ee + totals.er),
+          numberFormatter.format(totals.totalEe + totals.er),
         ],
       ]
 
@@ -637,12 +751,25 @@ export function PayrollStatutoryPageClient({
         ["SSS MONTHLY REMITTANCE REPORT"],
         [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
         [],
-        ["ID #", "EMPLOYEE NAME", "SSS #", "EMPLOYEE SHARE", "EMPLOYER SHARE", "TOTALS"],
+        [
+          "EMPLOYEE ID",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
+          "BIRTHDATE",
+          "SSS ID",
+          "EMPLOYEE SHARE",
+          "EMPLOYER SHARE",
+          "TOTAL",
+        ],
         ...sssRows.map((row) => {
           const rowTotal = row.employeeShare + row.employerShare
           return [
-            row.idNumber,
-            row.employeeName.toUpperCase(),
+            row.employeeId,
+            row.surname.toUpperCase(),
+            row.firstName.toUpperCase(),
+            row.middleName.toUpperCase(),
+            row.birthDate ? birthDateFormatter.format(row.birthDate) : "",
             row.sssNumber,
             numberFormatter.format(row.employeeShare),
             numberFormatter.format(row.employerShare),
@@ -651,6 +778,9 @@ export function PayrollStatutoryPageClient({
         }),
         [
           "TOTAL",
+          "",
+          "",
+          "",
           "",
           "",
           numberFormatter.format(totals.ee),
@@ -680,14 +810,33 @@ export function PayrollStatutoryPageClient({
         ["DOLE 13TH MONTH PAY REPORT"],
         [`FOR CALENDAR YEAR ${yearLabel}`],
         [],
-        ["EMPLOYEE ID", "EMPLOYEE NAME", "ANNUAL BASIC SALARY", "13TH MONTH PAY"],
+        [
+          "EMPLOYEE ID",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
+          "BIRTHDATE",
+          "ANNUAL BASIC SALARY",
+          "13TH MONTH PAY",
+        ],
         ...filteredDoleRows.map((row) => [
           row.employeeId,
-          row.employeeName.toUpperCase(),
+          row.surname.toUpperCase(),
+          row.firstName.toUpperCase(),
+          row.middleName.toUpperCase(),
+          row.birthDate ? birthDateFormatter.format(row.birthDate) : "",
           numberFormatter.format(row.annualBasicSalary),
           numberFormatter.format(row.thirteenthMonthPay),
         ]),
-        ["TOTAL", "", numberFormatter.format(totals.annualBasicSalary), numberFormatter.format(totals.thirteenthMonthPay)],
+        [
+          "TOTAL",
+          "",
+          "",
+          "",
+          "",
+          numberFormatter.format(totals.annualBasicSalary),
+          numberFormatter.format(totals.thirteenthMonthPay),
+        ],
       ]
 
       downloadCsvRows("dole-13th-month-pay-report.csv", reportRows)
@@ -704,26 +853,38 @@ export function PayrollStatutoryPageClient({
         [],
         [
           "EMPLOYEE ID",
-          "EMPLOYEE NAME",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
           "TIN",
           "SSS EE",
           "PH EE",
-          "PG EE",
+          "PG EE MANDATORY",
+          "PG EE ADDITIONAL",
+          "PG EE TOTAL",
           "GROSS COMPENSATION",
           "TAXABLE COMPENSATION",
           "WITHHOLDING TAX",
         ],
-        ...filteredBirRows.map((row) => [
-          row.employeeNumber,
-          row.employeeName.toUpperCase(),
-          row.tinNumber ?? "",
-          row.sssEmployee,
-          row.philHealthEmployee,
-          row.pagIbigEmployee,
-          row.grossCompensation,
-          row.taxableCompensation,
-          row.withholdingTax,
-        ]),
+        ...filteredBirRows.map((row) => {
+          const nameParts = extractNameParts(row.employeeName)
+
+          return [
+            row.employeeNumber,
+            nameParts.surname.toUpperCase(),
+            nameParts.firstName.toUpperCase(),
+            nameParts.middleName.toUpperCase(),
+            row.tinNumber ?? "",
+            row.sssEmployee,
+            row.philHealthEmployee,
+            row.pagIbigMandatoryEmployee,
+            row.pagIbigAdditionalEmployee,
+            row.pagIbigTotalEmployee,
+            row.grossCompensation,
+            row.taxableCompensation,
+            row.withholdingTax,
+          ]
+        }),
       ]
 
       downloadCsvRows("bir-annual-alphalist.csv", reportRows)
@@ -747,16 +908,31 @@ export function PayrollStatutoryPageClient({
         ["BIR MONTHLY WITHHOLDING TAX REPORT"],
         [`FOR THE MONTH OF ${monthLabel.toUpperCase()}`],
         [],
-        ["EMPLOYEE ID", "EMPLOYEE NAME", "TIN", "GROSS PAY", "WITHHOLDING TAX"],
+        [
+          "EMPLOYEE ID",
+          "SURNAME",
+          "FIRST NAME",
+          "MIDDLE NAME",
+          "BIRTHDATE",
+          "TIN",
+          "GROSS PAY",
+          "WITHHOLDING TAX",
+        ],
         ...monthlyBirWtaxRows.map((row) => [
           row.employeeId,
-          row.employeeName.toUpperCase(),
+          row.surname.toUpperCase(),
+          row.firstName.toUpperCase(),
+          row.middleName.toUpperCase(),
+          row.birthDate ? birthDateFormatter.format(row.birthDate) : "",
           row.tinNumber,
           numberFormatter.format(row.grossCompensation),
           numberFormatter.format(row.withholdingTax),
         ]),
         [
           "TOTAL",
+          "",
+          "",
+          "",
           "",
           "",
           numberFormatter.format(totals.grossCompensation),
@@ -866,18 +1042,32 @@ export function PayrollStatutoryPageClient({
                 className="h-9 pl-8"
               />
             </div>
-            <Select value={resolvedMonthKey} onValueChange={setSelectedMonthKey}>
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue placeholder="Select month" />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((option) => (
-                  <SelectItem key={option.key} value={option.key}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={resolvedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={resolvedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center justify-between border border-border/60 px-3 py-2">
               <div>
                 <p className="text-xs font-medium">Show Trial Runs</p>
@@ -994,17 +1184,28 @@ export function PayrollStatutoryPageClient({
                     printedBy={printedBy}
                     philHealthRows={[]}
                     pagIbigRows={[]}
-                    birAlphalistRows={filteredBirRows.map((row) => ({
-                      employeeId: row.employeeNumber,
-                      employeeName: row.employeeName,
-                      tinNumber: row.tinNumber ?? "",
-                      sssEmployee: parseAmount(row.sssEmployee),
-                      philHealthEmployee: parseAmount(row.philHealthEmployee),
-                      pagIbigEmployee: parseAmount(row.pagIbigEmployee),
-                      grossCompensation: parseAmount(row.grossCompensation),
-                      taxableCompensation: parseAmount(row.taxableCompensation),
-                      withholdingTax: parseAmount(row.withholdingTax),
-                    }))}
+                    birAlphalistRows={filteredBirRows.map((row) => {
+                      const nameParts = extractNameParts(row.employeeName)
+                      const parsedBirthDate = row.birthDate ? new Date(row.birthDate) : null
+                      const birthDate = parsedBirthDate && !Number.isNaN(parsedBirthDate.getTime()) ? parsedBirthDate : null
+
+                      return {
+                        employeeId: row.employeeNumber,
+                        surname: nameParts.surname,
+                        firstName: nameParts.firstName,
+                        middleName: nameParts.middleName,
+                        birthDate,
+                        tinNumber: row.tinNumber ?? "",
+                        sssEmployee: parseAmount(row.sssEmployee),
+                        philHealthEmployee: parseAmount(row.philHealthEmployee),
+                        pagIbigMandatoryEmployee: parseAmount(row.pagIbigMandatoryEmployee),
+                        pagIbigAdditionalEmployee: parseAmount(row.pagIbigAdditionalEmployee),
+                        pagIbigTotalEmployee: parseAmount(row.pagIbigTotalEmployee),
+                        grossCompensation: parseAmount(row.grossCompensation),
+                        taxableCompensation: parseAmount(row.taxableCompensation),
+                        withholdingTax: parseAmount(row.withholdingTax),
+                      }
+                    })}
                     showPhilHealth={false}
                     showPagIbig={false}
                     showBirAlphalist
@@ -1059,6 +1260,9 @@ export function PayrollStatutoryPageClient({
                                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                       <TraceItem label="Gross Compensation" value={row.grossCompensation} />
                                       <TraceItem label="Non-Taxable Cap Applied" value={row.nonTaxableBenefits} />
+                                      <TraceItem label="Pag-IBIG Mandatory" value={row.pagIbigMandatoryEmployee} />
+                                      <TraceItem label="Pag-IBIG Additional" value={row.pagIbigAdditionalEmployee} />
+                                      <TraceItem label="Pag-IBIG Total" value={row.pagIbigTotalEmployee} />
                                       <TraceItem label="Taxable Base" value={row.taxableCompensation} />
                                       <TraceItem label="Annual Tax Due" value={row.annualTaxDue} />
                                       <TraceItem label="YTD Withheld" value={row.withholdingTax} />

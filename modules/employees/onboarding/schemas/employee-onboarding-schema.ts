@@ -7,12 +7,16 @@ const optionalText = z
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined))
 
-const optionalEmail = z
-  .string()
-  .trim()
-  .email()
-  .optional()
-  .transform((value) => (value && value.length > 0 ? value : undefined))
+const optionalEmail = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") {
+      return value
+    }
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  },
+  z.string().email().optional()
+)
 
 export const taxStatusOptions = ["S", "S1", "S2", "S3", "S4", "ME", "ME1", "ME2", "ME3", "ME4", "Z"] as const
 export const genderOptions = ["MALE", "FEMALE"] as const
@@ -58,7 +62,7 @@ export const employeeOnboardingInputSchema = z.object({
 
   contact: z.object({
     mobileNumber: z.string().trim().min(7).max(25),
-    personalEmail: z.string().trim().email(),
+    personalEmail: optionalEmail,
     workEmail: optionalEmail,
     street: optionalText,
     barangay: optionalText,

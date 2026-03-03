@@ -66,7 +66,25 @@ export const createDeductionTypeInputSchema = z.object({
   description: z.string().max(180).optional(),
   isPreTax: z.boolean().default(true),
   payPeriodApplicability: z.enum(["EVERY_PAYROLL", "FIRST_HALF", "SECOND_HALF"]).default("EVERY_PAYROLL"),
-  reportingContributionType: z.enum(["SSS", "PHILHEALTH", "PAGIBIG", "TAX"]).optional(),
+  reportingContributionType: z.enum(["NONE", "SSS", "PHILHEALTH", "PAGIBIG", "TAX"]).optional(),
 })
 
 export type CreateDeductionTypeInput = z.infer<typeof createDeductionTypeInputSchema>
+
+export const updateDeductionTypeInputSchema = z.object({
+  companyId: z.string().uuid(),
+  deductionTypeId: z.string().uuid(),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(32)
+    .regex(/^[A-Z0-9_]+$/, "Code must use uppercase letters, numbers, and underscore only."),
+  name: z.string().trim().min(2).max(100),
+  description: z.string().max(180).optional(),
+  isPreTax: z.boolean().default(true),
+  payPeriodApplicability: z.enum(["EVERY_PAYROLL", "FIRST_HALF", "SECOND_HALF"]).default("EVERY_PAYROLL"),
+  reportingContributionType: z.enum(["NONE", "SSS", "PHILHEALTH", "PAGIBIG", "TAX"]).optional(),
+})
+
+export type UpdateDeductionTypeInput = z.infer<typeof updateDeductionTypeInputSchema>

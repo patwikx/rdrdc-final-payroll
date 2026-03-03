@@ -1,5 +1,10 @@
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import {
+  getAdditionalPagIbigEmployeeShareFromDeductions,
+  getTotalPagIbigEmployeeShare,
+  type PagIbigContributionDeductionLine,
+} from "@/modules/payroll/utils/pagibig-contribution-reporting"
 import { PayrollRunType, TaxTableType, type ContributionType } from "@prisma/client"
 
 const toNumber = (value: { toString(): string } | null | undefined): number => {
@@ -23,16 +28,6 @@ const toDateLabel = (value: Date): string => {
   }).format(value)
 }
 
-const getAdditionalPagIbigRecurringEmployeeShare = (payslip: StatutorySourcePayslip): number => {
-  return payslip.deductions.reduce((sum, deduction) => {
-    if (deduction.referenceType !== "RECURRING" || deduction.deductionType.reportingContributionType !== "PAGIBIG") {
-      return sum
-    }
-
-    return sum + toNumber(deduction.amount)
-  }, 0)
-}
-
 type StatutoryMonthlyRow = {
   payslipId: string
   employeeId: string
@@ -52,6 +47,9 @@ type StatutoryMonthlyRow = {
   sssEmployer: string
   philHealthEmployee: string
   philHealthEmployer: string
+  pagIbigMandatoryEmployee: string
+  pagIbigAdditionalEmployee: string
+  pagIbigTotalEmployee: string
   pagIbigEmployee: string
   pagIbigEmployer: string
   withholdingTax: string
@@ -61,10 +59,14 @@ type StatutoryBirRow = {
   employeeId: string
   employeeName: string
   employeeNumber: string
+  birthDate: string | null
   tinNumber: string | null
   year: number
   sssEmployee: string
   philHealthEmployee: string
+  pagIbigMandatoryEmployee: string
+  pagIbigAdditionalEmployee: string
+  pagIbigTotalEmployee: string
   pagIbigEmployee: string
   grossCompensation: string
   nonTaxableBenefits: string
@@ -78,6 +80,7 @@ type StatutoryDoleRow = {
   employeeId: string
   employeeName: string
   employeeNumber: string
+  birthDate: string | null
   year: number
   annualBasicSalary: string
   thirteenthMonthPay: string
@@ -101,6 +104,9 @@ export type PayrollStatutoryViewModel = {
     philHealthEmployee: string
     philHealthEmployer: string
     pagIbigEmployee: string
+    pagIbigMandatoryEmployee: string
+    pagIbigAdditionalEmployee: string
+    pagIbigTotalEmployee: string
     pagIbigEmployer: string
     withholdingTax: string
   }
@@ -153,6 +159,7 @@ type StatutorySourcePayslip = {
     referenceType: string | null
     amount: { toString(): string } | null
     deductionType: {
+      code: string
       reportingContributionType: ContributionType | null
     }
   }>
@@ -257,8 +264,15 @@ const buildMonthlyRows = (payslips: StatutorySourcePayslip[]): StatutoryMonthlyR
       payslip.employee.governmentIds.find((item) => item.idTypeId === "SSS")?.idNumberMasked ?? null
     const tinGovId =
       payslip.employee.governmentIds.find((item) => item.idTypeId === "TIN")?.idNumberMasked ?? null
-    const additionalPagIbigRecurring = getAdditionalPagIbigRecurringEmployeeShare(payslip)
-    const totalPagIbigEmployee = toNumber(payslip.pagIbigEmployee) + additionalPagIbigRecurring
+    const pagIbigDeductions = payslip.deductions as PagIbigContributionDeductionLine[]
+    const pagIbigMandatoryEmployee = toNumber(payslip.pagIbigEmployee)
+    const pagIbigAdditionalEmployee = getAdditionalPagIbigEmployeeShareFromDeductions(
+      pagIbigDeductions
+    )
+    const pagIbigTotalEmployee = getTotalPagIbigEmployeeShare(
+      payslip.pagIbigEmployee,
+      pagIbigDeductions
+    )
 
     return {
       payslipId: payslip.id,
@@ -279,7 +293,10 @@ const buildMonthlyRows = (payslips: StatutorySourcePayslip[]): StatutoryMonthlyR
       sssEmployer: toPhp(toNumber(payslip.sssEmployer)),
       philHealthEmployee: toPhp(toNumber(payslip.philHealthEmployee)),
       philHealthEmployer: toPhp(toNumber(payslip.philHealthEmployer)),
-      pagIbigEmployee: toPhp(totalPagIbigEmployee),
+      pagIbigMandatoryEmployee: toPhp(pagIbigMandatoryEmployee),
+      pagIbigAdditionalEmployee: toPhp(pagIbigAdditionalEmployee),
+      pagIbigTotalEmployee: toPhp(pagIbigTotalEmployee),
+      pagIbigEmployee: toPhp(pagIbigTotalEmployee),
       pagIbigEmployer: toPhp(toNumber(payslip.pagIbigEmployer)),
       withholdingTax: toPhp(toNumber(payslip.withholdingTax)),
     }
@@ -298,7 +315,15 @@ const buildBirRows = (payslips: StatutorySourcePayslip[], annualTaxRows: AnnualT
           const gross = toNumber(payslip.grossPay)
           const sssEmployee = toNumber(payslip.sssEmployee)
           const philHealthEmployee = toNumber(payslip.philHealthEmployee)
-          const pagIbigEmployee = toNumber(payslip.pagIbigEmployee)
+          const pagIbigDeductions = payslip.deductions as PagIbigContributionDeductionLine[]
+          const pagIbigMandatoryEmployee = toNumber(payslip.pagIbigEmployee)
+          const pagIbigAdditionalEmployee = getAdditionalPagIbigEmployeeShareFromDeductions(
+            pagIbigDeductions
+          )
+          const pagIbigTotalEmployee = getTotalPagIbigEmployeeShare(
+            payslip.pagIbigEmployee,
+            pagIbigDeductions
+          )
           const withholdingTax = toNumber(payslip.withholdingTax)
 
           if (!existing) {
@@ -306,18 +331,23 @@ const buildBirRows = (payslips: StatutorySourcePayslip[], annualTaxRows: AnnualT
               employeeId: payslip.employee.id,
               employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
               employeeNumber: payslip.employee.employeeNumber,
+              birthDate: payslip.employee.birthDate,
               tinNumber: payslip.employee.governmentIds.find((item) => item.idTypeId === "TIN")?.idNumberMasked ?? null,
               year,
               sssEmployee,
               philHealthEmployee,
-              pagIbigEmployee,
+              pagIbigMandatoryEmployee,
+              pagIbigAdditionalEmployee,
+              pagIbigTotalEmployee,
               grossCompensation: gross,
               withholdingTax,
             })
           } else {
             existing.sssEmployee += sssEmployee
             existing.philHealthEmployee += philHealthEmployee
-            existing.pagIbigEmployee += pagIbigEmployee
+            existing.pagIbigMandatoryEmployee += pagIbigMandatoryEmployee
+            existing.pagIbigAdditionalEmployee += pagIbigAdditionalEmployee
+            existing.pagIbigTotalEmployee += pagIbigTotalEmployee
             existing.grossCompensation += gross
             existing.withholdingTax += withholdingTax
           }
@@ -330,11 +360,14 @@ const buildBirRows = (payslips: StatutorySourcePayslip[], annualTaxRows: AnnualT
             employeeId: string
             employeeName: string
             employeeNumber: string
+            birthDate: Date | null
             tinNumber: string | null
             year: number
             sssEmployee: number
             philHealthEmployee: number
-            pagIbigEmployee: number
+            pagIbigMandatoryEmployee: number
+            pagIbigAdditionalEmployee: number
+            pagIbigTotalEmployee: number
             grossCompensation: number
             withholdingTax: number
           }
@@ -344,7 +377,8 @@ const buildBirRows = (payslips: StatutorySourcePayslip[], annualTaxRows: AnnualT
   )
     .map((item) => {
       const nonTaxableBenefits = 0
-      const mandatoryContributions = item.sssEmployee + item.philHealthEmployee + item.pagIbigEmployee
+      const mandatoryContributions =
+        item.sssEmployee + item.philHealthEmployee + item.pagIbigTotalEmployee
       const taxableCompensation = Math.max(0, item.grossCompensation - mandatoryContributions - nonTaxableBenefits)
 
       const taxRowsForYear = annualTaxRows
@@ -360,11 +394,15 @@ const buildBirRows = (payslips: StatutorySourcePayslip[], annualTaxRows: AnnualT
         employeeId: item.employeeId,
         employeeName: item.employeeName,
         employeeNumber: item.employeeNumber,
+        birthDate: item.birthDate ? item.birthDate.toISOString() : null,
         tinNumber: item.tinNumber,
         year: item.year,
         sssEmployee: toPhp(item.sssEmployee),
         philHealthEmployee: toPhp(item.philHealthEmployee),
-        pagIbigEmployee: toPhp(item.pagIbigEmployee),
+        pagIbigMandatoryEmployee: toPhp(item.pagIbigMandatoryEmployee),
+        pagIbigAdditionalEmployee: toPhp(item.pagIbigAdditionalEmployee),
+        pagIbigTotalEmployee: toPhp(item.pagIbigTotalEmployee),
+        pagIbigEmployee: toPhp(item.pagIbigTotalEmployee),
         grossCompensation: toPhp(item.grossCompensation),
         nonTaxableBenefits: toPhp(nonTaxableBenefits),
         taxableCompensation: toPhp(taxableCompensation),
@@ -398,6 +436,7 @@ const buildDoleRows = (payslips: StatutorySourcePayslip[]): StatutoryDoleRow[] =
               employeeId: payslip.employee.id,
               employeeName: `${payslip.employee.lastName}, ${payslip.employee.firstName}`,
               employeeNumber: payslip.employee.employeeNumber,
+              birthDate: payslip.employee.birthDate,
               year,
               annualBasicSalary: basicPay,
             })
@@ -413,6 +452,7 @@ const buildDoleRows = (payslips: StatutorySourcePayslip[]): StatutoryDoleRow[] =
             employeeId: string
             employeeName: string
             employeeNumber: string
+            birthDate: Date | null
             year: number
             annualBasicSalary: number
           }
@@ -424,6 +464,7 @@ const buildDoleRows = (payslips: StatutorySourcePayslip[]): StatutoryDoleRow[] =
       employeeId: item.employeeId,
       employeeName: item.employeeName,
       employeeNumber: item.employeeNumber,
+      birthDate: item.birthDate ? item.birthDate.toISOString() : null,
       year: item.year,
       annualBasicSalary: toPhp(item.annualBasicSalary),
       thirteenthMonthPay: toPhp(0),
@@ -511,13 +552,16 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
     include: {
       deductions: {
         where: {
-          referenceType: "RECURRING",
+          deductionType: {
+            reportingContributionType: "PAGIBIG",
+          },
         },
         select: {
           referenceType: true,
           amount: true,
           deductionType: {
             select: {
+              code: true,
               reportingContributionType: true,
             },
           },
@@ -603,13 +647,24 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
 
   const totalsRaw = regularPayslips.reduce(
     (acc, payslip) => {
-      const additionalPagIbigRecurring = getAdditionalPagIbigRecurringEmployeeShare(payslip)
+      const pagIbigDeductions = payslip.deductions as PagIbigContributionDeductionLine[]
+      const pagIbigMandatoryEmployee = toNumber(payslip.pagIbigEmployee)
+      const pagIbigAdditionalEmployee = getAdditionalPagIbigEmployeeShareFromDeductions(
+        pagIbigDeductions
+      )
+      const pagIbigTotalEmployee = getTotalPagIbigEmployeeShare(
+        payslip.pagIbigEmployee,
+        pagIbigDeductions
+      )
 
       acc.sssEmployee += toNumber(payslip.sssEmployee)
       acc.sssEmployer += toNumber(payslip.sssEmployer)
       acc.philHealthEmployee += toNumber(payslip.philHealthEmployee)
       acc.philHealthEmployer += toNumber(payslip.philHealthEmployer)
-      acc.pagIbigEmployee += toNumber(payslip.pagIbigEmployee) + additionalPagIbigRecurring
+      acc.pagIbigMandatoryEmployee += pagIbigMandatoryEmployee
+      acc.pagIbigAdditionalEmployee += pagIbigAdditionalEmployee
+      acc.pagIbigTotalEmployee += pagIbigTotalEmployee
+      acc.pagIbigEmployee += pagIbigTotalEmployee
       acc.pagIbigEmployer += toNumber(payslip.pagIbigEmployer)
       acc.withholdingTax += toNumber(payslip.withholdingTax)
       return acc
@@ -619,6 +674,9 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
       sssEmployer: 0,
       philHealthEmployee: 0,
       philHealthEmployer: 0,
+      pagIbigMandatoryEmployee: 0,
+      pagIbigAdditionalEmployee: 0,
+      pagIbigTotalEmployee: 0,
       pagIbigEmployee: 0,
       pagIbigEmployer: 0,
       withholdingTax: 0,
@@ -635,6 +693,9 @@ export async function getPayrollStatutoryViewModel(companyId: string): Promise<P
       sssEmployer: toPhp(totalsRaw.sssEmployer),
       philHealthEmployee: toPhp(totalsRaw.philHealthEmployee),
       philHealthEmployer: toPhp(totalsRaw.philHealthEmployer),
+      pagIbigMandatoryEmployee: toPhp(totalsRaw.pagIbigMandatoryEmployee),
+      pagIbigAdditionalEmployee: toPhp(totalsRaw.pagIbigAdditionalEmployee),
+      pagIbigTotalEmployee: toPhp(totalsRaw.pagIbigTotalEmployee),
       pagIbigEmployee: toPhp(totalsRaw.pagIbigEmployee),
       pagIbigEmployer: toPhp(totalsRaw.pagIbigEmployer),
       withholdingTax: toPhp(totalsRaw.withholdingTax),

@@ -39,6 +39,44 @@ type GetAvailableSystemUsersActionResult =
   | { ok: true; data: AvailableSystemUserOption[] }
   | { ok: false; error: string }
 
+const GENERATED_USER_EMAIL_DOMAIN = "users.local"
+
+const normalizeEmailLocalPart = (username: string): string => {
+  const normalized = username
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/^[._-]+|[._-]+$/g, "")
+
+  return normalized.length > 0 ? normalized : "user"
+}
+
+const resolveUniqueGeneratedUserEmail = async (
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  username: string
+): Promise<string> => {
+  const baseLocalPart = normalizeEmailLocalPart(username)
+  let suffix = 0
+
+  while (suffix < 5000) {
+    const localPart = suffix === 0 ? baseLocalPart : `${baseLocalPart}.${suffix}`
+    const candidate = `${localPart}@${GENERATED_USER_EMAIL_DOMAIN}`
+
+    const duplicate = await tx.user.findFirst({
+      where: { email: candidate },
+      select: { id: true },
+    })
+
+    if (!duplicate) {
+      return candidate
+    }
+
+    suffix += 1
+  }
+
+  return `${baseLocalPart}.${Date.now()}@${GENERATED_USER_EMAIL_DOMAIN}`
+}
+
 const getAvailableSystemUsersInputSchema = z.object({
   companyId: z.string().uuid(),
   query: z.string().trim().max(120).optional(),
@@ -150,7 +188,6 @@ export async function getAvailableSystemUsersAction(input: {
         ? {
             OR: [
               { username: { contains: searchQuery, mode: "insensitive" } },
-              { email: { contains: searchQuery, mode: "insensitive" } },
               { firstName: { contains: searchQuery, mode: "insensitive" } },
               { lastName: { contains: searchQuery, mode: "insensitive" } },
             ],
@@ -230,32 +267,26 @@ export async function createEmployeeSystemUserAction(
 
   const existingUser = await db.user.findFirst({
     where: {
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (existingUser) {
-    return {
-      ok: false,
-      error:
-        existingUser.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
-    }
+    return { ok: false, error: "Username is already in use." }
   }
 
   const passwordHash = await bcrypt.hash(payload.password, 12)
 
   const created = await db.$transaction(async (tx) => {
+    const generatedEmail = await resolveUniqueGeneratedUserEmail(tx, payload.username)
     const user = await tx.user.create({
       data: {
         username: payload.username,
-        email: payload.email,
+        email: generatedEmail,
         passwordHash,
         firstName: employee.firstName,
         lastName: employee.lastName,
@@ -329,32 +360,26 @@ export async function createStandaloneSystemUserAction(
 
   const existingUser = await db.user.findFirst({
     where: {
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (existingUser) {
-    return {
-      ok: false,
-      error:
-        existingUser.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
-    }
+    return { ok: false, error: "Username is already in use." }
   }
 
   const passwordHash = await bcrypt.hash(payload.password, 12)
 
   const created = await db.$transaction(async (tx) => {
+    const generatedEmail = await resolveUniqueGeneratedUserEmail(tx, payload.username)
     const user = await tx.user.create({
       data: {
         username: payload.username,
-        email: payload.email,
+        email: generatedEmail,
         passwordHash,
         firstName: payload.firstName,
         lastName: payload.lastName,
@@ -388,7 +413,7 @@ export async function createStandaloneSystemUserAction(
         reason: "CREATE_STANDALONE_SYSTEM_USER",
         changes: [
           { fieldName: "username", newValue: payload.username },
-          { fieldName: "email", newValue: payload.email },
+          { fieldName: "email", newValue: user.email },
           { fieldName: "companyRole", newValue: payload.companyRole },
           { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
           { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
@@ -913,36 +938,27 @@ export async function updateLinkedUserCredentialsAction(
   const duplicate = await db.user.findFirst({
     where: {
       id: { not: linkedUser.id },
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (duplicate) {
-    return {
-      ok: false,
-      error:
-        duplicate.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
-    }
+    return { ok: false, error: "Username is already in use." }
   }
 
   await db.$transaction(async (tx) => {
     const data: {
       username: string
-      email: string
       isActive: boolean
       isRequestApprover?: boolean
       isAdmin?: boolean
       passwordHash?: string
     } = {
       username: payload.username,
-      email: payload.email,
       isActive: payload.isActive,
     }
 
@@ -994,7 +1010,6 @@ export async function updateLinkedUserCredentialsAction(
 
     const changes: Array<{ fieldName: string; oldValue?: unknown; newValue?: unknown }> = [
       { fieldName: "username", oldValue: linkedUser.username, newValue: payload.username },
-      { fieldName: "email", oldValue: linkedUser.email, newValue: payload.email },
       { fieldName: "isActive", oldValue: linkedUser.isActive, newValue: payload.isActive },
       { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
     ]

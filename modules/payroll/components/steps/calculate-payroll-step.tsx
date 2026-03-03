@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconCalculator, IconCircleCheck, IconProgress } from "@tabler/icons-react"
+import { IconAlertTriangle, IconCalculator, IconCircleCheck, IconProgress } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -18,7 +18,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { calculatePayrollRunAction, proceedToReviewPayrollRunAction } from "@/modules/payroll/actions/payroll-run-actions"
+import {
+  calculatePayrollRunAction,
+  getPagIbigMappingPreflightAction,
+  proceedToReviewPayrollRunAction,
+} from "@/modules/payroll/actions/payroll-run-actions"
 
 type CalculatePayrollStepProps = {
   companyId: string
@@ -38,9 +42,18 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
   const [summaryPage, setSummaryPage] = useState(1)
   const [summaryPageSize, setSummaryPageSize] = useState("10")
   const [confirmProceedOpen, setConfirmProceedOpen] = useState(false)
+  const [confirmCalculateOpen, setConfirmCalculateOpen] = useState(false)
+  const [pagIbigWarnings, setPagIbigWarnings] = useState<string[]>([])
+  const [pagIbigWarningCount, setPagIbigWarningCount] = useState(0)
 
-  const calculatedEmployees = useMemo(() => {
-    if (!calculationNotes) return []
+  const calculationDiagnostics = useMemo(() => {
+    if (!calculationNotes) {
+      return {
+        employeeSummaries: [],
+        pagIbigIssueCount: 0,
+        pagIbigIssueMessages: [],
+      }
+    }
     try {
       const parsed = JSON.parse(calculationNotes) as {
         employeeSummaries?: Array<{
@@ -51,12 +64,35 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
           totalDeductions: number
           netPay: number
         }>
+        pagIbigMappingDiagnostics?: {
+          issueCount?: number
+          issueMessages?: string[]
+        }
       }
-      return parsed.employeeSummaries ?? []
+      const issueMessages = Array.isArray(parsed.pagIbigMappingDiagnostics?.issueMessages)
+        ? parsed.pagIbigMappingDiagnostics.issueMessages
+        : []
+      const issueCount = parsed.pagIbigMappingDiagnostics?.issueCount ?? issueMessages.length
+      return {
+        employeeSummaries: parsed.employeeSummaries ?? [],
+        pagIbigIssueCount: issueCount,
+        pagIbigIssueMessages: issueMessages,
+      }
     } catch {
-      return []
+      return {
+        employeeSummaries: [],
+        pagIbigIssueCount: 0,
+        pagIbigIssueMessages: [],
+      }
     }
   }, [calculationNotes])
+  const calculatedEmployees = calculationDiagnostics.employeeSummaries
+
+  useEffect(() => {
+    if (calculationDiagnostics.pagIbigIssueMessages.length === 0) return
+    setPagIbigWarnings(calculationDiagnostics.pagIbigIssueMessages)
+    setPagIbigWarningCount(calculationDiagnostics.pagIbigIssueCount)
+  }, [calculationDiagnostics.pagIbigIssueCount, calculationDiagnostics.pagIbigIssueMessages])
   const summaryPageSizeNumber = useMemo(() => Math.max(1, Number(summaryPageSize) || 10), [summaryPageSize])
   const summaryTotalPages = useMemo(
     () => Math.max(1, Math.ceil(calculatedEmployees.length / summaryPageSizeNumber)),
@@ -73,27 +109,59 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
     setSummaryPage(summaryTotalPages)
   }, [summaryPage, summaryTotalPages])
 
-  const handleCalculate = () => {
+  const executeCalculation = async () => {
     setProgress(15)
 
+    const timer = setInterval(() => {
+      setProgress((prev) => Math.min(prev + 10, 90))
+    }, 250)
+
+    const result = await calculatePayrollRunAction({ companyId, runId })
+    clearInterval(timer)
+
+    if (!result.ok) {
+      setProgress(0)
+      toast.error(result.error)
+      return
+    }
+
+    const warningMessages = result.warnings ?? []
+    setPagIbigWarnings(warningMessages)
+    setPagIbigWarningCount(warningMessages.length)
+    if (warningMessages.length > 0) {
+      toast.warning("Pag-IBIG mapping warning: review deduction type report mapping after calculation.")
+    }
+
+    setProgress(100)
+    setIsComplete(true)
+    toast.success(result.message)
+    router.refresh()
+  }
+
+  const handleCalculate = () => {
     startTransition(async () => {
-      const timer = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 10, 90))
-      }, 250)
-
-      const result = await calculatePayrollRunAction({ companyId, runId })
-      clearInterval(timer)
-
-      if (!result.ok) {
-        setProgress(0)
-        toast.error(result.error)
+      const preflight = await getPagIbigMappingPreflightAction({ companyId, runId })
+      if (!preflight.ok) {
+        toast.error(preflight.error)
         return
       }
 
-      setProgress(100)
-      setIsComplete(true)
-      toast.success(result.message)
-      router.refresh()
+      setPagIbigWarnings(preflight.warnings)
+      setPagIbigWarningCount(preflight.issueCount)
+
+      if (preflight.issueCount > 0) {
+        setConfirmCalculateOpen(true)
+        return
+      }
+
+      await executeCalculation()
+    })
+  }
+
+  const handleCalculateWithWarnings = () => {
+    setConfirmCalculateOpen(false)
+    startTransition(async () => {
+      await executeCalculation()
     })
   }
 
@@ -211,6 +279,19 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
           <div className="flex items-center justify-between"><span>Employees</span><span>{employeeCount}</span></div>
           <div className="flex items-center justify-between"><span>Net Pay</span><span>{money.format(totalNetPay)}</span></div>
         </div>
+        {pagIbigWarnings.length > 0 ? (
+          <div className="space-y-2 border border-amber-500/60 bg-amber-500/10 p-3 text-xs">
+            <p className="inline-flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+              <IconAlertTriangle className="h-3.5 w-3.5" />
+              Pag-IBIG Mapping Warnings ({pagIbigWarningCount})
+            </p>
+            <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+              {pagIbigWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {calculatedEmployees.length > 0 ? (
           <Button type="button" className="w-full" disabled={isPending} onClick={() => setConfirmProceedOpen(true)}>
             Proceed to Next Step
@@ -240,6 +321,37 @@ export function CalculatePayrollStep({ companyId, runId, employeeCount, totalNet
               }}
             >
               {isPending ? "Proceeding..." : "Yes, Proceed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmCalculateOpen} onOpenChange={setConfirmCalculateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pag-IBIG Mapping Warning</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pagIbigWarningCount} Pag-IBIG mapping issue(s) were detected for active recurring deductions in this run scope.
+              You can continue calculation, but statutory Pag-IBIG reports may be incomplete until mapping is fixed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-48 overflow-y-auto rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+            <ul className="list-disc space-y-1 pl-4">
+              {pagIbigWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                handleCalculateWithWarnings()
+              }}
+            >
+              {isPending ? "Processing..." : "Continue Calculation"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

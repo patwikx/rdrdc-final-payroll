@@ -1,12 +1,15 @@
-import { RecurringDeductionStatus, type ContributionType } from "@prisma/client"
+import { type EarningFrequency } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
+import { isDisallowedRecurringEarningType } from "@/modules/payroll/utils/recurring-earning-eligibility"
 
-type GetRecurringDeductionsViewModelInput = {
+type RecurringEarningStatus = "ACTIVE" | "INACTIVE"
+
+type GetRecurringEarningsViewModelInput = {
   page?: number
   query?: string
-  status?: RecurringDeductionStatus | "ALL"
+  status?: RecurringEarningStatus | "ALL"
 }
 
 const PAGE_SIZE = 10
@@ -38,12 +41,27 @@ const toDateInputValue = (value: Date | null): string => {
   }).format(value)
 }
 
-export type RecurringDeductionsViewModel = {
+const normalizeFrequencyCode = (
+  value: EarningFrequency | null
+): "PER_PAYROLL" | "MONTHLY" => {
+  if (value === "MONTHLY") return "MONTHLY"
+  return "PER_PAYROLL"
+}
+
+const toTaxTreatment = (
+  isTaxableOverride: boolean | null
+): "DEFAULT" | "TAXABLE" | "NON_TAXABLE" => {
+  if (isTaxableOverride === true) return "TAXABLE"
+  if (isTaxableOverride === false) return "NON_TAXABLE"
+  return "DEFAULT"
+}
+
+export type RecurringEarningsViewModel = {
   companyId: string
   companyName: string
   filters: {
     query: string
-    status: RecurringDeductionStatus | "ALL"
+    status: RecurringEarningStatus | "ALL"
   }
   pagination: {
     page: number
@@ -54,14 +72,14 @@ export type RecurringDeductionsViewModel = {
     hasNextPage: boolean
   }
   employees: Array<{ id: string; label: string }>
-  deductionTypes: Array<{
+  earningTypes: Array<{
     id: string
     code: string
     name: string
     description: string | null
-    isPreTax: boolean
-    payPeriodApplicability: "EVERY_PAYROLL" | "FIRST_HALF" | "SECOND_HALF"
-    reportingContributionType: ContributionType | null
+    isTaxable: boolean
+    isIncludedIn13thMonth: boolean
+    frequencyCode: "PER_PAYROLL" | "MONTHLY"
     isCompanyOwned: boolean
   }>
   records: Array<{
@@ -70,39 +88,26 @@ export type RecurringDeductionsViewModel = {
     employeeName: string
     employeeNumber: string
     employeePhotoUrl: string | null
-    deductionTypeId: string
-    deductionTypeName: string
-    statusCode: RecurringDeductionStatus
+    earningTypeId: string
+    earningTypeName: string
+    statusCode: RecurringEarningStatus
     amount: number
     amountLabel: string
-    frequency: string
+    frequency: "PER_PAYROLL" | "MONTHLY"
     effectiveFromValue: string
     effectiveToValue: string
     effectiveFrom: string
     effectiveTo: string
-    percentageRate: number | null
-    isPercentage: boolean
+    taxTreatment: "DEFAULT" | "TAXABLE" | "NON_TAXABLE"
     remarks: string | null
-    description: string | null
   }>
 }
 
-export async function getRecurringDeductionsViewModel(
+export async function getRecurringEarningsViewModel(
   companyId: string,
-  input?: GetRecurringDeductionsViewModelInput
-): Promise<RecurringDeductionsViewModel> {
+  input?: GetRecurringEarningsViewModelInput
+): Promise<RecurringEarningsViewModel> {
   const context = await getActiveCompanyContext({ companyId })
-
-  const blockedDeductionCodes = [
-    "SSS",
-    "PHILHEALTH",
-    "PAGIBIG",
-    "WTAX",
-    "TARDINESS",
-    "UNDERTIME",
-    "LOAN_PAYMENT",
-    "ADJUSTMENT",
-  ]
 
   const query = input?.query?.trim() ?? ""
   const status = input?.status && input.status !== "ALL" ? input.status : "ALL"
@@ -110,30 +115,29 @@ export async function getRecurringDeductionsViewModel(
 
   const listWhere = {
     employee: { companyId: context.companyId },
-    ...(status !== "ALL" ? { statusCode: status } : {}),
+    ...(status !== "ALL" ? { isActive: status === "ACTIVE" } : {}),
     ...(query
       ? {
           OR: [
             { employee: { firstName: { contains: query, mode: "insensitive" as const } } },
             { employee: { lastName: { contains: query, mode: "insensitive" as const } } },
             { employee: { employeeNumber: { contains: query, mode: "insensitive" as const } } },
-            { deductionType: { name: { contains: query, mode: "insensitive" as const } } },
+            { earningType: { name: { contains: query, mode: "insensitive" as const } } },
           ],
         }
       : {}),
   }
 
-  const [employees, deductionTypes, totalItems, recurringDeductions] = await Promise.all([
+  const [employees, allEarningTypes, totalItems, recurringEarnings] = await Promise.all([
     db.employee.findMany({
       where: { companyId: context.companyId, isActive: true },
       select: { id: true, employeeNumber: true, firstName: true, lastName: true },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     }),
-    db.deductionType.findMany({
+    db.earningType.findMany({
       where: {
         isActive: true,
-        isMandatory: false,
-        code: { notIn: blockedDeductionCodes },
+        isIncludedInGross: true,
         OR: [{ companyId: context.companyId }, { companyId: null }],
       },
       select: {
@@ -141,15 +145,15 @@ export async function getRecurringDeductionsViewModel(
         code: true,
         name: true,
         description: true,
-        isPreTax: true,
-        payPeriodApplicability: true,
-        reportingContributionType: true,
+        isTaxable: true,
+        isIncludedIn13thMonth: true,
+        frequencyCode: true,
         companyId: true,
       },
       orderBy: [{ code: "asc" }],
     }),
-    db.recurringDeduction.count({ where: listWhere }),
-    db.recurringDeduction.findMany({
+    db.employeeEarning.count({ where: listWhere }),
+    db.employeeEarning.findMany({
       where: listWhere,
       include: {
         employee: {
@@ -160,7 +164,7 @@ export async function getRecurringDeductionsViewModel(
             photoUrl: true,
           },
         },
-        deductionType: {
+        earningType: {
           select: {
             name: true,
           },
@@ -171,13 +175,15 @@ export async function getRecurringDeductionsViewModel(
       take: PAGE_SIZE,
     }),
   ])
+
+  const earningTypes = allEarningTypes.filter((type) => !isDisallowedRecurringEarningType(type.code, type.name))
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
 
   const pagedRecords =
     safePage === page
-      ? recurringDeductions
-      : await db.recurringDeduction.findMany({
+      ? recurringEarnings
+      : await db.employeeEarning.findMany({
           where: listWhere,
           include: {
             employee: {
@@ -188,7 +194,7 @@ export async function getRecurringDeductionsViewModel(
                 photoUrl: true,
               },
             },
-            deductionType: {
+            earningType: {
               select: {
                 name: true,
               },
@@ -218,17 +224,14 @@ export async function getRecurringDeductionsViewModel(
       id: employee.id,
       label: `${employee.lastName}, ${employee.firstName} (${employee.employeeNumber})`,
     })),
-    deductionTypes: deductionTypes.map((type) => ({
+    earningTypes: earningTypes.map((type) => ({
       id: type.id,
       code: type.code,
       name: type.name,
       description: type.description,
-      isPreTax: type.isPreTax,
-      payPeriodApplicability:
-        type.payPeriodApplicability === "FIRST_HALF" || type.payPeriodApplicability === "SECOND_HALF"
-          ? type.payPeriodApplicability
-          : "EVERY_PAYROLL",
-      reportingContributionType: type.reportingContributionType,
+      isTaxable: type.isTaxable,
+      isIncludedIn13thMonth: type.isIncludedIn13thMonth,
+      frequencyCode: normalizeFrequencyCode(type.frequencyCode),
       isCompanyOwned: type.companyId === context.companyId,
     })),
     records: pagedRecords.map((record) => ({
@@ -237,20 +240,18 @@ export async function getRecurringDeductionsViewModel(
       employeeName: `${record.employee.lastName}, ${record.employee.firstName}`,
       employeeNumber: record.employee.employeeNumber,
       employeePhotoUrl: record.employee.photoUrl,
-      deductionTypeId: record.deductionTypeId,
-      deductionTypeName: record.deductionType.name,
-      statusCode: record.statusCode,
+      earningTypeId: record.earningTypeId,
+      earningTypeName: record.earningType.name,
+      statusCode: record.isActive ? "ACTIVE" : "INACTIVE",
       amount: toNumber(record.amount),
       amountLabel: money.format(toNumber(record.amount)),
-      frequency: record.frequency,
+      frequency: normalizeFrequencyCode(record.frequency),
       effectiveFromValue: toDateInputValue(record.effectiveFrom),
       effectiveToValue: toDateInputValue(record.effectiveTo),
       effectiveFrom: toDateLabel(record.effectiveFrom),
       effectiveTo: toDateLabel(record.effectiveTo),
-      percentageRate: record.percentageRate ? toNumber(record.percentageRate) : null,
-      isPercentage: record.isPercentage,
+      taxTreatment: toTaxTreatment(record.isTaxableOverride),
       remarks: record.remarks,
-      description: record.description,
     })),
   }
 }

@@ -68,6 +68,31 @@ const getNameInitials = (fullName: string): string => {
   return initials || "AP"
 }
 
+const buildPaginationItems = (currentPage: number, totalPages: number): Array<number | "ellipsis-start" | "ellipsis-end"> => {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1)
+  }
+
+  const items: Array<number | "ellipsis-start" | "ellipsis-end"> = [1]
+  const windowStart = Math.max(2, currentPage - 1)
+  const windowEnd = Math.min(totalPages - 1, currentPage + 1)
+
+  if (windowStart > 2) {
+    items.push("ellipsis-start")
+  }
+
+  for (let page = windowStart; page <= windowEnd; page += 1) {
+    items.push(page)
+  }
+
+  if (windowEnd < totalPages - 1) {
+    items.push("ellipsis-end")
+  }
+
+  items.push(totalPages)
+  return items
+}
+
 export function ApprovalHistoryClient({
   companyId,
   initialRows,
@@ -94,6 +119,7 @@ export function ApprovalHistoryClient({
   const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
   const hasActiveFilters = search.trim().length > 0 || typeFilter !== "ALL" || statusFilter !== "ALL"
+  const paginationItems = buildPaginationItems(safeCurrentPage, totalPages)
 
   const clearSearchTimer = () => {
     if (!searchTimerRef.current) return
@@ -159,6 +185,28 @@ export function ApprovalHistoryClient({
     }, 250)
   }
 
+  const goToPage = (page: number) => {
+    loadHistoryPage({
+      page,
+      search,
+      type: typeFilter,
+      status: statusFilter,
+    })
+  }
+
+  const clearFilters = () => {
+    setSearch("")
+    setTypeFilter("ALL")
+    setStatusFilter("ALL")
+    clearSearchTimer()
+    loadHistoryPage({
+      page: 1,
+      search: "",
+      type: "ALL",
+      status: "ALL",
+    })
+  }
+
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
       <div className="border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6">
@@ -192,19 +240,32 @@ export function ApprovalHistoryClient({
         </div>
 
         <div className="space-y-3 border-t border-border/60 pt-4">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="relative min-w-0 basis-full sm:basis-auto sm:w-[22rem]">
-              <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search request #, employee, department..."
-                value={search}
-                onChange={(event) => {
-                  scheduleSearch(event.target.value)
-                }}
-                className="rounded-lg pl-8"
-              />
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3 lg:flex-nowrap">
+            <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:contents">
+              <div className="relative w-full sm:w-[22rem]">
+                <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search request #, employee, department..."
+                  value={search}
+                  onChange={(event) => {
+                    scheduleSearch(event.target.value)
+                  }}
+                  className="w-full rounded-lg pl-8 !text-xs/relaxed placeholder:text-xs/relaxed"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="rounded-lg sm:hidden"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                aria-label="Clear filters"
+              >
+                <IconFilterOff className="h-4 w-4" />
+              </Button>
             </div>
-            <div>
+            <div className="col-span-1 min-w-0 sm:w-auto">
               <Select
                 value={typeFilter}
                 onValueChange={(value) => {
@@ -220,7 +281,7 @@ export function ApprovalHistoryClient({
                   })
                 }}
               >
-                <SelectTrigger className="h-9 min-w-[8.75rem] rounded-lg">
+                <SelectTrigger className="h-9 w-full rounded-lg !text-xs/relaxed sm:min-w-[8.75rem]">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
@@ -231,7 +292,7 @@ export function ApprovalHistoryClient({
                 </SelectContent>
               </Select>
             </div>
-            <div>
+            <div className="col-span-1 min-w-0 sm:w-auto">
               <Select
                 value={statusFilter}
                 onValueChange={(value) => {
@@ -246,12 +307,12 @@ export function ApprovalHistoryClient({
                   })
                 }}
               >
-                <SelectTrigger className="h-9 min-w-[10.5rem] rounded-lg">
+                <SelectTrigger className="h-9 w-full rounded-lg !text-xs/relaxed sm:min-w-[10.5rem]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg">
                   <SelectItem value="ALL">All statuses</SelectItem>
-                  {statusOptions.map((statusCode) => (
+                  {statusOptions.filter((statusCode) => statusCode !== "ALL").map((statusCode) => (
                     <SelectItem key={statusCode} value={statusCode}>
                       {toStatusLabel(statusCode)}
                     </SelectItem>
@@ -262,24 +323,12 @@ export function ApprovalHistoryClient({
             <Button
               type="button"
               variant="outline"
-              className="h-9 rounded-lg text-xs sm:text-sm"
-              onClick={() => {
-                setSearch("")
-                setTypeFilter("ALL")
-                setStatusFilter("ALL")
-                clearSearchTimer()
-                loadHistoryPage({
-                  page: 1,
-                  search: "",
-                  type: "ALL",
-                  status: "ALL",
-                })
-              }}
+              className="hidden rounded-lg sm:inline-flex"
+              onClick={clearFilters}
               disabled={!hasActiveFilters}
             >
               <IconFilterOff className="h-4 w-4" />
-              <span className="sm:hidden">Clear</span>
-              <span className="hidden sm:inline">Clear Filters</span>
+              <span>Clear Filters</span>
             </Button>
           </div>
 
@@ -297,7 +346,7 @@ export function ApprovalHistoryClient({
             <div className="lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border/60 lg:bg-card">
               <div className="space-y-2 lg:hidden">
                 {rowsState.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-border/60 bg-background p-3">
+                  <div key={item.id} className="rounded-xl border border-border bg-background p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Request</p>
@@ -402,9 +451,9 @@ export function ApprovalHistoryClient({
                       <p className="truncate text-xs text-foreground">{item.summaryPrimary}</p>
                       <p className="truncate text-[10px] text-muted-foreground">{item.summarySecondary}</p>
                     </div>
-                    <div className="col-span-1">
-                      <Badge variant={statusVariant(item.statusCode)} className="rounded-full text-[10px]">
-                        {toStatusLabel(item.statusCode)}
+                    <div className="col-span-1 min-w-0">
+                      <Badge variant={statusVariant(item.statusCode)} className="max-w-full rounded-full text-[10px]">
+                        <span className="truncate">{toStatusLabel(item.statusCode)}</span>
                       </Badge>
                     </div>
                     <div className="col-span-2 text-xs text-muted-foreground">{item.decidedAtLabel}</div>
@@ -427,46 +476,55 @@ export function ApprovalHistoryClient({
                 ))}
               </div>
 
-              {totalPages > 1 ? (
-                <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Page {safeCurrentPage} of {totalPages} • {total} records{isPending ? " • Loading..." : ""}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-lg text-xs"
-                      disabled={safeCurrentPage <= 1 || isPending}
-                      onClick={() =>
-                        loadHistoryPage({
-                          page: safeCurrentPage - 1,
-                          search,
-                          type: typeFilter,
-                          status: statusFilter,
-                        })
-                      }
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-lg text-xs"
-                      disabled={safeCurrentPage >= totalPages || isPending}
-                      onClick={() =>
-                        loadHistoryPage({
-                          page: safeCurrentPage + 1,
-                          search,
-                          type: typeFilter,
-                          status: statusFilter,
-                        })
-                      }
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
+	              {totalPages > 1 ? (
+	                <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+	                  <p className="text-xs text-muted-foreground">
+	                    Page {safeCurrentPage} of {totalPages} • {total} records{isPending ? " • Loading..." : ""}
+	                  </p>
+	                  <div className="flex flex-wrap items-center gap-1.5">
+	                    <Button
+	                      variant="outline"
+	                      size="sm"
+	                      className="h-8 rounded-lg text-xs"
+	                      disabled={safeCurrentPage <= 1 || isPending}
+	                      onClick={() => goToPage(Math.max(1, safeCurrentPage - 1))}
+	                    >
+	                      Previous
+	                    </Button>
+	                    {paginationItems.map((item) => {
+	                      if (item === "ellipsis-start" || item === "ellipsis-end") {
+	                        return (
+	                          <span key={item} className="px-1 text-xs text-muted-foreground">
+	                            ...
+	                          </span>
+	                        )
+	                      }
+
+	                      const isActivePage = item === safeCurrentPage
+	                      return (
+	                        <Button
+	                          key={item}
+	                          variant={isActivePage ? "default" : "outline"}
+	                          size="sm"
+	                          className="h-8 min-w-8 rounded-lg px-2 text-xs"
+	                          disabled={isPending || isActivePage}
+	                          onClick={() => goToPage(item)}
+	                        >
+	                          {item}
+	                        </Button>
+	                      )
+	                    })}
+	                    <Button
+	                      variant="outline"
+	                      size="sm"
+	                      className="h-8 rounded-lg text-xs"
+	                      disabled={safeCurrentPage >= totalPages || isPending}
+	                      onClick={() => goToPage(Math.min(totalPages, safeCurrentPage + 1))}
+	                    >
+	                      Next
+	                    </Button>
+	                  </div>
+	                </div>
               ) : null}
             </div>
           )}

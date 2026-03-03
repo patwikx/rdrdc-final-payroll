@@ -15,7 +15,6 @@ const companyActionSchema = z.object({
 
 export const createEmployeeSystemUserInputSchema = actionBaseSchema.extend({
   username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
   password: z.string().min(8).max(128),
   companyRole: companyRoleSchema.default("EMPLOYEE"),
   isRequestApprover: z.boolean().default(false),
@@ -27,7 +26,6 @@ export const createStandaloneSystemUserInputSchema = companyActionSchema.extend(
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
   password: z.string().min(8).max(128),
   companyRole: companyRoleSchema.default("EMPLOYEE"),
   isRequestApprover: z.boolean().default(false),
@@ -51,7 +49,6 @@ export const updateEmployeeRequestApproverInputSchema = actionBaseSchema.extend(
 
 export const updateLinkedUserCredentialsInputSchema = actionBaseSchema.extend({
   username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
   password: z.string().min(8).max(128).optional(),
   isActive: z.boolean(),
   companyRole: companyRoleSchema.optional(),

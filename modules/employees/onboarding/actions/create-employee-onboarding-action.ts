@@ -260,28 +260,39 @@ export async function createEmployeeOnboardingAction(
         },
       })
 
-      await tx.employeeEmail.createMany({
-        data: [
-          {
-            employeeId: employee.id,
-            emailTypeId: "PERSONAL",
-            email: payload.contact.personalEmail,
-            isPrimary: true,
-            isActive: true,
-          },
-          ...(payload.contact.workEmail
-            ? [
-                {
-                  employeeId: employee.id,
-                  emailTypeId: "WORK" as const,
-                  email: payload.contact.workEmail,
-                  isPrimary: false,
-                  isActive: true,
-                },
-              ]
-            : []),
-        ],
-      })
+      const emailRows: Array<{
+        employeeId: string
+        emailTypeId: "PERSONAL" | "WORK"
+        email: string
+        isPrimary: boolean
+        isActive: boolean
+      }> = []
+
+      if (payload.contact.personalEmail) {
+        emailRows.push({
+          employeeId: employee.id,
+          emailTypeId: "PERSONAL",
+          email: payload.contact.personalEmail,
+          isPrimary: true,
+          isActive: true,
+        })
+      }
+
+      if (payload.contact.workEmail) {
+        emailRows.push({
+          employeeId: employee.id,
+          emailTypeId: "WORK",
+          email: payload.contact.workEmail,
+          isPrimary: !payload.contact.personalEmail,
+          isActive: true,
+        })
+      }
+
+      if (emailRows.length > 0) {
+        await tx.employeeEmail.createMany({
+          data: emailRows,
+        })
+      }
 
       if (payload.contact.street || payload.contact.barangay || payload.contact.city || payload.contact.province || payload.contact.postalCode) {
         await tx.employeeAddress.create({

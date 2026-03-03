@@ -39,6 +39,7 @@ export const updateEmployeeProfileInputSchema = z.object({
 
   mobileNumber: z.string().trim().max(30).optional(),
   personalEmail: z.string().trim().email("Please enter a valid personal email.").optional().or(z.literal("")),
+  workEmail: z.string().trim().email("Please enter a valid work email.").optional().or(z.literal("")),
 
   biometricId: z.string().trim().max(60).optional(),
   rfidNumber: z.string().trim().max(60).optional(),

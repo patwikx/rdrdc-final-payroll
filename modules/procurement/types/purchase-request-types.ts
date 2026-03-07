@@ -22,6 +22,8 @@ export type PurchaseRequestItemRow = {
 
 export type PurchaseRequestApprovalStepRow = {
   id: string
+  approvalCycle: number
+  isCurrentCycle: boolean
   stepNumber: number
   stepName: string | null
   status: "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED"
@@ -60,6 +62,7 @@ export type PurchaseRequestRow = {
   discount: number
   subTotal: number
   grandTotal: number
+  approvalCycle: number
   requiredSteps: number
   currentStep: number | null
   canActOnCurrentStep: boolean
@@ -73,6 +76,10 @@ export type PurchaseRequestRow = {
   draftToSubmitLeadTimeLabel: string | null
   totalLifecycleLeadTimeLabel: string | null
   finalDecisionRemarks: string | null
+  sentBackAtLabel: string | null
+  sentBackReason: string | null
+  sentBackByName: string | null
+  hasUnreadSendBackNotice: boolean
   cancellationReason: string | null
   approvalSteps: PurchaseRequestApprovalStepRow[]
   items: PurchaseRequestItemRow[]

@@ -2,6 +2,7 @@
 
 import {
   MaterialRequestStepStatus,
+  PurchaseRequestItemSource,
   PurchaseRequestStatus,
   Prisma,
 } from "@prisma/client"
@@ -17,18 +18,22 @@ import {
 } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 import { getEmployeePortalCapabilityContext } from "@/modules/employee-portal/utils/employee-portal-capability-context"
 import {
+  acknowledgePurchaseRequestSendBackInputSchema,
   approvePurchaseRequestInputSchema,
   cancelPurchaseRequestInputSchema,
   createPurchaseRequestDraftInputSchema,
   getPurchaseRequestApprovalDecisionDetailsInputSchema,
   rejectPurchaseRequestInputSchema,
+  sendBackPurchaseRequestInputSchema,
   submitPurchaseRequestInputSchema,
   updatePurchaseRequestDraftInputSchema,
+  type AcknowledgePurchaseRequestSendBackInput,
   type ApprovePurchaseRequestInput,
   type CancelPurchaseRequestInput,
   type CreatePurchaseRequestDraftInput,
   type GetPurchaseRequestApprovalDecisionDetailsInput,
   type RejectPurchaseRequestInput,
+  type SendBackPurchaseRequestInput,
   type SubmitPurchaseRequestInput,
   type UpdatePurchaseRequestDraftInput,
 } from "@/modules/procurement/schemas/purchase-request-actions-schema"
@@ -58,25 +63,41 @@ class PurchaseRequestApprovalValidationError extends Error {
 }
 
 type PurchaseRequestItemPayload = {
-  source: "CATALOG"
-  procurementItemId: string
-  itemCode: string
+  source: "CATALOG" | "MANUAL"
+  procurementItemId: string | null
+  itemCode: string | null
   description: string
   uom: string
   quantity: number
   unitPrice: number | null
   lineTotal: number | null
-  remarks: null
+  remarks: string | null
 }
 
-type PurchaseRequestItemInputPayload = {
+type PurchaseRequestCatalogItemInputPayload = {
+  source: "CATALOG"
   procurementItemId: string
   quantity: number
   unitPrice: number | null
 }
 
+type PurchaseRequestManualItemInputPayload = {
+  source: "MANUAL"
+  itemCode: string | null
+  description: string
+  uom: string
+  quantity: number
+  unitPrice: number | null
+  remarks: string | null
+}
+
+type PurchaseRequestItemInputPayload =
+  | PurchaseRequestCatalogItemInputPayload
+  | PurchaseRequestManualItemInputPayload
+
 type PurchaseRequestApprovalStepRecord = {
   id: string
+  approvalCycle: number
   stepNumber: number
   stepName: string | null
   approverUserId: string
@@ -120,21 +141,51 @@ const toItemInputPayload = (
   inputItems: CreatePurchaseRequestDraftInput["items"]
 ): PurchaseRequestItemInputPayload[] => {
   const existingProcurementItemIds = new Set<string>()
+  const existingManualItemCodes = new Set<string>()
 
   return inputItems.map((item) => {
-    const procurementItemId = item.procurementItemId.trim()
-    if (existingProcurementItemIds.has(procurementItemId)) {
-      throw new Error("Duplicate catalog items are not allowed within the same purchase request.")
-    }
-    existingProcurementItemIds.add(procurementItemId)
-
+    const source = item.source ?? PurchaseRequestItemSource.CATALOG
     const quantity = Number(item.quantity)
     const unitPrice = item.unitPrice === undefined ? null : Number(item.unitPrice)
 
+    if (source === PurchaseRequestItemSource.CATALOG) {
+      const procurementItemId = item.procurementItemId?.trim()
+      if (!procurementItemId) {
+        throw new Error("Catalog item is required.")
+      }
+
+      if (existingProcurementItemIds.has(procurementItemId)) {
+        throw new Error("Duplicate catalog items are not allowed within the same purchase request.")
+      }
+      existingProcurementItemIds.add(procurementItemId)
+
+      return {
+        source: "CATALOG",
+        procurementItemId,
+        quantity,
+        unitPrice,
+      }
+    }
+
+    const normalizedManualItemCode = normalizeOptionalText(item.itemCode)?.toUpperCase() ?? null
+    if (normalizedManualItemCode) {
+      if (existingManualItemCodes.has(normalizedManualItemCode)) {
+        throw new Error("Duplicate manual item codes are not allowed within the same purchase request.")
+      }
+      existingManualItemCodes.add(normalizedManualItemCode)
+    }
+
+    const description = item.description.trim()
+    const uom = item.uom.trim().toUpperCase()
+
     return {
-      procurementItemId,
+      source: "MANUAL",
+      itemCode: normalizedManualItemCode,
+      description,
+      uom,
       quantity,
       unitPrice,
+      remarks: normalizeOptionalText(item.remarks),
     }
   })
 }
@@ -142,7 +193,30 @@ const toItemInputPayload = (
 const resolveCatalogBackedItemPayload = async (
   itemInputs: PurchaseRequestItemInputPayload[]
 ): Promise<PurchaseRequestItemPayload[]> => {
-  const procurementItemIds = itemInputs.map((item) => item.procurementItemId)
+  const catalogInputs = itemInputs.filter(
+    (item): item is PurchaseRequestCatalogItemInputPayload => item.source === "CATALOG"
+  )
+  if (catalogInputs.length === 0) {
+    return itemInputs.map((item) => {
+      if (item.source === "CATALOG") {
+        throw new Error("Catalog item is required.")
+      }
+
+      return {
+        source: "MANUAL",
+        procurementItemId: null,
+        itemCode: item.itemCode,
+        description: item.description,
+        uom: item.uom,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.unitPrice === null ? null : item.quantity * item.unitPrice,
+        remarks: item.remarks,
+      }
+    })
+  }
+
+  const procurementItemIds = catalogInputs.map((item) => item.procurementItemId)
   const catalogItems = await db.procurementItem.findMany({
     where: {
       id: {
@@ -166,6 +240,20 @@ const resolveCatalogBackedItemPayload = async (
   const catalogById = new Map(catalogItems.map((item) => [item.id, item]))
 
   return itemInputs.map((itemInput) => {
+    if (itemInput.source === "MANUAL") {
+      return {
+        source: "MANUAL",
+        procurementItemId: null,
+        itemCode: itemInput.itemCode,
+        description: itemInput.description,
+        uom: itemInput.uom,
+        quantity: itemInput.quantity,
+        unitPrice: itemInput.unitPrice,
+        lineTotal: itemInput.unitPrice === null ? null : itemInput.quantity * itemInput.unitPrice,
+        remarks: itemInput.remarks,
+      }
+    }
+
     const catalogItem = catalogById.get(itemInput.procurementItemId)
     if (!catalogItem) {
       throw new Error("One or more selected catalog items are invalid or inactive.")
@@ -194,6 +282,23 @@ const computeTotals = (items: PurchaseRequestItemPayload[]): {
   return {
     subTotal: new Prisma.Decimal(subTotalNumber),
     grandTotal: new Prisma.Decimal(Math.max(0, subTotalNumber)),
+  }
+}
+
+const assertUniqueItemCodes = (items: PurchaseRequestItemPayload[]): void => {
+  const seenItemCodes = new Set<string>()
+
+  for (const item of items) {
+    const normalizedItemCode = item.itemCode?.trim().toUpperCase()
+    if (!normalizedItemCode) {
+      continue
+    }
+
+    if (seenItemCodes.has(normalizedItemCode)) {
+      throw new Error("Duplicate item codes are not allowed within the same purchase request.")
+    }
+
+    seenItemCodes.add(normalizedItemCode)
   }
 }
 
@@ -264,6 +369,7 @@ const ensurePurchaseRequestCapabilityAccess = async (params: {
 
 const getPendingStepForActor = (params: {
   currentStep: number | null
+  approvalCycle: number
   steps: PurchaseRequestApprovalStepRecord[]
   actorUserId: string
 }): PurchaseRequestApprovalStepRecord | null => {
@@ -274,6 +380,7 @@ const getPendingStepForActor = (params: {
   return (
     params.steps.find(
       (step) =>
+        step.approvalCycle === params.approvalCycle &&
         step.stepNumber === params.currentStep &&
         step.approverUserId === params.actorUserId &&
         step.status === MaterialRequestStepStatus.PENDING
@@ -376,6 +483,7 @@ export async function createPurchaseRequestDraftAction(
   let items: PurchaseRequestItemPayload[]
   try {
     items = await resolveCatalogBackedItemPayload(itemInputs)
+    assertUniqueItemCodes(items)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid purchase request items."
     return { ok: false, error: message }
@@ -515,6 +623,7 @@ export async function updatePurchaseRequestDraftAction(
   let items: PurchaseRequestItemPayload[]
   try {
     items = await resolveCatalogBackedItemPayload(itemInputs)
+    assertUniqueItemCodes(items)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid purchase request items."
     return { ok: false, error: message }
@@ -618,6 +727,7 @@ export async function submitPurchaseRequestAction(
       id: true,
       status: true,
       requestNumber: true,
+      approvalCycle: true,
       departmentId: true,
       selectedInitialApproverUserId: true,
       selectedStepTwoApproverUserId: true,
@@ -790,6 +900,9 @@ export async function submitPurchaseRequestAction(
         select: {
           id: true,
           status: true,
+          approvalCycle: true,
+          sentBackAt: true,
+          sentBackAcknowledgedAt: true,
           updatedAt: true,
           _count: {
             select: {
@@ -819,15 +932,12 @@ export async function submitPurchaseRequestAction(
         )
       }
 
-      await tx.purchaseRequestApprovalStep.deleteMany({
-        where: {
-          purchaseRequestId: request.id,
-        },
-      })
+      const nextApprovalCycle = lockedRequest.approvalCycle + 1
 
       await tx.purchaseRequestApprovalStep.createMany({
         data: submissionFlowSteps.map((step) => ({
           purchaseRequestId: request.id,
+          approvalCycle: nextApprovalCycle,
           stepNumber: step.stepNumber,
           stepName: step.stepName,
           approverUserId: step.approverUserId,
@@ -842,6 +952,7 @@ export async function submitPurchaseRequestAction(
         },
         data: {
           status: PurchaseRequestStatus.PENDING_APPROVAL,
+          approvalCycle: nextApprovalCycle,
           requiredSteps: approvalFlow.requiredSteps,
           currentStep: 1,
           submittedAt,
@@ -849,6 +960,9 @@ export async function submitPurchaseRequestAction(
           rejectedAt: null,
           finalDecisionByUserId: null,
           finalDecisionRemarks: null,
+          sentBackAcknowledgedAt: lockedRequest.sentBackAt
+            ? (lockedRequest.sentBackAcknowledgedAt ?? submittedAt)
+            : null,
           cancellationReason: null,
           cancelledAt: null,
           cancelledByUserId: null,
@@ -918,19 +1032,10 @@ export async function cancelPurchaseRequestAction(
     select: {
       id: true,
       status: true,
+      approvalCycle: true,
       requestNumber: true,
       requesterUserId: true,
       updatedAt: true,
-      steps: {
-        where: {
-          status: {
-            in: [MaterialRequestStepStatus.APPROVED, MaterialRequestStepStatus.REJECTED],
-          },
-        },
-        select: {
-          id: true,
-        },
-      },
     },
   })
 
@@ -952,7 +1057,20 @@ export async function cancelPurchaseRequestAction(
     return { ok: false, error: "Only draft or pending requests can be cancelled." }
   }
 
-  if (request.status === PurchaseRequestStatus.PENDING_APPROVAL && request.steps.length > 0) {
+  const currentCycleActedCount =
+    request.status === PurchaseRequestStatus.PENDING_APPROVAL
+      ? await db.purchaseRequestApprovalStep.count({
+          where: {
+            purchaseRequestId: request.id,
+            approvalCycle: request.approvalCycle,
+            status: {
+              in: [MaterialRequestStepStatus.APPROVED, MaterialRequestStepStatus.REJECTED],
+            },
+          },
+        })
+      : 0
+
+  if (request.status === PurchaseRequestStatus.PENDING_APPROVAL && currentCycleActedCount > 0) {
     return {
       ok: false,
       error: "This request already has an approval decision and can no longer be cancelled.",
@@ -974,18 +1092,9 @@ export async function cancelPurchaseRequestAction(
         select: {
           id: true,
           status: true,
+          approvalCycle: true,
           requesterUserId: true,
           updatedAt: true,
-          steps: {
-            where: {
-              status: {
-                in: [MaterialRequestStepStatus.APPROVED, MaterialRequestStepStatus.REJECTED],
-              },
-            },
-            select: {
-              id: true,
-            },
-          },
         },
       })
 
@@ -1013,9 +1122,22 @@ export async function cancelPurchaseRequestAction(
         throw new PurchaseRequestStateConflictError("Only draft or pending requests can be cancelled.")
       }
 
+      const lockedCurrentCycleActedCount =
+        lockedRequest.status === PurchaseRequestStatus.PENDING_APPROVAL
+          ? await tx.purchaseRequestApprovalStep.count({
+              where: {
+                purchaseRequestId: lockedRequest.id,
+                approvalCycle: lockedRequest.approvalCycle,
+                status: {
+                  in: [MaterialRequestStepStatus.APPROVED, MaterialRequestStepStatus.REJECTED],
+                },
+              },
+            })
+          : 0
+
       if (
         lockedRequest.status === PurchaseRequestStatus.PENDING_APPROVAL &&
-        lockedRequest.steps.length > 0
+        lockedCurrentCycleActedCount > 0
       ) {
         throw new PurchaseRequestStateConflictError(
           "This request already has an approval decision and can no longer be cancelled."
@@ -1025,6 +1147,7 @@ export async function cancelPurchaseRequestAction(
       await tx.purchaseRequestApprovalStep.updateMany({
         where: {
           purchaseRequestId: request.id,
+          approvalCycle: request.approvalCycle,
           status: MaterialRequestStepStatus.PENDING,
         },
         data: {
@@ -1096,16 +1219,11 @@ export async function getPurchaseRequestApprovalDecisionDetailsAction(
       id: payload.requestId,
       companyId: context.companyId,
       status: PurchaseRequestStatus.PENDING_APPROVAL,
-      steps: {
-        some: {
-          approverUserId: context.userId,
-          status: MaterialRequestStepStatus.PENDING,
-        },
-      },
     },
     select: {
       id: true,
       requestNumber: true,
+      approvalCycle: true,
       currentStep: true,
       requiredSteps: true,
       datePrepared: true,
@@ -1131,6 +1249,7 @@ export async function getPurchaseRequestApprovalDecisionDetailsAction(
         },
         select: {
           id: true,
+          approvalCycle: true,
           stepNumber: true,
           stepName: true,
           approverUserId: true,
@@ -1146,6 +1265,7 @@ export async function getPurchaseRequestApprovalDecisionDetailsAction(
 
   const actorStep = getPendingStepForActor({
     currentStep: request.currentStep,
+    approvalCycle: request.approvalCycle,
     steps: request.steps,
     actorUserId: context.userId,
   })
@@ -1248,11 +1368,13 @@ export async function approvePurchaseRequestAction(
       id: true,
       status: true,
       requestNumber: true,
+      approvalCycle: true,
       currentStep: true,
       requiredSteps: true,
       steps: {
         select: {
           id: true,
+          approvalCycle: true,
           stepNumber: true,
           stepName: true,
           approverUserId: true,
@@ -1272,6 +1394,7 @@ export async function approvePurchaseRequestAction(
 
   const actorStep = getPendingStepForActor({
     currentStep: request.currentStep,
+    approvalCycle: request.approvalCycle,
     steps: request.steps,
     actorUserId: context.userId,
   })
@@ -1303,6 +1426,7 @@ export async function approvePurchaseRequestAction(
       const stepUpdate = await tx.purchaseRequestApprovalStep.updateMany({
         where: {
           id: actorStep.id,
+          approvalCycle: request.approvalCycle,
           status: MaterialRequestStepStatus.PENDING,
         },
         data: {
@@ -1320,6 +1444,7 @@ export async function approvePurchaseRequestAction(
       await tx.purchaseRequestApprovalStep.updateMany({
         where: {
           purchaseRequestId: request.id,
+          approvalCycle: request.approvalCycle,
           stepNumber: actorStep.stepNumber,
           status: MaterialRequestStepStatus.PENDING,
           id: {
@@ -1339,6 +1464,7 @@ export async function approvePurchaseRequestAction(
           where: {
             id: request.id,
             status: PurchaseRequestStatus.PENDING_APPROVAL,
+            approvalCycle: request.approvalCycle,
             currentStep: actorStep.stepNumber,
           },
           data: {
@@ -1359,6 +1485,7 @@ export async function approvePurchaseRequestAction(
           where: {
             id: request.id,
             status: PurchaseRequestStatus.PENDING_APPROVAL,
+            approvalCycle: request.approvalCycle,
             currentStep: actorStep.stepNumber,
           },
           data: {
@@ -1446,10 +1573,12 @@ export async function rejectPurchaseRequestAction(
       id: true,
       status: true,
       requestNumber: true,
+      approvalCycle: true,
       currentStep: true,
       steps: {
         select: {
           id: true,
+          approvalCycle: true,
           stepNumber: true,
           stepName: true,
           approverUserId: true,
@@ -1469,6 +1598,7 @@ export async function rejectPurchaseRequestAction(
 
   const actorStep = getPendingStepForActor({
     currentStep: request.currentStep,
+    approvalCycle: request.approvalCycle,
     steps: request.steps,
     actorUserId: context.userId,
   })
@@ -1499,6 +1629,7 @@ export async function rejectPurchaseRequestAction(
       const stepUpdate = await tx.purchaseRequestApprovalStep.updateMany({
         where: {
           id: actorStep.id,
+          approvalCycle: request.approvalCycle,
           status: MaterialRequestStepStatus.PENDING,
         },
         data: {
@@ -1516,6 +1647,7 @@ export async function rejectPurchaseRequestAction(
       await tx.purchaseRequestApprovalStep.updateMany({
         where: {
           purchaseRequestId: request.id,
+          approvalCycle: request.approvalCycle,
           status: MaterialRequestStepStatus.PENDING,
           stepNumber: {
             gte: actorStep.stepNumber,
@@ -1533,6 +1665,7 @@ export async function rejectPurchaseRequestAction(
         where: {
           id: request.id,
           status: PurchaseRequestStatus.PENDING_APPROVAL,
+          approvalCycle: request.approvalCycle,
           currentStep: actorStep.stepNumber,
         },
         data: {
@@ -1585,4 +1718,298 @@ export async function rejectPurchaseRequestAction(
 
   revalidatePurchaseRequestPaths(context.companyId)
   return { ok: true, message: `${request.requestNumber} rejected.` }
+}
+
+export async function sendBackPurchaseRequestForEditAction(
+  input: SendBackPurchaseRequestInput
+): Promise<ProcurementActionResult> {
+  const parsed = sendBackPurchaseRequestInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid send-back payload." }
+  }
+
+  const payload = parsed.data
+  const access = await ensurePurchaseRequestCapabilityAccess({
+    companyId: payload.companyId,
+    capability: "purchase_requests.approve",
+    errorMessage: "You are not allowed to send back purchase requests for editing.",
+  })
+  if (!access.ok) {
+    return access
+  }
+  const context = access.context
+
+  if (!(await ensurePurchaseRequestFeatureEnabled(context.companyId))) {
+    return { ok: false, error: "Purchase Request workflow is disabled for this company." }
+  }
+
+  const request = await db.purchaseRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      companyId: context.companyId,
+    },
+    select: {
+      id: true,
+      status: true,
+      requestNumber: true,
+      approvalCycle: true,
+      currentStep: true,
+      steps: {
+        select: {
+          id: true,
+          approvalCycle: true,
+          stepNumber: true,
+          stepName: true,
+          approverUserId: true,
+          status: true,
+        },
+      },
+    },
+  })
+
+  if (!request) {
+    return { ok: false, error: "Purchase request not found." }
+  }
+
+  if (request.status !== PurchaseRequestStatus.PENDING_APPROVAL) {
+    return { ok: false, error: "Only pending purchase requests can be sent back for editing." }
+  }
+
+  const actorStep = getPendingStepForActor({
+    currentStep: request.currentStep,
+    approvalCycle: request.approvalCycle,
+    steps: request.steps,
+    actorUserId: context.userId,
+  })
+
+  if (!actorStep) {
+    return { ok: false, error: "You are not allowed to send back this request at the current step." }
+  }
+
+  const actedAt = new Date()
+  const remarks = payload.remarks.trim()
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "PurchaseRequest" WHERE "id" = ${request.id} FOR UPDATE`
+
+      const approverStillEligible = await isApproverStillEligible({
+        tx,
+        userId: context.userId,
+        companyId: context.companyId,
+      })
+
+      if (!approverStillEligible) {
+        throw new PurchaseRequestApprovalValidationError(
+          "Your request approver access is no longer active. Please contact HR."
+        )
+      }
+
+      const stepUpdate = await tx.purchaseRequestApprovalStep.updateMany({
+        where: {
+          id: actorStep.id,
+          approvalCycle: request.approvalCycle,
+          status: MaterialRequestStepStatus.PENDING,
+        },
+        data: {
+          status: MaterialRequestStepStatus.REJECTED,
+          actedAt,
+          actedByUserId: context.userId,
+          remarks,
+        },
+      })
+
+      if (stepUpdate.count !== 1) {
+        throw new Error("The approval step is no longer pending.")
+      }
+
+      await tx.purchaseRequestApprovalStep.updateMany({
+        where: {
+          purchaseRequestId: request.id,
+          approvalCycle: request.approvalCycle,
+          status: MaterialRequestStepStatus.PENDING,
+          id: {
+            not: actorStep.id,
+          },
+          stepNumber: {
+            gte: actorStep.stepNumber,
+          },
+        },
+        data: {
+          status: MaterialRequestStepStatus.SKIPPED,
+          actedAt,
+          actedByUserId: context.userId,
+          remarks: "Skipped after request was sent back for editing",
+        },
+      })
+
+      const requestUpdate = await tx.purchaseRequest.updateMany({
+        where: {
+          id: request.id,
+          status: PurchaseRequestStatus.PENDING_APPROVAL,
+          approvalCycle: request.approvalCycle,
+          currentStep: actorStep.stepNumber,
+        },
+        data: {
+          status: PurchaseRequestStatus.DRAFT,
+          requiredSteps: 0,
+          currentStep: null,
+          submittedAt: null,
+          approvedAt: null,
+          rejectedAt: null,
+          finalDecisionByUserId: context.userId,
+          finalDecisionRemarks: remarks,
+          sentBackAt: actedAt,
+          sentBackReason: remarks,
+          sentBackByUserId: context.userId,
+          sentBackAcknowledgedAt: null,
+          cancellationReason: null,
+          cancelledAt: null,
+          cancelledByUserId: null,
+        },
+      })
+
+      if (requestUpdate.count !== 1) {
+        throw new Error("The request state changed while sending back for edit.")
+      }
+
+      await createAuditLog(
+        {
+          tableName: "PurchaseRequest",
+          recordId: request.id,
+          action: "UPDATE",
+          userId: context.userId,
+          reason: "SEND_BACK_PURCHASE_REQUEST_FOR_EDIT",
+          changes: [
+            {
+              fieldName: "status",
+              oldValue: request.status,
+              newValue: PurchaseRequestStatus.DRAFT,
+            },
+            {
+              fieldName: "currentStep",
+              oldValue: request.currentStep,
+              newValue: null,
+            },
+            {
+              fieldName: "finalDecisionRemarks",
+              newValue: remarks,
+            },
+          ],
+        },
+        tx
+      )
+    })
+  } catch (error) {
+    if (error instanceof PurchaseRequestApprovalValidationError) {
+      return { ok: false, error: error.message }
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { ok: false, error: `Failed to send back purchase request for edit: ${message}` }
+  }
+
+  revalidatePurchaseRequestPaths(context.companyId)
+  return { ok: true, message: `${request.requestNumber} sent back for editing.` }
+}
+
+export async function acknowledgePurchaseRequestSendBackNoticeAction(
+  input: AcknowledgePurchaseRequestSendBackInput
+): Promise<ProcurementActionResult> {
+  const parsed = acknowledgePurchaseRequestSendBackInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid acknowledgement payload." }
+  }
+
+  const payload = parsed.data
+  const access = await ensurePurchaseRequestCapabilityAccess({
+    companyId: payload.companyId,
+    capability: "purchase_requests.view",
+    errorMessage: "You are not allowed to view purchase requests.",
+  })
+  if (!access.ok) {
+    return access
+  }
+  const context = access.context
+
+  if (!(await ensurePurchaseRequestFeatureEnabled(context.companyId))) {
+    return { ok: false, error: "Purchase Request workflow is disabled for this company." }
+  }
+
+  const request = await db.purchaseRequest.findFirst({
+    where: {
+      id: payload.requestId,
+      companyId: context.companyId,
+      requesterUserId: context.userId,
+    },
+    select: {
+      id: true,
+      requestNumber: true,
+      sentBackAt: true,
+      sentBackAcknowledgedAt: true,
+    },
+  })
+
+  if (!request) {
+    return { ok: false, error: "Purchase request not found." }
+  }
+
+  if (!request.sentBackAt) {
+    return { ok: true, message: "No send-back notice to acknowledge." }
+  }
+
+  if (request.sentBackAcknowledgedAt) {
+    return { ok: true, message: "Send-back notice already acknowledged." }
+  }
+
+  const acknowledgedAt = new Date()
+
+  try {
+    await db.$transaction(async (tx) => {
+      const updateResult = await tx.purchaseRequest.updateMany({
+        where: {
+          id: request.id,
+          sentBackAt: {
+            not: null,
+          },
+          sentBackAcknowledgedAt: null,
+        },
+        data: {
+          sentBackAcknowledgedAt: acknowledgedAt,
+        },
+      })
+
+      if (updateResult.count !== 1) {
+        throw new PurchaseRequestStateConflictError("Send-back notice was already acknowledged.")
+      }
+
+      await createAuditLog(
+        {
+          tableName: "PurchaseRequest",
+          recordId: request.id,
+          action: "UPDATE",
+          userId: context.userId,
+          reason: "ACKNOWLEDGE_PURCHASE_REQUEST_SEND_BACK_NOTICE",
+          changes: [
+            {
+              fieldName: "sentBackAcknowledgedAt",
+              oldValue: null,
+              newValue: acknowledgedAt,
+            },
+          ],
+        },
+        tx
+      )
+    })
+  } catch (error) {
+    if (error instanceof PurchaseRequestStateConflictError) {
+      return { ok: true, message: "Send-back notice already acknowledged." }
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { ok: false, error: `Failed to acknowledge send-back notice: ${message}` }
+  }
+
+  revalidatePurchaseRequestPaths(context.companyId)
+  return { ok: true, message: `${request.requestNumber} send-back notice acknowledged.` }
 }

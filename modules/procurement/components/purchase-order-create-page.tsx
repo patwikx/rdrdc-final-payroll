@@ -45,6 +45,7 @@ type PurchaseOrderCreatePageProps = {
   companyId: string
   availableSourceRequests: PurchaseOrderSourceRequestOption[]
   nextPoNumber: string
+  preferredSourceRequestId?: string
 }
 
 type PurchaseOrderLineForm = {
@@ -54,6 +55,9 @@ type PurchaseOrderLineForm = {
   itemCode: string
   description: string
   uom: string
+  requestedQuantity: string
+  allocatedQuantity: string
+  availableQuantity: string
   quantityOrdered: string
   unitPrice: string
   remarks: string
@@ -79,6 +83,8 @@ const toNum = (value: string): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+const toQuantityText = (value: number): string => String(Math.round(Math.max(0, value) * 1000) / 1000)
+
 const buildInitialLines = (request: PurchaseOrderSourceRequestOption): PurchaseOrderLineForm[] =>
   request.items.map((item, index) => ({
     sourcePurchaseRequestItemId: item.id,
@@ -87,7 +93,10 @@ const buildInitialLines = (request: PurchaseOrderSourceRequestOption): PurchaseO
     itemCode: item.itemCode,
     description: item.description,
     uom: item.uom,
-    quantityOrdered: String(item.quantity),
+    requestedQuantity: toQuantityText(item.requestedQuantity),
+    allocatedQuantity: toQuantityText(item.allocatedQuantity),
+    availableQuantity: toQuantityText(item.availableQuantity),
+    quantityOrdered: toQuantityText(item.availableQuantity),
     unitPrice: String(item.unitPrice),
     remarks: item.remarks ?? "",
   }))
@@ -102,11 +111,16 @@ export function PurchaseOrderCreatePage({
   companyId,
   availableSourceRequests,
   nextPoNumber,
+  preferredSourceRequestId,
 }: PurchaseOrderCreatePageProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const firstRequest = availableSourceRequests[0] ?? null
+  const preferredRequest =
+    preferredSourceRequestId
+      ? (availableSourceRequests.find((request) => request.id === preferredSourceRequestId) ?? null)
+      : null
+  const firstRequest = preferredRequest ?? availableSourceRequests[0] ?? null
 
   const [sourceRequestId, setSourceRequestId] = useState<string>(firstRequest?.id ?? "")
   const [sourceRequestOpen, setSourceRequestOpen] = useState(false)
@@ -168,7 +182,7 @@ export function PurchaseOrderCreatePage({
   )
   const grandTotal = useMemo(() => taxableBase + vatAmount, [taxableBase, vatAmount])
 
-  const handleCreate = () => {
+  const handleCreate = (options: { saveAsDraft: boolean }) => {
     if (!sourceRequestId) {
       toast.error("Select an approved source request.")
       return
@@ -215,6 +229,11 @@ export function PurchaseOrderCreatePage({
         return
       }
 
+      if (toNum(line.quantityOrdered) - toNum(line.availableQuantity) > 0.0001) {
+        toast.error(`Line ${index + 1}: ordered quantity cannot exceed available quantity.`)
+        return
+      }
+
       if (!line.unitPrice.trim()) {
         toast.error(`Line ${index + 1}: unit price is required.`)
         return
@@ -232,12 +251,14 @@ export function PurchaseOrderCreatePage({
         sourceRequestId,
         supplierName: supplierName.trim(),
         paymentTerms: resolvedPaymentTerms,
+        saveAsDraft: options.saveAsDraft,
         applyVat,
         discount: discountAmount,
         expectedDeliveryDate: expectedDeliveryDate || undefined,
         remarks: remarks.trim() || undefined,
         lines: selectedLines.map((line) => ({
           sourcePurchaseRequestItemId: line.sourcePurchaseRequestItemId,
+          quantityOrdered: toNum(line.quantityOrdered),
           unitPrice: toNum(line.unitPrice),
           remarks: line.remarks.trim() || undefined,
         })),
@@ -276,11 +297,11 @@ export function PurchaseOrderCreatePage({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Create a purchase order from an approved purchase request. Select the request items for this supplier, then adjust PO pricing and line remarks as needed.
+              Create a purchase order from an approved purchase request. You can award full or partial remaining quantities per request line to this supplier.
             </p>
           </div>
 
-          <div className="grid w-full grid-cols-3 gap-2 md:w-auto md:grid-cols-[auto_auto_auto]">
+          <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:grid-cols-[auto_auto_auto_auto]">
             <Button type="button" variant="outline" className="justify-self-start rounded-lg" asChild>
               <Link href={`/${companyId}/employee-portal/purchase-orders`}>
                 <IconArrowLeft className="mr-1 h-4 w-4" />
@@ -292,12 +313,22 @@ export function PurchaseOrderCreatePage({
             </Button>
             <Button
               type="button"
-              onClick={handleCreate}
+              variant="outline"
+              onClick={() => handleCreate({ saveAsDraft: true })}
               disabled={isPending || availableSourceRequests.length === 0}
               className="justify-self-start rounded-lg"
             >
               <IconPackageImport className="mr-1 h-4 w-4" />
-              {isPending ? "Creating..." : "Create Purchase Order"}
+              {isPending ? "Saving..." : "Save Draft"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleCreate({ saveAsDraft: false })}
+              disabled={isPending || availableSourceRequests.length === 0}
+              className="justify-self-start rounded-lg"
+            >
+              <IconPackageImport className="mr-1 h-4 w-4" />
+              {isPending ? "Creating..." : "Create & Open"}
             </Button>
           </div>
         </div>
@@ -585,9 +616,36 @@ export function PurchaseOrderCreatePage({
                                 <Input value={line.uom} readOnly className="h-8 bg-muted/40 text-muted-foreground" />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-[11px] text-muted-foreground">Qty</Label>
-                                <Input value={line.quantityOrdered} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                                <Label className="text-[11px] text-muted-foreground">Available Qty</Label>
+                                <Input value={line.availableQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
                               </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[11px] text-muted-foreground">Requested Qty</Label>
+                                <Input value={line.requestedQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] text-muted-foreground">Allocated Qty</Label>
+                                <Input value={line.allocatedQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[11px] text-muted-foreground">
+                                Ordered Qty <span className="text-destructive">*</span>
+                              </Label>
+                              <Input
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                max={line.availableQuantity}
+                                value={line.quantityOrdered}
+                                onChange={(event) =>
+                                  updateLine(line.sourcePurchaseRequestItemId, { quantityOrdered: event.target.value })
+                                }
+                                className="h-8 text-right tabular-nums"
+                                disabled={isPending || !line.isSelected}
+                              />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-[11px] text-muted-foreground">
@@ -623,7 +681,7 @@ export function PurchaseOrderCreatePage({
                   </div>
 
                   <div className="hidden overflow-x-auto md:block">
-                    <div className="grid min-w-[960px] grid-cols-[4.5rem_7rem_minmax(0,1.5fr)_4rem_5.5rem_7rem_minmax(0,1fr)_7rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <div className="grid min-w-[1220px] grid-cols-[4.5rem_7rem_minmax(0,1.4fr)_4rem_5.5rem_5.5rem_5.5rem_5.5rem_7rem_minmax(0,1fr)_7rem] items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <Checkbox
                           checked={areAllLinesSelected}
@@ -635,7 +693,12 @@ export function PurchaseOrderCreatePage({
                       <p>Item Code</p>
                       <p>Description</p>
                       <p>UOM</p>
-                      <p className="text-right">Qty</p>
+                      <p className="text-right">Req Qty</p>
+                      <p className="text-right">Alloc Qty</p>
+                      <p className="text-right">Avail Qty</p>
+                      <p className="text-right">
+                        Ord Qty <span className="text-destructive">*</span>
+                      </p>
                       <p className="text-right">
                         Unit Price <span className="text-destructive">*</span>
                       </p>
@@ -649,7 +712,7 @@ export function PurchaseOrderCreatePage({
                           <div
                             key={line.sourcePurchaseRequestItemId}
                             className={cn(
-                              "grid min-w-[960px] grid-cols-[4.5rem_7rem_minmax(0,1.5fr)_4rem_5.5rem_7rem_minmax(0,1fr)_7rem] items-center gap-2 border-b border-border/60 px-3 py-2 text-xs last:border-b-0",
+                              "grid min-w-[1220px] grid-cols-[4.5rem_7rem_minmax(0,1.4fr)_4rem_5.5rem_5.5rem_5.5rem_5.5rem_7rem_minmax(0,1fr)_7rem] items-center gap-2 border-b border-border/60 px-3 py-2 text-xs last:border-b-0",
                               !line.isSelected && "opacity-60"
                             )}
                           >
@@ -666,7 +729,21 @@ export function PurchaseOrderCreatePage({
                             <Input value={line.itemCode} readOnly className="h-8 bg-muted/40 text-muted-foreground" />
                             <Input value={line.description} readOnly className="h-8 bg-muted/40 text-muted-foreground" />
                             <Input value={line.uom} readOnly className="h-8 bg-muted/40 text-muted-foreground" />
-                            <Input value={line.quantityOrdered} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                            <Input value={line.requestedQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                            <Input value={line.allocatedQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                            <Input value={line.availableQuantity} readOnly className="h-8 bg-muted/40 text-right tabular-nums text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min="0.001"
+                              step="0.001"
+                              max={line.availableQuantity}
+                              value={line.quantityOrdered}
+                              onChange={(event) =>
+                                updateLine(line.sourcePurchaseRequestItemId, { quantityOrdered: event.target.value })
+                              }
+                              className="h-8 text-right tabular-nums"
+                              disabled={isPending || !line.isSelected}
+                            />
                             <Input
                               type="number"
                               min="0"

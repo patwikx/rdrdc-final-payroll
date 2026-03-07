@@ -3,13 +3,12 @@
 import Link from "next/link"
 import { IconArrowLeft, IconFileInvoice } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
-import { useTransition } from "react"
+import { useState, useTransition } from "react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import {
   AlertDialog,
@@ -26,6 +25,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   cancelPurchaseOrderAction,
   closePurchaseOrderAction,
+  closePurchaseOrderLineAction,
+  openPurchaseOrderAction,
 } from "@/modules/procurement/actions/purchase-order-actions"
 import { PurchaseOrderPrintButton } from "@/modules/procurement/components/purchase-order-print-button"
 import type { PurchaseOrderDetail } from "@/modules/procurement/types/purchase-order-types"
@@ -58,6 +59,13 @@ const statusVariant = (status: string): "default" | "secondary" | "destructive" 
 
 const toStatusLabel = (status: string): string => status.replaceAll("_", " ")
 
+const lineStatusLabel = (line: PurchaseOrderDetail["lines"][number]): string => {
+  if (line.isShortClosed) return "CLOSED SHORT"
+  if (line.quantityRemaining <= 0.0001) return "FULLY RECEIVED"
+  if (line.quantityReceived > 0.0001) return "PARTIAL"
+  return "OPEN"
+}
+
 export function PurchaseOrderDetailPage({
   companyId,
   companyName,
@@ -67,6 +75,8 @@ export function PurchaseOrderDetailPage({
 }: PurchaseOrderDetailPageProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [shortCloseLineTarget, setShortCloseLineTarget] = useState<PurchaseOrderDetail["lines"][number] | null>(null)
+  const [shortCloseReason, setShortCloseReason] = useState("")
 
   const runAction = (action: () => Promise<{ ok: boolean; error?: string; message?: string }>) => {
     startTransition(async () => {
@@ -80,6 +90,9 @@ export function PurchaseOrderDetailPage({
       router.refresh()
     })
   }
+
+  const hasReceivableBalance = detail.lines.some((line) => !line.isShortClosed && line.quantityRemaining > 0.0001)
+  const hasUnservedAmount = detail.unservedAmount > 0.009
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
@@ -157,7 +170,47 @@ export function PurchaseOrderDetailPage({
               </Button>
             ) : null}
 
-            {detail.status === "OPEN" || detail.status === "PARTIALLY_RECEIVED" || detail.status === "FULLY_RECEIVED" ? (
+            {detail.status === "DRAFT" ? (
+              <AlertDialog>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        className="rounded-lg bg-green-600 text-white hover:bg-green-700"
+                        disabled={isPending}
+                      >
+                        Open
+                      </Button>
+                    </AlertDialogTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6}>
+                    Open this draft purchase order
+                  </TooltipContent>
+                </Tooltip>
+                <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-base font-semibold">Open Purchase Order</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will move PO {detail.poNumber} from draft to open and make it ready for receiving.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-lg">Back</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="rounded-lg bg-green-600 text-white hover:bg-green-700"
+                      onClick={() =>
+                        runAction(() => openPurchaseOrderAction({ companyId, purchaseOrderId: detail.id }))
+                      }
+                    >
+                      Confirm Open
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
+
+            {detail.status === "FULLY_RECEIVED" ? (
               <AlertDialog>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -179,7 +232,7 @@ export function PurchaseOrderDetailPage({
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-base font-semibold">Close Purchase Order</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will mark PO {detail.poNumber} as closed. Use this only when the order is already completed.
+                      PO {detail.poNumber} is fully received. Closing it will finalize this purchase order.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -217,6 +270,9 @@ export function PurchaseOrderDetailPage({
                     <AlertDialogDescription>
                       This will cancel PO {detail.poNumber}. Cancel only if the order should no longer proceed.
                     </AlertDialogDescription>
+                    <p className="text-xs text-muted-foreground">
+                      Cancellation is blocked once any Goods Receipt PO has already been posted for this PO.
+                    </p>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel className="rounded-lg">Back</AlertDialogCancel>
@@ -250,161 +306,222 @@ export function PurchaseOrderDetailPage({
         </div>
       </div>
 
-      <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            { label: "PO Number", value: detail.poNumber, icon: IconFileInvoice },
-            { label: "Supplier", value: detail.supplierName, icon: IconFileInvoice },
-            { label: "Line Items", value: String(detail.lines.length), icon: IconFileInvoice },
-            { label: "Grand Total", value: `PHP ${currency.format(detail.grandTotal)}`, icon: IconFileInvoice },
-          ].map((item) => (
-            <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <item.icon className="h-4 w-4 text-primary" />
+      <div className="space-y-7 px-4 py-5 sm:px-6 sm:py-6">
+        <section className="border-y border-border/60 bg-muted/10">
+          <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
+            {[
+              { label: "PO Number", value: detail.poNumber },
+              { label: "Supplier", value: detail.supplierName },
+              { label: "Line Items", value: String(detail.lines.length) },
+              { label: "Grand Total", value: `PHP ${currency.format(detail.grandTotal)}` },
+            ].map((item, index) => (
+              <div key={item.label} className={`px-3 py-3 ${index > 0 ? "border-l border-border/60" : ""}`}>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
               </div>
-              <span className="text-xl font-semibold text-foreground">{item.value}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">PO Number</Label>
-            <Input value={detail.poNumber} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Source Request</Label>
-            <Input value={detail.sourceRequestNumber} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Status</Label>
-            <Input value={toStatusLabel(detail.status)} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">PO Date</Label>
-            <Input value={detail.purchaseOrderDateLabel} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Expected Delivery</Label>
-            <Input value={detail.expectedDeliveryDateLabel ?? "-"} readOnly />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Supplier</Label>
-            <Input value={detail.supplierName} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Payment Terms</Label>
-            <Input value={detail.paymentTerms} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Prepared By</Label>
-            <Input value={detail.createdByName} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Opened At</Label>
-            <Input value={detail.openedAt ?? "-"} readOnly />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Branch</Label>
-            <Input value={detail.requesterBranchName ?? "-"} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Closed At</Label>
-            <Input value={detail.closedAt ?? "-"} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Cancelled At</Label>
-            <Input value={detail.cancelledAt ?? "-"} readOnly />
-          </div>
-        </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-          <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <IconFileInvoice className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">PO Line Items</h2>
-            </div>
-          </div>
-
-          <div className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <div className="grid min-w-[980px] grid-cols-[2.25rem_7.5rem_minmax(0,1.2fr)_4.75rem_5.25rem_5.25rem_5.25rem_6.5rem_6.5rem_minmax(0,1fr)] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                <p>#</p>
-                <p>Item Code</p>
-                <p>Description</p>
-                <p>UOM</p>
-                <p className="text-right">Ordered</p>
-                <p className="text-right">Received</p>
-                <p className="text-right">Balance</p>
-                <p className="text-right">Unit Price</p>
-                <p className="text-right">Line Total</p>
-                <p>Remarks</p>
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Document Details</h2>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              { label: "PO Number", value: detail.poNumber },
+              { label: "Source Request", value: detail.sourceRequestNumber },
+              { label: "Status", value: toStatusLabel(detail.status) },
+              { label: "PO Date", value: detail.purchaseOrderDateLabel },
+              { label: "Expected Delivery", value: detail.expectedDeliveryDateLabel ?? "-" },
+              { label: "Supplier", value: detail.supplierName },
+              { label: "Payment Terms", value: detail.paymentTerms },
+              { label: "Prepared By", value: detail.createdByName },
+              { label: "Branch", value: detail.requesterBranchName ?? "-" },
+              { label: "Opened At", value: detail.openedAt ?? "-" },
+              { label: "Closed At", value: detail.closedAt ?? "-" },
+              { label: "Cancelled At", value: detail.cancelledAt ?? "-" },
+            ].map((item) => (
+              <div key={item.label} className="space-y-1 border-b border-border/40 pb-2">
+                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</dt>
+                <dd className="text-sm font-medium text-foreground">{item.value}</dd>
               </div>
+            ))}
+          </dl>
+        </section>
 
-              <div className="max-h-[22rem] overflow-y-auto">
+        <section className="space-y-3 border-t border-border/60 pt-5">
+          <div className="flex items-center gap-2">
+            <IconFileInvoice className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">PO Line Items</h2>
+          </div>
+          <div className="overflow-x-auto border border-border/60">
+            <Table className="min-w-[980px]">
+              <TableHeader>
+                <TableRow className="bg-muted/25 hover:bg-muted/25">
+                  <TableHead>#</TableHead>
+                  <TableHead>Item Code</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>UOM</TableHead>
+                  <TableHead className="text-right">Ordered</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead className="text-right">Line Total</TableHead>
+                  <TableHead>Line Status</TableHead>
+                  <TableHead>Remarks</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {detail.lines.map((line, index) => (
-                  <div
-                    key={line.id}
-                    className="grid min-w-[980px] grid-cols-[2.25rem_7.5rem_minmax(0,1.2fr)_4.75rem_5.25rem_5.25rem_5.25rem_6.5rem_6.5rem_minmax(0,1fr)] items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0"
-                  >
-                    <p className="text-muted-foreground">{index + 1}</p>
-                    <p className="truncate text-foreground">{line.itemCode?.trim() || "-"}</p>
-                    <p className="truncate text-foreground" title={line.description}>
+                  <TableRow key={line.id}>
+                    <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                    <TableCell>{line.itemCode?.trim() || "-"}</TableCell>
+                    <TableCell className="max-w-[320px] truncate" title={line.description}>
                       {line.description}
-                    </p>
-                    <p className="truncate text-foreground">{line.uom}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantityFormatter.format(line.quantityOrdered)}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantityFormatter.format(line.quantityReceived)}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantityFormatter.format(line.quantityRemaining)}</p>
-                    <p className="text-right tabular-nums text-foreground">{currency.format(line.unitPrice)}</p>
-                    <p className="text-right tabular-nums text-foreground">{currency.format(line.lineTotal)}</p>
-                    <p className="truncate text-foreground" title={line.remarks ?? undefined}>
-                      {line.remarks?.trim() || "-"}
-                    </p>
-                  </div>
+                    </TableCell>
+                    <TableCell>{line.uom}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantityFormatter.format(line.quantityOrdered)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantityFormatter.format(line.quantityReceived)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantityFormatter.format(line.quantityRemaining)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{currency.format(line.unitPrice)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{currency.format(line.lineTotal)}</TableCell>
+                    <TableCell>
+                      <Badge variant={line.isShortClosed ? "outline" : "secondary"} className="rounded-full border px-2 py-0.5 text-[10px]">
+                        {lineStatusLabel(line)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={line.remarks ?? undefined}>
+                      {line.isShortClosed ? line.shortClosedReason?.trim() || "Short-closed" : line.remarks?.trim() || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {!line.isShortClosed &&
+                      line.quantityRemaining > 0.0001 &&
+                      (detail.status === "OPEN" || detail.status === "PARTIALLY_RECEIVED") ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg"
+                          disabled={isPending}
+                          onClick={() => {
+                            setShortCloseLineTarget(line)
+                            setShortCloseReason("")
+                          }}
+                        >
+                          Close Remaining
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 border-t border-border/60 pt-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Remarks</p>
+            <p className="min-h-[92px] whitespace-pre-wrap border border-border/60 px-3 py-2 text-sm text-foreground">
+              {detail.remarks?.trim() || "-"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">Subtotal</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.subtotal)}</p>
             </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">VAT (12%)</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.vatAmount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">Discount</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.discount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">Freight</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.freight)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-sm font-semibold text-foreground">Grand Total</p>
+              <p className="text-base font-bold text-foreground tabular-nums">PHP {currency.format(detail.grandTotal)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-2">
+              <p className="text-xs text-muted-foreground">Realized Amount (GRPO)</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.realizedAmount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">Unserved Amount</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.unservedAmount)}</p>
+            </div>
+            {detail.status === "CLOSED" && hasUnservedAmount ? (
+              <p className="text-[11px] text-muted-foreground">
+                This purchase order was closed with unserved value based on remaining undelivered quantities.
+              </p>
+            ) : null}
           </div>
-        </div>
-
-        <div className="space-y-2 rounded-2xl border border-border/60 bg-card p-4">
-          <Label className="text-xs text-foreground">Remarks</Label>
-          <Textarea value={detail.remarks ?? ""} readOnly className="min-h-[96px] resize-none rounded-lg" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 rounded-2xl border border-border/60 bg-card p-4 md:grid-cols-4 lg:grid-cols-5">
-          <div>
-            <p className="text-xs text-muted-foreground">Subtotal</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.subtotal)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">VAT (12%)</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.vatAmount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Discount</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.discount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Freight</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.freight)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Grand Total</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.grandTotal)}</p>
-          </div>
-        </div>
+        </section>
       </div>
+
+      <AlertDialog
+        open={shortCloseLineTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShortCloseLineTarget(null)
+            setShortCloseReason("")
+          }
+        }}
+      >
+        <AlertDialogContent className="rounded-xl border-border/60 shadow-none">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">Close Remaining Line Quantity</AlertDialogTitle>
+            <AlertDialogDescription>
+              {shortCloseLineTarget ? (
+                <>
+                  Line {shortCloseLineTarget.lineNumber} still has{" "}
+                  {quantityFormatter.format(shortCloseLineTarget.quantityRemaining)} remaining. Use this when supplier
+                  can no longer serve this balance.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Reason <span className="text-red-500">*</span></p>
+            <Textarea
+              value={shortCloseReason}
+              onChange={(event) => setShortCloseReason(event.target.value)}
+              placeholder="Enter reason for short close..."
+              className="min-h-[96px] resize-none rounded-lg"
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-lg">Back</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-lg"
+              disabled={shortCloseReason.trim().length === 0 || isPending}
+              onClick={() => {
+                if (!shortCloseLineTarget) {
+                  return
+                }
+
+                const purchaseOrderLineId = shortCloseLineTarget.id
+                const reason = shortCloseReason.trim()
+                setShortCloseLineTarget(null)
+                setShortCloseReason("")
+                runAction(() => closePurchaseOrderLineAction({ companyId, purchaseOrderLineId, reason }))
+              }}
+            >
+              Confirm Line Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

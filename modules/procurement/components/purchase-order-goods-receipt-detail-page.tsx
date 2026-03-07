@@ -4,9 +4,7 @@ import Link from "next/link"
 import { IconArrowLeft, IconReceipt2 } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { PurchaseOrderGoodsReceiptPrintButton } from "@/modules/procurement/components/purchase-order-goods-receipt-print-button"
 import type { PurchaseOrderGoodsReceiptDetail } from "@/modules/procurement/types/purchase-order-types"
 
@@ -102,154 +100,120 @@ export function PurchaseOrderGoodsReceiptDetailPage({
         </div>
       </div>
 
-      <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {[
-            { label: "GRPO Number", value: detail.grpoNumber, icon: IconReceipt2 },
-            { label: "Source PO", value: detail.poNumber, icon: IconReceipt2 },
-            { label: "Received By", value: detail.receivedByName, icon: IconReceipt2 },
-            { label: "Grand Total", value: `PHP ${currency.format(detail.grandTotal)}`, icon: IconReceipt2 },
-          ].map((item) => (
-            <div key={item.label} className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 transition-colors hover:bg-muted/20">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{item.label}</p>
-                <item.icon className="h-4 w-4 text-primary" />
+      <div className="space-y-7 px-4 py-5 sm:px-6 sm:py-6">
+        <section className="border-y border-border/60 bg-muted/10">
+          <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
+            {[
+              { label: "GRPO Number", value: detail.grpoNumber },
+              { label: "Source PO", value: detail.poNumber },
+              { label: "Received By", value: detail.receivedByName },
+              { label: "Grand Total", value: `PHP ${currency.format(detail.grandTotal)}` },
+            ].map((item, index) => (
+              <div key={item.label} className={`px-3 py-3 ${index > 0 ? "border-l border-border/60" : ""}`}>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
               </div>
-              <span className="text-xl font-semibold text-foreground">{item.value}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">GRPO Number</Label>
-            <Input value={detail.grpoNumber} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">PO Number</Label>
-            <Input value={detail.poNumber} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Source Request</Label>
-            <Input value={detail.sourceRequestNumber} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">PO Date</Label>
-            <Input value={detail.purchaseOrderDateLabel} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Received Date</Label>
-            <Input value={detail.receivedAtLabel} readOnly />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Supplier</Label>
-            <Input value={detail.supplierName} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Requester</Label>
-            <Input value={detail.requesterName} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Branch</Label>
-            <Input value={detail.requesterBranchName ?? "-"} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Department</Label>
-            <Input value={detail.departmentName} readOnly />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Payment Terms</Label>
-            <Input value={detail.paymentTerms} readOnly />
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-foreground">Received By</Label>
-            <Input value={detail.receivedByName} readOnly />
-          </div>
-        </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-          <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <IconReceipt2 className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Received PO Line Items</h2>
-            </div>
-          </div>
-
-          <div className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <div className="grid min-w-[1100px] grid-cols-[2.5rem_7rem_minmax(0,1.3fr)_4.5rem_5rem_5rem_5rem_5rem_6rem_6rem_minmax(0,1fr)] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                <p>#</p>
-                <p>Item Code</p>
-                <p>Description</p>
-                <p>UOM</p>
-                <p className="text-right">Ordered</p>
-                <p className="text-right">Prev</p>
-                <p className="text-right">Received</p>
-                <p className="text-right">Balance</p>
-                <p className="text-right">Unit Price</p>
-                <p className="text-right">Line Total</p>
-                <p>Remarks</p>
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Document Details</h2>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              { label: "GRPO Number", value: detail.grpoNumber },
+              { label: "PO Number", value: detail.poNumber },
+              { label: "Source Request", value: detail.sourceRequestNumber },
+              { label: "PO Date", value: detail.purchaseOrderDateLabel },
+              { label: "Received Date", value: detail.receivedAtLabel },
+              { label: "Supplier", value: detail.supplierName },
+              { label: "Requester", value: detail.requesterName },
+              { label: "Branch", value: detail.requesterBranchName ?? "-" },
+              { label: "Department", value: detail.departmentName },
+              { label: "Payment Terms", value: detail.paymentTerms },
+              { label: "Received By", value: detail.receivedByName },
+            ].map((item) => (
+              <div key={item.label} className="space-y-1 border-b border-border/40 pb-2">
+                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</dt>
+                <dd className="text-sm font-medium text-foreground">{item.value}</dd>
               </div>
+            ))}
+          </dl>
+        </section>
 
-              <div className="max-h-[22rem] overflow-y-auto">
+        <section className="space-y-3 border-t border-border/60 pt-5">
+          <div className="flex items-center gap-2">
+            <IconReceipt2 className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Received PO Line Items</h2>
+          </div>
+          <div className="overflow-x-auto border border-border/60">
+            <Table className="min-w-[1100px]">
+              <TableHeader>
+                <TableRow className="bg-muted/25 hover:bg-muted/25">
+                  <TableHead>#</TableHead>
+                  <TableHead>Item Code</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>UOM</TableHead>
+                  <TableHead className="text-right">Ordered</TableHead>
+                  <TableHead className="text-right">Prev</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead className="text-right">Line Total</TableHead>
+                  <TableHead>Remarks</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {detail.lines.map((line, index) => (
-                  <div
-                    key={line.id}
-                    className="grid min-w-[1100px] grid-cols-[2.5rem_7rem_minmax(0,1.3fr)_4.5rem_5rem_5rem_5rem_5rem_6rem_6rem_minmax(0,1fr)] items-center gap-2 border-b border-border/60 px-2 py-2 text-xs last:border-b-0"
-                  >
-                    <p className="text-muted-foreground">{index + 1}</p>
-                    <p className="truncate text-foreground">{line.itemCode || "-"}</p>
-                    <p className="truncate text-foreground" title={line.description}>
+                  <TableRow key={line.id}>
+                    <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                    <TableCell>{line.itemCode || "-"}</TableCell>
+                    <TableCell className="max-w-[340px] truncate" title={line.description}>
                       {line.description}
-                    </p>
-                    <p className="truncate text-foreground">{line.uom}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantity.format(line.quantityOrdered)}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantity.format(line.previouslyReceivedQuantity)}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantity.format(line.receivedQuantity)}</p>
-                    <p className="text-right tabular-nums text-foreground">{quantity.format(line.remainingQuantity)}</p>
-                    <p className="text-right tabular-nums text-foreground">{currency.format(line.unitPrice)}</p>
-                    <p className="text-right tabular-nums text-foreground">{currency.format(line.lineTotal)}</p>
-                    <p className="truncate text-foreground" title={line.remarks ?? undefined}>
+                    </TableCell>
+                    <TableCell>{line.uom}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantity.format(line.quantityOrdered)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantity.format(line.previouslyReceivedQuantity)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantity.format(line.receivedQuantity)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{quantity.format(line.remainingQuantity)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{currency.format(line.unitPrice)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{currency.format(line.lineTotal)}</TableCell>
+                    <TableCell className="max-w-[220px] truncate" title={line.remarks ?? undefined}>
                       {line.remarks?.trim() || "-"}
-                    </p>
-                  </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 border-t border-border/60 pt-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Remarks</p>
+            <p className="min-h-[92px] whitespace-pre-wrap border border-border/60 px-3 py-2 text-sm text-foreground">
+              {detail.remarks?.trim() || "-"}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">Subtotal</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.subtotal)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">Discount</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.discount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-1">
+              <p className="text-xs text-muted-foreground">VAT (12%)</p>
+              <p className="text-sm font-semibold text-foreground tabular-nums">PHP {currency.format(detail.vatAmount)}</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-sm font-semibold text-foreground">Grand Total</p>
+              <p className="text-base font-bold text-foreground tabular-nums">PHP {currency.format(detail.grandTotal)}</p>
             </div>
           </div>
-        </div>
-
-        <div className="space-y-2 rounded-2xl border border-border/60 bg-card p-4">
-          <Label className="text-xs text-foreground">Remarks</Label>
-          <Textarea value={detail.remarks ?? ""} readOnly className="min-h-[96px] resize-none rounded-lg" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 rounded-2xl border border-border/60 bg-card p-4 md:grid-cols-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Subtotal</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.subtotal)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Discount</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.discount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">VAT (12%)</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.vatAmount)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Grand Total</p>
-            <p className="text-lg font-semibold text-foreground">PHP {currency.format(detail.grandTotal)}</p>
-          </div>
-        </div>
+        </section>
       </div>
     </div>
   )

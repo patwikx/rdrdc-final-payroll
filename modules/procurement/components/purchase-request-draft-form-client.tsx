@@ -54,7 +54,7 @@ type PurchaseRequestDraftFormClientProps = {
 
 type PurchaseRequestItemForm = {
   id: string
-  source: "CATALOG"
+  source: "CATALOG" | "MANUAL"
   procurementItemId: string | null
   itemCode: string
   description: string
@@ -124,8 +124,8 @@ const mapRequestToFormState = (request: PurchaseRequestRow): PurchaseRequestForm
     request.items.length > 0
       ? request.items.map((item) => ({
           id: item.id,
-          source: "CATALOG",
-          procurementItemId: item.procurementItemId ?? "",
+          source: item.source,
+          procurementItemId: item.source === "CATALOG" ? (item.procurementItemId ?? "") : null,
           itemCode: item.itemCode ?? "",
           description: item.description,
           uom: item.uom,
@@ -165,6 +165,20 @@ const normalizeProcurementItemId = (value: string | null | undefined): string =>
 
   return value.trim()
 }
+
+const isCatalogItem = (item: PurchaseRequestItemForm): boolean => item.source === "CATALOG"
+
+const createManualItem = (): PurchaseRequestItemForm => ({
+  id: crypto.randomUUID(),
+  source: "MANUAL",
+  procurementItemId: null,
+  itemCode: "",
+  description: "",
+  uom: "",
+  quantity: "1",
+  unitPrice: "",
+  remarks: "",
+})
 
 const computeLineTotal = (item: PurchaseRequestItemForm): number => {
   const quantity = toInputNumber(item.quantity)
@@ -317,6 +331,13 @@ export function PurchaseRequestDraftFormClient({
     })
   }
 
+  const addManualItem = () => {
+    setForm((previous) => ({
+      ...previous,
+      items: [...previous.items, createManualItem()],
+    }))
+  }
+
   const removeItem = (itemId: string) => {
     setForm((previous) => {
       return {
@@ -349,19 +370,52 @@ export function PurchaseRequestDraftFormClient({
       purpose: form.purpose,
       remarks: form.remarks,
       deliverTo: form.deliverTo,
-      items: form.items
-        .filter((item) => normalizeProcurementItemId(item.procurementItemId).length > 0)
-        .map((item) => ({
+      items: form.items.map((item) => {
+        const baseItem = {
           source: item.source,
-          procurementItemId: normalizeProcurementItemId(item.procurementItemId),
           itemCode: item.itemCode,
           description: item.description,
           uom: item.uom,
           quantity: toInputNumber(item.quantity),
           unitPrice: item.unitPrice.trim().length > 0 ? toInputNumber(item.unitPrice) : undefined,
           remarks: item.remarks,
-        })),
+        }
+
+        if (!isCatalogItem(item)) {
+          return baseItem
+        }
+
+        return {
+          ...baseItem,
+          procurementItemId: normalizeProcurementItemId(item.procurementItemId),
+        }
+      }),
     }
+  }
+
+  const validateRequestItems = (): boolean => {
+    if (form.items.length === 0) {
+      toast.error("Add at least one request item.")
+      return false
+    }
+
+    if (form.items.some((item) => isCatalogItem(item) && normalizeProcurementItemId(item.procurementItemId).length === 0)) {
+      toast.error("Some catalog items are missing a catalog reference. Re-add those items.")
+      return false
+    }
+
+    if (
+      form.items.some(
+        (item) =>
+          !isCatalogItem(item) &&
+          (item.description.trim().length === 0 || item.uom.trim().length === 0)
+      )
+    ) {
+      toast.error("Manual items require description and UOM.")
+      return false
+    }
+
+    return true
   }
 
   const handleSaveDraft = () => {
@@ -370,11 +424,7 @@ export function PurchaseRequestDraftFormClient({
       return
     }
 
-    if (
-      form.items.length === 0 ||
-      form.items.some((item) => normalizeProcurementItemId(item.procurementItemId).length === 0)
-    ) {
-      toast.error("Add at least one existing catalog item.")
+    if (!validateRequestItems()) {
       return
     }
 
@@ -417,11 +467,7 @@ export function PurchaseRequestDraftFormClient({
       return
     }
 
-    if (
-      form.items.length === 0 ||
-      form.items.some((item) => normalizeProcurementItemId(item.procurementItemId).length === 0)
-    ) {
-      toast.error("Add at least one existing catalog item.")
+    if (!validateRequestItems()) {
       return
     }
 
@@ -497,7 +543,7 @@ export function PurchaseRequestDraftFormClient({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              Request No. {displayedRequestNumber}. Add items from global item catalog.
+              Request No. {displayedRequestNumber}. Add catalog items or encode manual lines.
             </p>
           </div>
 
@@ -769,6 +815,9 @@ export function PurchaseRequestDraftFormClient({
               </Badge>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={addManualItem} disabled={isPending}>
+                Add Manual Item
+              </Button>
               <Button type="button" variant="outline" onClick={() => setIsExistingItemsDialogOpen(true)} disabled={isPending}>
                 Add Existing Items
               </Button>
@@ -789,6 +838,9 @@ export function PurchaseRequestDraftFormClient({
                     <div key={item.id} className="space-y-2 rounded-lg border border-border/60 p-2">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-medium text-muted-foreground">Line #{index + 1}</p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {isCatalogItem(item) ? "Catalog" : "Manual"}
+                        </Badge>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button type="button" size="icon" variant="ghost" onClick={() => removeItem(item.id)} disabled={isPending}>
@@ -801,16 +853,31 @@ export function PurchaseRequestDraftFormClient({
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <Label className="text-[11px] text-muted-foreground">Item Code</Label>
-                          <Input value={item.itemCode} readOnly className="bg-muted/40" />
+                          <Input
+                            value={item.itemCode}
+                            readOnly={isCatalogItem(item)}
+                            onChange={(event) => updateItem(item.id, { itemCode: event.target.value.toUpperCase() })}
+                            className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[11px] text-muted-foreground">UOM</Label>
-                          <Input value={item.uom} readOnly className="bg-muted/40" />
+                          <Input
+                            value={item.uom}
+                            readOnly={isCatalogItem(item)}
+                            onChange={(event) => updateItem(item.id, { uom: event.target.value.toUpperCase() })}
+                            className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                          />
                         </div>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Description</Label>
-                        <Input value={item.description} readOnly className="bg-muted/40" />
+                        <Input
+                          value={item.description}
+                          readOnly={isCatalogItem(item)}
+                          onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                          className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                        />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
@@ -869,10 +936,30 @@ export function PurchaseRequestDraftFormClient({
                     key={item.id}
                     className="grid min-w-[920px] grid-cols-[2.25rem_8rem_minmax(0,1.65fr)_4.5rem_5.75rem_6.75rem_7rem_2.5rem] items-center gap-2 border-b border-border/60 px-3 py-2 text-xs last:border-b-0"
                   >
-                    <p className="text-muted-foreground">{index + 1}</p>
-                    <Input value={item.itemCode} readOnly className="bg-muted/40" />
-                    <Input value={item.description} readOnly className="bg-muted/40" />
-                    <Input value={item.uom} readOnly className="bg-muted/40" />
+                    <p className="text-muted-foreground">
+                      {index + 1}
+                      <span className="ml-1 text-[10px] uppercase">
+                        {isCatalogItem(item) ? "C" : "M"}
+                      </span>
+                    </p>
+                    <Input
+                      value={item.itemCode}
+                      readOnly={isCatalogItem(item)}
+                      onChange={(event) => updateItem(item.id, { itemCode: event.target.value.toUpperCase() })}
+                      className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                    />
+                    <Input
+                      value={item.description}
+                      readOnly={isCatalogItem(item)}
+                      onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                      className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                    />
+                    <Input
+                      value={item.uom}
+                      readOnly={isCatalogItem(item)}
+                      onChange={(event) => updateItem(item.id, { uom: event.target.value.toUpperCase() })}
+                      className={isCatalogItem(item) ? "bg-muted/40" : undefined}
+                    />
                     <Input
                       type="number"
                       min="0.001"

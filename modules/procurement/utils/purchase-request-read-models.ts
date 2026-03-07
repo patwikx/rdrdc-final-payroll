@@ -113,6 +113,7 @@ const mapPurchaseRequestToRow = (
     discount: Prisma.Decimal
     subTotal: Prisma.Decimal
     grandTotal: Prisma.Decimal
+    approvalCycle: number
     requiredSteps: number
     currentStep: number | null
     submittedAt: Date | null
@@ -121,9 +122,13 @@ const mapPurchaseRequestToRow = (
     cancelledAt: Date | null
     createdAt: Date
     finalDecisionRemarks: string | null
+    sentBackAt: Date | null
+    sentBackReason: string | null
+    sentBackAcknowledgedAt: Date | null
     cancellationReason: string | null
     steps: Array<{
       id: string
+      approvalCycle: number
       stepNumber: number
       stepName: string | null
       approverUserId: string
@@ -151,6 +156,10 @@ const mapPurchaseRequestToRow = (
       id: string
       name: string
     }
+    sentBackByUser: {
+      firstName: string
+      lastName: string
+    } | null
     items: Array<{
       id: string
       lineNumber: number
@@ -167,18 +176,31 @@ const mapPurchaseRequestToRow = (
   },
   actorUserId: string | null
 ): PurchaseRequestRow => {
-  let previousDecisionAt: Date | null = request.submittedAt
+  const previousDecisionByCycle = new Map<number, Date | null>()
   const approvalSteps = [...request.steps]
-    .sort((a, b) => a.stepNumber - b.stepNumber)
+    .sort((a, b) => {
+      if (a.approvalCycle !== b.approvalCycle) {
+        return b.approvalCycle - a.approvalCycle
+      }
+      if (a.stepNumber !== b.stepNumber) {
+        return a.stepNumber - b.stepNumber
+      }
+      const aActedAt = a.actedAt?.getTime() ?? 0
+      const bActedAt = b.actedAt?.getTime() ?? 0
+      return aActedAt - bActedAt
+    })
     .map((step) => {
+      const previousDecisionAt = previousDecisionByCycle.get(step.approvalCycle) ?? null
       const turnaroundTimeLabel = getElapsedTimeLabel(previousDecisionAt, step.actedAt)
 
       if (step.actedAt) {
-        previousDecisionAt = step.actedAt
+        previousDecisionByCycle.set(step.approvalCycle, step.actedAt)
       }
 
       return {
         id: step.id,
+        approvalCycle: step.approvalCycle,
+        isCurrentCycle: step.approvalCycle === request.approvalCycle,
         stepNumber: step.stepNumber,
         stepName: step.stepName ? normalizeStepName(step.stepName, step.stepNumber) : null,
         status: step.status,
@@ -195,6 +217,7 @@ const mapPurchaseRequestToRow = (
       request.currentStep &&
       request.steps.some(
         (step) =>
+          step.approvalCycle === request.approvalCycle &&
           step.stepNumber === request.currentStep &&
           step.approverUserId === actorUserId &&
           step.status === MaterialRequestStepStatus.PENDING
@@ -231,6 +254,7 @@ const mapPurchaseRequestToRow = (
     discount: Number(request.discount),
     subTotal: Number(request.subTotal),
     grandTotal: Number(request.grandTotal),
+    approvalCycle: request.approvalCycle,
     requiredSteps: request.requiredSteps,
     currentStep: request.currentStep,
     canActOnCurrentStep,
@@ -247,6 +271,15 @@ const mapPurchaseRequestToRow = (
     draftToSubmitLeadTimeLabel: getElapsedTimeLabel(request.createdAt, request.submittedAt),
     totalLifecycleLeadTimeLabel: getElapsedTimeLabel(request.createdAt, finalizationAt),
     finalDecisionRemarks: request.finalDecisionRemarks,
+    sentBackAtLabel: formatDateTime(request.sentBackAt),
+    sentBackReason: request.sentBackReason,
+    sentBackByName: request.sentBackByUser
+      ? `${request.sentBackByUser.firstName} ${request.sentBackByUser.lastName}`
+      : null,
+    hasUnreadSendBackNotice:
+      actorUserId === request.requesterUserId &&
+      request.sentBackAt !== null &&
+      request.sentBackAcknowledgedAt === null,
     cancellationReason: request.cancellationReason,
     approvalSteps,
     items: request.items.map((item) => ({
@@ -432,6 +465,7 @@ export async function getPurchaseRequestsReadModel(params: {
       discount: true,
       subTotal: true,
       grandTotal: true,
+      approvalCycle: true,
       requiredSteps: true,
       currentStep: true,
       submittedAt: true,
@@ -440,13 +474,23 @@ export async function getPurchaseRequestsReadModel(params: {
       cancelledAt: true,
       createdAt: true,
       finalDecisionRemarks: true,
+      sentBackAt: true,
+      sentBackReason: true,
+      sentBackAcknowledgedAt: true,
       cancellationReason: true,
+      sentBackByUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       steps: {
         orderBy: {
-          stepNumber: "asc",
+          approvalCycle: "desc",
         },
         select: {
           id: true,
+          approvalCycle: true,
           stepNumber: true,
           stepName: true,
           approverUserId: true,
@@ -541,6 +585,7 @@ export async function getPurchaseRequestById(params: {
       discount: true,
       subTotal: true,
       grandTotal: true,
+      approvalCycle: true,
       requiredSteps: true,
       currentStep: true,
       submittedAt: true,
@@ -549,13 +594,23 @@ export async function getPurchaseRequestById(params: {
       cancelledAt: true,
       createdAt: true,
       finalDecisionRemarks: true,
+      sentBackAt: true,
+      sentBackReason: true,
+      sentBackAcknowledgedAt: true,
       cancellationReason: true,
+      sentBackByUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       steps: {
         orderBy: {
-          stepNumber: "asc",
+          approvalCycle: "desc",
         },
         select: {
           id: true,
+          approvalCycle: true,
           stepNumber: true,
           stepName: true,
           approverUserId: true,

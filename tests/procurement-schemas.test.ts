@@ -3,12 +3,16 @@ import test from "node:test"
 
 import {
   closePurchaseOrderInputSchema,
+  closePurchaseOrderLineInputSchema,
   createPurchaseOrderGoodsReceiptInputSchema,
   createPurchaseOrderInputSchema,
+  openPurchaseOrderInputSchema,
 } from "../modules/procurement/schemas/purchase-order-actions-schema.ts"
 import {
+  acknowledgePurchaseRequestSendBackInputSchema,
   createPurchaseRequestDraftInputSchema,
   rejectPurchaseRequestInputSchema,
+  sendBackPurchaseRequestInputSchema,
 } from "../modules/procurement/schemas/purchase-request-actions-schema.ts"
 import {
   updatePurchaseRequestFeatureInputSchema,
@@ -80,6 +84,29 @@ test("createPurchaseRequestDraftInputSchema accepts catalog item rows", () => {
   assert.equal(valid.success, true)
 })
 
+test("createPurchaseRequestDraftInputSchema accepts manual item rows", () => {
+  const valid = createPurchaseRequestDraftInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    series: "PO",
+    requestType: "SERVICE",
+    datePrepared: "2026-03-01",
+    dateRequired: "2026-03-02",
+    departmentId: DEPARTMENT_ID,
+    items: [
+      {
+        source: "MANUAL",
+        itemCode: "SRV-001",
+        description: "Generator preventive maintenance",
+        uom: "LOT",
+        quantity: 1,
+        unitPrice: 3500,
+      },
+    ],
+  })
+
+  assert.equal(valid.success, true)
+})
+
 test("rejectPurchaseRequestInputSchema requires rejection remarks", () => {
   const invalid = rejectPurchaseRequestInputSchema.safeParse({
     companyId: COMPANY_ID,
@@ -87,6 +114,30 @@ test("rejectPurchaseRequestInputSchema requires rejection remarks", () => {
     remarks: "",
   })
 
+  assert.equal(invalid.success, false)
+})
+
+test("sendBackPurchaseRequestInputSchema requires send-back remarks", () => {
+  const invalid = sendBackPurchaseRequestInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    requestId: "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    remarks: "",
+  })
+
+  assert.equal(invalid.success, false)
+})
+
+test("acknowledgePurchaseRequestSendBackInputSchema validates uuid payload", () => {
+  const valid = acknowledgePurchaseRequestSendBackInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    requestId: "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+  })
+  assert.equal(valid.success, true)
+
+  const invalid = acknowledgePurchaseRequestSendBackInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    requestId: "bad",
+  })
   assert.equal(invalid.success, false)
 })
 
@@ -102,6 +153,7 @@ test("createPurchaseOrderInputSchema validates source lines and supplier", () =>
     lines: [
       {
         sourcePurchaseRequestItemId: "5a79357e-53a2-42f4-9892-caf8de3a57c6",
+        quantityOrdered: 3,
         unitPrice: 35,
       },
     ],
@@ -112,6 +164,25 @@ test("createPurchaseOrderInputSchema validates source lines and supplier", () =>
 
 test("closePurchaseOrderInputSchema requires uuid payload", () => {
   const invalid = closePurchaseOrderInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    purchaseOrderId: "bad",
+  })
+
+  assert.equal(invalid.success, false)
+})
+
+test("closePurchaseOrderLineInputSchema requires reason", () => {
+  const invalid = closePurchaseOrderLineInputSchema.safeParse({
+    companyId: COMPANY_ID,
+    purchaseOrderLineId: "7d444840-9dc0-11d1-b245-5ffdce74fad2",
+    reason: "",
+  })
+
+  assert.equal(invalid.success, false)
+})
+
+test("openPurchaseOrderInputSchema requires uuid payload", () => {
+  const invalid = openPurchaseOrderInputSchema.safeParse({
     companyId: COMPANY_ID,
     purchaseOrderId: "bad",
   })

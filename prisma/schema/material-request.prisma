@@ -364,6 +364,7 @@ model PurchaseRequest {
   discount   Decimal @default(0) @db.Decimal(12, 2)
   subTotal   Decimal @default(0) @db.Decimal(14, 2)
   grandTotal Decimal @default(0) @db.Decimal(14, 2)
+  approvalCycle Int               @default(0)
   requiredSteps Int               @default(0)
   currentStep   Int?
 
@@ -375,6 +376,11 @@ model PurchaseRequest {
   finalDecisionByUserId String?
   finalDecisionByUser   User?   @relation("PurchaseRequestFinalDecisionByUser", fields: [finalDecisionByUserId], references: [id], onDelete: SetNull)
   finalDecisionRemarks  String? @db.Text
+  sentBackAt            DateTime?
+  sentBackReason        String? @db.Text
+  sentBackByUserId      String?
+  sentBackByUser        User?   @relation("PurchaseRequestSentBackByUser", fields: [sentBackByUserId], references: [id], onDelete: SetNull)
+  sentBackAcknowledgedAt DateTime?
   cancellationReason    String? @db.Text
   cancelledByUserId     String?
   cancelledByUser       User?   @relation("PurchaseRequestCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
@@ -397,7 +403,9 @@ model PurchaseRequest {
   @@index([series])
   @@index([requestType])
   @@index([currentStep])
+  @@index([approvalCycle])
   @@index([finalDecisionByUserId])
+  @@index([sentBackByUserId])
   @@index([cancelledByUserId])
   @@index([submittedAt])
 }
@@ -407,6 +415,7 @@ model PurchaseRequestApprovalStep {
 
   purchaseRequestId String
   purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  approvalCycle     Int
 
   stepNumber Int
   stepName   String?
@@ -423,10 +432,10 @@ model PurchaseRequestApprovalStep {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([purchaseRequestId, stepNumber, approverUserId])
+  @@unique([purchaseRequestId, approvalCycle, stepNumber, approverUserId])
   @@index([approverUserId, status])
-  @@index([purchaseRequestId, stepNumber, status])
-  @@index([purchaseRequestId, status])
+  @@index([purchaseRequestId, approvalCycle, stepNumber, status], map: "PurchaseRequestApprovalStep_pr_cycle_step_status_idx")
+  @@index([purchaseRequestId, approvalCycle, status], map: "PurchaseRequestApprovalStep_pr_cycle_status_idx")
 }
 
 model PurchaseRequestItem {
@@ -520,6 +529,12 @@ model PurchaseOrderLine {
 
   quantityOrdered  Decimal @db.Decimal(12, 3)
   quantityReceived Decimal @default(0) @db.Decimal(12, 3)
+  isShortClosed    Boolean @default(false)
+  shortClosedQuantity Decimal @default(0) @db.Decimal(12, 3)
+  shortClosedReason String? @db.Text
+  shortClosedAt     DateTime?
+  shortClosedByUserId String?
+  shortClosedByUser   User? @relation("PurchaseOrderLineShortClosedByUser", fields: [shortClosedByUserId], references: [id], onDelete: SetNull)
   unitPrice        Decimal @default(0) @db.Decimal(12, 2)
   lineTotal        Decimal @default(0) @db.Decimal(14, 2)
   remarks          String? @db.Text
@@ -532,6 +547,7 @@ model PurchaseOrderLine {
   @@unique([purchaseOrderId, lineNumber])
   @@unique([purchaseOrderId, sourcePurchaseRequestItemId])
   @@index([sourcePurchaseRequestItemId])
+  @@index([shortClosedByUserId])
 }
 
 model PurchaseOrderGoodsReceipt {

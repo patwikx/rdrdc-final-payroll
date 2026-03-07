@@ -37,6 +37,7 @@ import {
   approvePurchaseRequestAction,
   getPurchaseRequestApprovalDecisionDetailsAction,
   rejectPurchaseRequestAction,
+  sendBackPurchaseRequestForEditAction,
 } from "@/modules/procurement/actions/purchase-request-actions"
 import type {
   PurchaseRequestApprovalDecisionDetail,
@@ -121,7 +122,7 @@ export function MaterialRequestApprovalClient({
   const historyRequestTokenRef = useRef(0)
   const historySearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
-  const [decisionType, setDecisionType] = useState<"approve" | "reject">("approve")
+  const [decisionType, setDecisionType] = useState<"approve" | "reject" | "send_back">("approve")
   const [decisionRequestType, setDecisionRequestType] = useState<"material" | "purchase">("material")
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [selectedRequestCompanyId, setSelectedRequestCompanyId] = useState<string | null>(null)
@@ -417,7 +418,10 @@ export function MaterialRequestApprovalClient({
     loadDecisionDetail(request.id, request.companyId, 1)
   }
 
-  const openPurchaseDecisionDialog = (request: PurchaseRequestApprovalQueueRow, type: "approve" | "reject") => {
+  const openPurchaseDecisionDialog = (
+    request: PurchaseRequestApprovalQueueRow,
+    type: "approve" | "reject" | "send_back"
+  ) => {
     setDecisionRequestType("purchase")
     setSelectedRequestId(request.id)
     setSelectedRequestCompanyId(request.companyId)
@@ -484,26 +488,37 @@ export function MaterialRequestApprovalClient({
       }
 
       const decisionRemarks = remarks.trim()
-      if (decisionType === "reject" && decisionRemarks.length === 0) {
-        toast.error("Rejection remarks are required.")
+      if ((decisionType === "reject" || decisionType === "send_back") && decisionRemarks.length === 0) {
+        toast.error(decisionType === "reject" ? "Rejection remarks are required." : "Send-back remarks are required.")
         return
       }
 
       setOpen(false)
 
       startTransition(async () => {
-        const response =
-          decisionType === "approve"
-            ? await approvePurchaseRequestAction({
-                companyId: purchaseRequest.companyId,
-                requestId: purchaseRequest.id,
-                remarks: decisionRemarks.length > 0 ? decisionRemarks : undefined,
-              })
-            : await rejectPurchaseRequestAction({
-                companyId: purchaseRequest.companyId,
-                requestId: purchaseRequest.id,
-                remarks: decisionRemarks,
-              })
+        const response = await (async () => {
+          if (decisionType === "approve") {
+            return approvePurchaseRequestAction({
+              companyId: purchaseRequest.companyId,
+              requestId: purchaseRequest.id,
+              remarks: decisionRemarks.length > 0 ? decisionRemarks : undefined,
+            })
+          }
+
+          if (decisionType === "send_back") {
+            return sendBackPurchaseRequestForEditAction({
+              companyId: purchaseRequest.companyId,
+              requestId: purchaseRequest.id,
+              remarks: decisionRemarks,
+            })
+          }
+
+          return rejectPurchaseRequestAction({
+            companyId: purchaseRequest.companyId,
+            requestId: purchaseRequest.id,
+            remarks: decisionRemarks,
+          })
+        })()
 
         if (!response.ok) {
           setOpen(true)
@@ -1730,7 +1745,9 @@ export function MaterialRequestApprovalClient({
             <DialogTitle className="text-base font-semibold">
               {decisionType === "approve"
                 ? `Approve ${isMaterialDecision ? "Material Request" : "Purchase Request"}`
-                : `Reject ${isMaterialDecision ? "Material Request" : "Purchase Request"}`}
+                : decisionType === "send_back"
+                  ? `Send Back ${isMaterialDecision ? "Material Request" : "Purchase Request"}`
+                  : `Reject ${isMaterialDecision ? "Material Request" : "Purchase Request"}`}
             </DialogTitle>
             <DialogDescription className="break-words text-sm text-muted-foreground">
               {activeDecisionRequest
@@ -1740,6 +1757,50 @@ export function MaterialRequestApprovalClient({
           </DialogHeader>
 
           <div className="space-y-3">
+            {!isMaterialDecision ? (
+              <div className="space-y-1">
+                <Label className="text-xs text-foreground">Decision</Label>
+                <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 bg-muted/20 p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={decisionType === "approve" ? "default" : "ghost"}
+                    className={cn(
+                      "h-8 rounded-md text-xs",
+                      decisionType === "approve" && "bg-green-600 text-white hover:bg-green-700"
+                    )}
+                    disabled={isPending}
+                    onClick={() => setDecisionType("approve")}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={decisionType === "reject" ? "destructive" : "ghost"}
+                    className="h-8 rounded-md text-xs"
+                    disabled={isPending}
+                    onClick={() => setDecisionType("reject")}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={decisionType === "send_back" ? "default" : "ghost"}
+                    className={cn(
+                      "h-8 rounded-md text-xs",
+                      decisionType === "send_back" && "bg-amber-600 text-white hover:bg-amber-700"
+                    )}
+                    disabled={isPending}
+                    onClick={() => setDecisionType("send_back")}
+                  >
+                    Send Back
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <div className="rounded-xl border border-border/60 bg-muted/25 p-2.5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -1910,12 +1971,22 @@ export function MaterialRequestApprovalClient({
 
             <div className="space-y-2">
               <Label className="text-xs text-foreground">
-                {decisionType === "approve" ? "Approval Remarks (Optional)" : "Rejection Reason"}
+                {decisionType === "approve"
+                  ? "Approval Remarks (Optional)"
+                  : decisionType === "send_back"
+                    ? "Send Back Reason"
+                    : "Rejection Reason"}
               </Label>
               <Input
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
-                placeholder={decisionType === "approve" ? "Add remarks..." : "Provide rejection reason..."}
+                placeholder={
+                  decisionType === "approve"
+                    ? "Add remarks..."
+                    : decisionType === "send_back"
+                      ? "Provide reason for editing..."
+                      : "Provide rejection reason..."
+                }
                 className="rounded-lg"
               />
             </div>
@@ -1926,11 +1997,15 @@ export function MaterialRequestApprovalClient({
               </Button>
               <Button
                 type="button"
-                className={cn("rounded-lg sm:min-w-[96px]", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+                className={cn(
+                  "rounded-lg sm:min-w-[96px]",
+                  decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                  decisionType === "send_back" && "bg-amber-600 text-white hover:bg-amber-700"
+                )}
                 onClick={submitDecision}
                 disabled={isPending || isDecisionItemsLoading || Boolean(activeDecisionDetailError)}
               >
-                {isPending ? "Saving..." : decisionType === "approve" ? "Approve" : "Reject"}
+                {isPending ? "Saving..." : decisionType === "approve" ? "Approve" : decisionType === "send_back" ? "Send Back" : "Reject"}
               </Button>
             </div>
           </div>

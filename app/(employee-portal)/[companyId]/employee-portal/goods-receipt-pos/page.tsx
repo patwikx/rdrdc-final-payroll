@@ -40,6 +40,7 @@ export default async function PurchaseOrderGoodsReceiptWorkspaceRoute({
     <PurchaseOrderGoodsReceiptWorkspacePage
       companyId={context.companyId}
       rows={workspace.data.rows}
+      availableOrders={workspace.data.availableOrders}
       availableOrderCount={workspace.data.availableOrders.length}
     />
   )

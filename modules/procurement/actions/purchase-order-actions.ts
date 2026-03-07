@@ -13,12 +13,16 @@ import { getEmployeePortalCapabilityContext } from "@/modules/employee-portal/ut
 import {
   cancelPurchaseOrderInputSchema,
   closePurchaseOrderInputSchema,
+  closePurchaseOrderLineInputSchema,
   createPurchaseOrderGoodsReceiptInputSchema,
   createPurchaseOrderInputSchema,
+  openPurchaseOrderInputSchema,
   type CancelPurchaseOrderInput,
   type ClosePurchaseOrderInput,
+  type ClosePurchaseOrderLineInput,
   type CreatePurchaseOrderGoodsReceiptInput,
   type CreatePurchaseOrderInput,
+  type OpenPurchaseOrderInput,
 } from "@/modules/procurement/schemas/purchase-order-actions-schema"
 import type {
   ProcurementActionDataResult,
@@ -132,6 +136,50 @@ const toCurrency = (value: number): number => {
   }
 
   return Math.round(value * 100) / 100
+}
+
+const toQuantity = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.round(Math.max(0, value) * 1000) / 1000
+}
+
+const derivePurchaseOrderStatusFromLineStates = (
+  lines: Array<{ quantityOrdered: number; quantityReceived: number; isShortClosed: boolean }>
+): PurchaseOrderStatus => {
+  let hasReceivableLines = false
+  let hasReceivedLines = false
+  let hasShortClosedBalance = false
+
+  for (const line of lines) {
+    const quantityOrdered = toQuantity(line.quantityOrdered)
+    const quantityReceived = toQuantity(line.quantityReceived)
+    const quantityRemaining = toQuantity(quantityOrdered - quantityReceived)
+
+    if (quantityReceived > QUANTITY_TOLERANCE) {
+      hasReceivedLines = true
+    }
+
+    if (quantityRemaining > QUANTITY_TOLERANCE) {
+      if (line.isShortClosed) {
+        hasShortClosedBalance = true
+      } else {
+        hasReceivableLines = true
+      }
+    }
+  }
+
+  if (hasReceivableLines) {
+    return hasReceivedLines ? PurchaseOrderStatus.PARTIALLY_RECEIVED : PurchaseOrderStatus.OPEN
+  }
+
+  if (hasShortClosedBalance) {
+    return PurchaseOrderStatus.CLOSED
+  }
+
+  return PurchaseOrderStatus.FULLY_RECEIVED
 }
 
 const createPurchaseOrderNumberCandidate = async (companyId: string, offset: number): Promise<string> => {
@@ -308,144 +356,179 @@ export async function createPurchaseOrderAction(
     return access
   }
 
-  const request = await db.purchaseRequest.findFirst({
-    where: {
-      id: payload.sourceRequestId,
-      companyId: access.context.companyId,
-      status: PurchaseRequestStatus.APPROVED,
-    },
-    select: {
-      id: true,
-      requestNumber: true,
-      items: {
-        select: {
-          id: true,
-          itemCode: true,
-          description: true,
-          uom: true,
-          quantity: true,
-          unitPrice: true,
-          purchaseOrderLines: {
-            where: {
-              purchaseOrder: {
-                status: {
-                  in: ACTIVE_PURCHASE_ORDER_STATUSES,
-                },
-              },
-            },
-            select: {
-              id: true,
-            },
-          },
-        },
-      },
-    },
-  })
-
-  if (!request) {
-    return { ok: false, error: "Approved purchase request not found." }
-  }
-
-  const requestItemById = new Map(request.items.map((item) => [item.id, item]))
-  const usedItemIds = new Set<string>()
-
-  const normalizedLines = payload.lines.map((line, index) => {
-    const sourceItem = requestItemById.get(line.sourcePurchaseRequestItemId)
-    if (!sourceItem) {
-      throw new Error("A selected line item does not belong to the source request.")
-    }
-
-    if (usedItemIds.has(sourceItem.id)) {
-      throw new Error("Duplicate line item is not allowed.")
-    }
-    usedItemIds.add(sourceItem.id)
-
-    if (sourceItem.purchaseOrderLines.length > 0) {
-      throw new Error("A selected line item is already assigned to another purchase order.")
-    }
-
-    const quantityOrdered = Number(sourceItem.quantity)
-    const unitPrice = Number(line.unitPrice)
-    const lineTotal = quantityOrdered * unitPrice
-
-    return {
-      sourcePurchaseRequestItemId: sourceItem.id,
-      lineNumber: index + 1,
-      itemCode: sourceItem.itemCode,
-      description: sourceItem.description,
-      uom: sourceItem.uom,
-      quantityOrdered,
-      unitPrice,
-      lineTotal,
-      remarks: asNullableText(line.remarks),
-    }
-  })
-
-  const freight = 0
-  const subTotal = toCurrency(normalizedLines.reduce((sum, line) => sum + line.lineTotal, 0))
-  const discount = toCurrency(payload.discount)
-  const taxableBase = toCurrency(subTotal - discount)
-  const vatAmount = payload.applyVat ? toCurrency(taxableBase * 0.12) : 0
-  const grandTotal = toCurrency(taxableBase + vatAmount + freight)
-
-  if (taxableBase < 0) {
-    return { ok: false, error: "Discount must not exceed the subtotal amount." }
-  }
-
   const expectedDeliveryDate = payload.expectedDeliveryDate
     ? parsePhDateInputToUtcDateOnly(payload.expectedDeliveryDate)
     : null
+  if (payload.expectedDeliveryDate && !expectedDeliveryDate) {
+    return { ok: false, error: "Invalid expected delivery date." }
+  }
 
   for (let attempt = 0; attempt < CREATE_PO_MAX_RETRIES; attempt += 1) {
     try {
       const poNumber = await createPurchaseOrderNumberCandidate(access.context.companyId, attempt)
+      const outcome = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "PurchaseRequest"
+          WHERE "id" = ${payload.sourceRequestId}
+            AND "companyId" = ${access.context.companyId}
+            AND "status" = ${PurchaseRequestStatus.APPROVED}
+          FOR UPDATE
+        `
 
-      const created = await db.purchaseOrder.create({
-        data: {
-          companyId: access.context.companyId,
-          sourcePurchaseRequestId: request.id,
-          poNumber,
-          status: PurchaseOrderStatus.OPEN,
-          supplierName: payload.supplierName.trim(),
-          paymentTerms: payload.paymentTerms.trim(),
-          applyVat: payload.applyVat,
-          vatAmount: new Prisma.Decimal(vatAmount),
-          discount: new Prisma.Decimal(discount),
-          remarks: asNullableText(payload.remarks),
-          purchaseOrderDate: new Date(),
-          expectedDeliveryDate,
-          issuedAt: new Date(),
-          freight: new Prisma.Decimal(freight),
-          subtotal: new Prisma.Decimal(subTotal),
-          grandTotal: new Prisma.Decimal(grandTotal),
-          createdByUserId: access.context.userId,
-          lines: {
-            create: normalizedLines.map((line) => ({
-              sourcePurchaseRequestItemId: line.sourcePurchaseRequestItemId,
-              lineNumber: line.lineNumber,
-              itemCode: line.itemCode,
-              description: line.description,
-              uom: line.uom,
-              quantityOrdered: new Prisma.Decimal(line.quantityOrdered),
-              quantityReceived: new Prisma.Decimal(0),
-              unitPrice: new Prisma.Decimal(line.unitPrice),
-              lineTotal: new Prisma.Decimal(line.lineTotal),
-              remarks: line.remarks,
-            })),
+        const request = await tx.purchaseRequest.findFirst({
+          where: {
+            id: payload.sourceRequestId,
+            companyId: access.context.companyId,
+            status: PurchaseRequestStatus.APPROVED,
           },
-        },
-        select: {
-          id: true,
-          poNumber: true,
-        },
+          select: {
+            id: true,
+            requestNumber: true,
+            items: {
+              select: {
+                id: true,
+                itemCode: true,
+                description: true,
+                uom: true,
+                quantity: true,
+                purchaseOrderLines: {
+                  where: {
+                    purchaseOrder: {
+                      status: {
+                        in: ACTIVE_PURCHASE_ORDER_STATUSES,
+                      },
+                    },
+                  },
+                  select: {
+                    quantityOrdered: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+
+        if (!request) {
+          return { kind: "error" as const, message: "Approved purchase request not found." }
+        }
+
+        const requestItemById = new Map(request.items.map((item) => [item.id, item]))
+        const usedItemIds = new Set<string>()
+        const normalizedLines = payload.lines.map((line, index) => {
+          const sourceItem = requestItemById.get(line.sourcePurchaseRequestItemId)
+          if (!sourceItem) {
+            throw new Error("A selected line item does not belong to the source request.")
+          }
+
+          if (usedItemIds.has(sourceItem.id)) {
+            throw new Error("Duplicate line item is not allowed.")
+          }
+          usedItemIds.add(sourceItem.id)
+
+          const requestedQuantity = Number(sourceItem.quantity)
+          const allocatedQuantity = toQuantity(
+            sourceItem.purchaseOrderLines.reduce((sum, allocatedLine) => sum + Number(allocatedLine.quantityOrdered), 0)
+          )
+          const remainingQuantity = toQuantity(requestedQuantity - allocatedQuantity)
+          const quantityOrdered = toQuantity(line.quantityOrdered)
+
+          if (quantityOrdered <= QUANTITY_TOLERANCE) {
+            throw new Error("Ordered quantity must be greater than zero.")
+          }
+
+          if (quantityOrdered - remainingQuantity > QUANTITY_TOLERANCE) {
+            const label = sourceItem.itemCode?.trim() || sourceItem.description
+            throw new Error(`Ordered quantity exceeds remaining allocable quantity for item ${label}.`)
+          }
+
+          const unitPrice = Number(line.unitPrice)
+          const lineTotal = toCurrency(quantityOrdered * unitPrice)
+
+          return {
+            sourcePurchaseRequestItemId: sourceItem.id,
+            lineNumber: index + 1,
+            itemCode: sourceItem.itemCode,
+            description: sourceItem.description,
+            uom: sourceItem.uom,
+            quantityOrdered,
+            unitPrice,
+            lineTotal,
+            remarks: asNullableText(line.remarks),
+          }
+        })
+
+        const freight = 0
+        const subTotal = toCurrency(normalizedLines.reduce((sum, line) => sum + line.lineTotal, 0))
+        const discount = toCurrency(payload.discount)
+        const taxableBase = toCurrency(subTotal - discount)
+        if (taxableBase < 0) {
+          return { kind: "error" as const, message: "Discount must not exceed the subtotal amount." }
+        }
+
+        const vatAmount = payload.applyVat ? toCurrency(taxableBase * 0.12) : 0
+        const grandTotal = toCurrency(taxableBase + vatAmount + freight)
+        const purchaseOrderDate = new Date()
+        const status = payload.saveAsDraft ? PurchaseOrderStatus.DRAFT : PurchaseOrderStatus.OPEN
+        const issuedAt = status === PurchaseOrderStatus.OPEN ? new Date() : null
+
+        const created = await tx.purchaseOrder.create({
+          data: {
+            companyId: access.context.companyId,
+            sourcePurchaseRequestId: request.id,
+            poNumber,
+            status,
+            supplierName: payload.supplierName.trim(),
+            paymentTerms: payload.paymentTerms.trim(),
+            applyVat: payload.applyVat,
+            vatAmount: new Prisma.Decimal(vatAmount),
+            discount: new Prisma.Decimal(discount),
+            remarks: asNullableText(payload.remarks),
+            purchaseOrderDate,
+            expectedDeliveryDate,
+            issuedAt,
+            freight: new Prisma.Decimal(freight),
+            subtotal: new Prisma.Decimal(subTotal),
+            grandTotal: new Prisma.Decimal(grandTotal),
+            createdByUserId: access.context.userId,
+            lines: {
+              create: normalizedLines.map((line) => ({
+                sourcePurchaseRequestItemId: line.sourcePurchaseRequestItemId,
+                lineNumber: line.lineNumber,
+                itemCode: line.itemCode,
+                description: line.description,
+                uom: line.uom,
+                quantityOrdered: new Prisma.Decimal(line.quantityOrdered),
+                quantityReceived: new Prisma.Decimal(0),
+                unitPrice: new Prisma.Decimal(line.unitPrice),
+                lineTotal: new Prisma.Decimal(line.lineTotal),
+                remarks: line.remarks,
+              })),
+            },
+          },
+          select: {
+            id: true,
+            poNumber: true,
+          },
+        })
+
+        return { kind: "success" as const, created }
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       })
 
+      if (outcome.kind === "error") {
+        return { ok: false, error: outcome.message }
+      }
+
       revalidatePurchaseOrderPaths(access.context.companyId)
-      revalidatePurchaseOrderDetailPath(access.context.companyId, created.id)
+      revalidatePurchaseOrderDetailPath(access.context.companyId, outcome.created.id)
       return {
         ok: true,
-        message: `Purchase order ${created.poNumber} created.`,
-        purchaseOrderId: created.id,
+        message: payload.saveAsDraft
+          ? `Purchase order ${outcome.created.poNumber} saved as draft.`
+          : `Purchase order ${outcome.created.poNumber} created and opened.`,
+        purchaseOrderId: outcome.created.id,
       }
     } catch (error) {
       console.error("[createPurchaseOrderAction] Failed to create purchase order", {
@@ -457,7 +540,11 @@ export async function createPurchaseOrderAction(
         applyVat: payload.applyVat,
         discount: payload.discount,
         lineCount: payload.lines.length,
-        lineItemIds: payload.lines.map((line) => line.sourcePurchaseRequestItemId),
+        lines: payload.lines.map((line) => ({
+          sourcePurchaseRequestItemId: line.sourcePurchaseRequestItemId,
+          quantityOrdered: line.quantityOrdered,
+          unitPrice: line.unitPrice,
+        })),
         errorName: error instanceof Error ? error.name : "UnknownError",
         errorMessage: error instanceof Error ? error.message : "Failed to create purchase order.",
         errorCode: error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined,
@@ -534,6 +621,7 @@ export async function createPurchaseOrderGoodsReceiptAction(
                 uom: true,
                 quantityOrdered: true,
                 quantityReceived: true,
+                isShortClosed: true,
                 unitPrice: true,
                 lineTotal: true,
                 remarks: true,
@@ -554,16 +642,34 @@ export async function createPurchaseOrderGoodsReceiptAction(
           return { kind: "error" as const, message: "Open purchase order not found." }
         }
 
-        const receivedByLineId = new Map(
-          payload.lines.map((line) => [line.purchaseOrderLineId, toCurrency(line.receivedQuantity)])
-        )
+        const receivedByLineId = new Map(payload.lines.map((line) => [line.purchaseOrderLineId, toQuantity(line.receivedQuantity)]))
+
+        for (const [purchaseOrderLineId, receivedQuantity] of receivedByLineId.entries()) {
+          if (receivedQuantity <= QUANTITY_TOLERANCE) {
+            continue
+          }
+
+          const matchingLine = purchaseOrder.lines.find((line) => line.id === purchaseOrderLineId)
+          if (!matchingLine) {
+            throw new Error("Received line does not belong to the selected purchase order.")
+          }
+
+          const quantityRemaining = toQuantity(Number(matchingLine.quantityOrdered) - Number(matchingLine.quantityReceived))
+          if (matchingLine.isShortClosed || quantityRemaining <= QUANTITY_TOLERANCE) {
+            throw new Error(`Line ${matchingLine.lineNumber}: line is already closed for receiving.`)
+          }
+        }
 
         const normalizedLines = purchaseOrder.lines
           .map((line) => {
+            if (line.isShortClosed) {
+              return null
+            }
+
             const requestedReceiveQuantity = receivedByLineId.get(line.id) ?? 0
             const quantityOrdered = Number(line.quantityOrdered)
             const quantityReceived = Number(line.quantityReceived)
-            const quantityRemaining = toCurrency(quantityOrdered - quantityReceived)
+            const quantityRemaining = toQuantity(quantityOrdered - quantityReceived)
 
             if (requestedReceiveQuantity < 0) {
               throw new Error(`Line ${line.lineNumber}: received quantity cannot be negative.`)
@@ -578,7 +684,7 @@ export async function createPurchaseOrderGoodsReceiptAction(
             }
 
             const lineTotal = toCurrency(requestedReceiveQuantity * Number(line.unitPrice))
-            const remainingAfterReceipt = toCurrency(quantityRemaining - requestedReceiveQuantity)
+            const remainingAfterReceipt = toQuantity(quantityRemaining - requestedReceiveQuantity)
 
             return {
               purchaseOrderLineId: line.id,
@@ -611,11 +717,16 @@ export async function createPurchaseOrderGoodsReceiptAction(
         const purchaseOrderSubtotal = Number(purchaseOrder.subtotal)
         const purchaseOrderDiscount = Number(purchaseOrder.discount)
 
-        const willBeFullyReceived = purchaseOrder.lines.every((line) => {
+        const nextLineStates = purchaseOrder.lines.map((line) => {
           const incomingQuantity = normalizedLines.find((item) => item.purchaseOrderLineId === line.id)?.receivedQuantity ?? 0
-          const nextReceivedQuantity = toCurrency(Number(line.quantityReceived) + incomingQuantity)
-          return Number(line.quantityOrdered) - nextReceivedQuantity <= QUANTITY_TOLERANCE
+          return {
+            quantityOrdered: Number(line.quantityOrdered),
+            quantityReceived: toQuantity(Number(line.quantityReceived) + incomingQuantity),
+            isShortClosed: line.isShortClosed,
+          }
         })
+        const nextPurchaseOrderStatus = derivePurchaseOrderStatusFromLineStates(nextLineStates)
+        const willBeFullyReceived = nextPurchaseOrderStatus === PurchaseOrderStatus.FULLY_RECEIVED
 
         const receiptDiscount = willBeFullyReceived
           ? toCurrency(Math.max(0, purchaseOrderDiscount - existingReceiptDiscount))
@@ -680,26 +791,15 @@ export async function createPurchaseOrderGoodsReceiptAction(
           })
         }
 
-        if (willBeFullyReceived) {
-          await tx.purchaseOrder.update({
-            where: {
-              id: purchaseOrder.id,
-            },
-            data: {
-              status: PurchaseOrderStatus.FULLY_RECEIVED,
-              closedAt: null,
-            },
-          })
-        } else {
-          await tx.purchaseOrder.update({
-            where: {
-              id: purchaseOrder.id,
-            },
-            data: {
-              status: PurchaseOrderStatus.PARTIALLY_RECEIVED,
-            },
-          })
-        }
+        await tx.purchaseOrder.update({
+          where: {
+            id: purchaseOrder.id,
+          },
+          data: {
+            status: nextPurchaseOrderStatus,
+            closedAt: nextPurchaseOrderStatus === PurchaseOrderStatus.CLOSED ? new Date() : null,
+          },
+        })
 
         return {
           kind: "success" as const,
@@ -735,10 +835,11 @@ export async function createPurchaseOrderGoodsReceiptAction(
 }
 
 const transitionPurchaseOrderStatus = async (params: {
-  input: ClosePurchaseOrderInput | CancelPurchaseOrderInput
+  input: OpenPurchaseOrderInput | ClosePurchaseOrderInput | CancelPurchaseOrderInput
   toStatus: PurchaseOrderStatus
   allowedCurrentStatuses: PurchaseOrderStatus[]
   timestampField: "closedAt" | "cancelledAt"
+  allowWhenNoGoodsReceiptOnly?: boolean
   messageTemplate: (poNumber: string) => string
 }): Promise<ProcurementActionResult> => {
   const access = await ensurePurchaseOrderAccess({
@@ -759,6 +860,18 @@ const transitionPurchaseOrderStatus = async (params: {
       id: true,
       poNumber: true,
       status: true,
+      _count: {
+        select: {
+          goodsReceipts: true,
+        },
+      },
+      lines: {
+        select: {
+          quantityOrdered: true,
+          quantityReceived: true,
+          isShortClosed: true,
+        },
+      },
     },
   })
 
@@ -770,6 +883,27 @@ const transitionPurchaseOrderStatus = async (params: {
     return {
       ok: false,
       error: `Cannot move purchase order from ${order.status} to ${params.toStatus}.`,
+    }
+  }
+
+  if (params.toStatus === PurchaseOrderStatus.CLOSED) {
+    const hasReceivableLines = order.lines.some((line) => {
+      const quantityRemaining = toQuantity(Number(line.quantityOrdered) - Number(line.quantityReceived))
+      return !line.isShortClosed && quantityRemaining > QUANTITY_TOLERANCE
+    })
+
+    if (hasReceivableLines) {
+      return {
+        ok: false,
+        error: "Close remaining quantities per line with reason before closing this purchase order.",
+      }
+    }
+  }
+
+  if (params.allowWhenNoGoodsReceiptOnly && order._count.goodsReceipts > 0) {
+    return {
+      ok: false,
+      error: "Cannot cancel purchase order after Goods Receipt PO has already been posted.",
     }
   }
 
@@ -786,6 +920,197 @@ const transitionPurchaseOrderStatus = async (params: {
   revalidatePurchaseOrderPaths(access.context.companyId)
   revalidatePurchaseOrderDetailPath(access.context.companyId, order.id)
   return { ok: true, message: params.messageTemplate(order.poNumber) }
+}
+
+export async function openPurchaseOrderAction(input: OpenPurchaseOrderInput): Promise<ProcurementActionResult> {
+  const parsed = openPurchaseOrderInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid open payload." }
+  }
+
+  const access = await ensurePurchaseOrderAccess({
+    companyId: parsed.data.companyId,
+    capability: "purchase_orders.manage",
+    errorMessage: "You are not allowed to manage purchase orders.",
+  })
+  if (!access.ok) {
+    return access
+  }
+
+  const order = await db.purchaseOrder.findFirst({
+    where: {
+      id: parsed.data.purchaseOrderId,
+      companyId: access.context.companyId,
+    },
+    select: {
+      id: true,
+      poNumber: true,
+      status: true,
+    },
+  })
+
+  if (!order) {
+    return { ok: false, error: "Purchase order not found." }
+  }
+
+  if (order.status !== PurchaseOrderStatus.DRAFT) {
+    return { ok: false, error: "Only draft purchase orders can be opened." }
+  }
+
+  await db.purchaseOrder.update({
+    where: {
+      id: order.id,
+    },
+    data: {
+      status: PurchaseOrderStatus.OPEN,
+      issuedAt: new Date(),
+      cancelledAt: null,
+      closedAt: null,
+    },
+  })
+
+  revalidatePurchaseOrderPaths(access.context.companyId)
+  revalidatePurchaseOrderDetailPath(access.context.companyId, order.id)
+  return { ok: true, message: `${order.poNumber} opened.` }
+}
+
+export async function closePurchaseOrderLineAction(input: ClosePurchaseOrderLineInput): Promise<ProcurementActionResult> {
+  const parsed = closePurchaseOrderLineInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid close-line payload." }
+  }
+
+  const payload = parsed.data
+  const access = await ensurePurchaseOrderAccess({
+    companyId: payload.companyId,
+    capability: "purchase_orders.manage",
+    errorMessage: "You are not allowed to manage purchase orders.",
+  })
+  if (!access.ok) {
+    return access
+  }
+
+  const outcome = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "PurchaseOrderLine"
+      WHERE "id" = ${payload.purchaseOrderLineId}
+      FOR UPDATE
+    `
+
+    const line = await tx.purchaseOrderLine.findFirst({
+      where: {
+        id: payload.purchaseOrderLineId,
+        purchaseOrder: {
+          companyId: access.context.companyId,
+        },
+      },
+      select: {
+        id: true,
+        lineNumber: true,
+        quantityOrdered: true,
+        quantityReceived: true,
+        isShortClosed: true,
+        purchaseOrderId: true,
+        purchaseOrder: {
+          select: {
+            id: true,
+            poNumber: true,
+            status: true,
+          },
+        },
+      },
+    })
+
+    if (!line) {
+      return { kind: "error" as const, message: "Purchase order line not found." }
+    }
+
+    if (
+      line.purchaseOrder.status !== PurchaseOrderStatus.OPEN &&
+      line.purchaseOrder.status !== PurchaseOrderStatus.PARTIALLY_RECEIVED
+    ) {
+      return {
+        kind: "error" as const,
+        message: `Cannot short-close lines while PO is ${line.purchaseOrder.status}.`,
+      }
+    }
+
+    if (line.isShortClosed) {
+      return { kind: "error" as const, message: "This purchase order line is already short-closed." }
+    }
+
+    const quantityRemaining = toQuantity(Number(line.quantityOrdered) - Number(line.quantityReceived))
+    if (quantityRemaining <= QUANTITY_TOLERANCE) {
+      return { kind: "error" as const, message: "This purchase order line is already fully received." }
+    }
+
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "PurchaseOrder"
+      WHERE "id" = ${line.purchaseOrderId}
+      FOR UPDATE
+    `
+
+    await tx.purchaseOrderLine.update({
+      where: {
+        id: line.id,
+      },
+      data: {
+        isShortClosed: true,
+        shortClosedQuantity: new Prisma.Decimal(quantityRemaining),
+        shortClosedReason: payload.reason.trim(),
+        shortClosedAt: new Date(),
+        shortClosedByUserId: access.context.userId,
+      },
+    })
+
+    const lines = await tx.purchaseOrderLine.findMany({
+      where: {
+        purchaseOrderId: line.purchaseOrderId,
+      },
+      select: {
+        quantityOrdered: true,
+        quantityReceived: true,
+        isShortClosed: true,
+      },
+    })
+
+    const nextStatus = derivePurchaseOrderStatusFromLineStates(
+      lines.map((item) => ({
+        quantityOrdered: Number(item.quantityOrdered),
+        quantityReceived: Number(item.quantityReceived),
+        isShortClosed: item.isShortClosed,
+      }))
+    )
+
+    await tx.purchaseOrder.update({
+      where: {
+        id: line.purchaseOrderId,
+      },
+      data: {
+        status: nextStatus,
+        closedAt: nextStatus === PurchaseOrderStatus.CLOSED ? new Date() : null,
+      },
+    })
+
+    return {
+      kind: "success" as const,
+      purchaseOrderId: line.purchaseOrderId,
+      poNumber: line.purchaseOrder.poNumber,
+      lineNumber: line.lineNumber,
+    }
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  })
+
+  if (outcome.kind === "error") {
+    return { ok: false, error: outcome.message }
+  }
+
+  revalidatePurchaseOrderPaths(access.context.companyId)
+  revalidatePurchaseOrderDetailPath(access.context.companyId, outcome.purchaseOrderId)
+  return { ok: true, message: `${outcome.poNumber} line ${outcome.lineNumber} short-closed.` }
 }
 
 export async function closePurchaseOrderAction(input: ClosePurchaseOrderInput): Promise<ProcurementActionResult> {
@@ -818,6 +1143,7 @@ export async function cancelPurchaseOrderAction(input: CancelPurchaseOrderInput)
     toStatus: PurchaseOrderStatus.CANCELLED,
     allowedCurrentStatuses: [PurchaseOrderStatus.DRAFT, PurchaseOrderStatus.OPEN],
     timestampField: "cancelledAt",
+    allowWhenNoGoodsReceiptOnly: true,
     messageTemplate: (poNumber) => `${poNumber} cancelled.`,
   })
 }

@@ -17,6 +17,9 @@ export type PurchaseOrderSourceRequestLineItem = {
   itemCode: string
   description: string
   uom: string
+  requestedQuantity: number
+  allocatedQuantity: number
+  availableQuantity: number
   quantity: number
   unitPrice: number
   lineTotal: number
@@ -66,6 +69,10 @@ export type PurchaseOrderDetailLine = {
   quantityOrdered: number
   quantityReceived: number
   quantityRemaining: number
+  isShortClosed: boolean
+  shortClosedQuantity: number
+  shortClosedReason: string | null
+  shortClosedAtLabel: string | null
   unitPrice: number
   lineTotal: number
   remarks: string | null
@@ -90,6 +97,8 @@ export type PurchaseOrderDetail = {
   freight: number
   subtotal: number
   grandTotal: number
+  realizedAmount: number
+  unservedAmount: number
   openedAt: string | null
   closedAt: string | null
   cancelledAt: string | null
@@ -127,6 +136,7 @@ export type PurchaseOrderGoodsReceiptSourceOrderLine = {
 export type PurchaseOrderGoodsReceiptSourceOrderOption = {
   id: string
   poNumber: string
+  purchaseOrderStatus: "DRAFT" | "OPEN" | "PARTIALLY_RECEIVED" | "FULLY_RECEIVED" | "CLOSED" | "CANCELLED"
   sourceRequestId: string
   sourceRequestNumber: string
   supplierName: string

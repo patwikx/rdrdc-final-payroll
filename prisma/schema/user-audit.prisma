@@ -82,10 +82,12 @@ model User {
   purchaseRequestsSelectedStepThreeApprover     PurchaseRequest[]                           @relation("PurchaseRequestSelectedStepThreeApproverUser")
   purchaseRequestsSelectedStepFourApprover      PurchaseRequest[]                           @relation("PurchaseRequestSelectedStepFourApproverUser")
   purchaseRequestsFinalDecision                 PurchaseRequest[]                           @relation("PurchaseRequestFinalDecisionByUser")
+  purchaseRequestsSentBack                      PurchaseRequest[]                           @relation("PurchaseRequestSentBackByUser")
   purchaseRequestsCancelled                     PurchaseRequest[]                           @relation("PurchaseRequestCancelledByUser")
   purchaseRequestApprovalStepsAssigned          PurchaseRequestApprovalStep[]               @relation("PurchaseRequestApprovalStepApprover")
   purchaseRequestApprovalStepsActed             PurchaseRequestApprovalStep[]               @relation("PurchaseRequestApprovalStepActor")
   purchaseOrdersCreated                         PurchaseOrder[]                             @relation("PurchaseOrderCreatedByUser")
+  purchaseOrderLinesShortClosed                 PurchaseOrderLine[]                         @relation("PurchaseOrderLineShortClosedByUser")
   purchaseOrderGoodsReceiptsReceived           PurchaseOrderGoodsReceipt[]                 @relation("PurchaseOrderGoodsReceiptReceivedByUser")
   employeePortalCapabilityOverrides           EmployeePortalCapabilityOverride[]
 

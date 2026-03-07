@@ -139,11 +139,50 @@ const buildPurchaseOrderGoodsReceiptPrintHtml = (payload: PurchaseOrderGoodsRece
             align-items: stretch;
             margin-top: 10px;
           }
+          .notes-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
           .notes { border: 1px solid #000; padding: 6px; min-height: 100%; word-break: break-word; overflow-wrap: anywhere; }
           .totals { width: 300px; border-collapse: collapse; }
           .totals td { border: 1px solid #000; padding: 5px 6px; }
           .totals td:first-child { width: 50%; text-transform: uppercase; font-size: 9px; letter-spacing: 0.3px; }
           .totals td:last-child { text-align: right; font-weight: 700; }
+          .signature-section {
+            display: flex;
+            justify-content: flex-start;
+          }
+          .signature-box {
+            width: 300px;
+            text-align: center;
+          }
+          .signature-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 16px;
+          }
+          .signature-name {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+          }
+          .signature-line {
+            border-top: 1px solid #000;
+            padding-top: 3px;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+          }
+          .signature-date {
+            margin-top: 6px;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+          }
           .footer { margin-top: 10px; font-size: 9px; text-align: right; }
         </style>
       </head>
@@ -197,7 +236,17 @@ const buildPurchaseOrderGoodsReceiptPrintHtml = (payload: PurchaseOrderGoodsRece
         </table>
 
         <div class="summary-grid">
-          <div class="notes"><strong>Receipt Notes:</strong> ${escapeHtml(payload.remarks ?? "-")}</div>
+          <div class="notes-panel">
+            <div class="notes"><strong>Receipt Notes:</strong> ${escapeHtml(payload.remarks ?? "-")}</div>
+            <div class="signature-section">
+              <div class="signature-box">
+                <div class="signature-label">Received By</div>
+                <div class="signature-name">&nbsp;</div>
+                <div class="signature-line">Signature Over Printed Name</div>
+                <div class="signature-date">Date: ${escapeHtml(payload.receivedAtLabel)}</div>
+              </div>
+            </div>
+          </div>
           <table class="totals">
             <tr><td>Sub Total</td><td>PHP ${formatMoney(payload.subtotal)}</td></tr>
             <tr><td>Discount</td><td>PHP ${formatMoney(payload.discount)}</td></tr>

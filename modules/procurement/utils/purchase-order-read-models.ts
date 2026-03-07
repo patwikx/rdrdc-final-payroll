@@ -34,6 +34,7 @@ const ACTIVE_PURCHASE_ORDER_STATUSES: PurchaseOrderStatus[] = [
   PurchaseOrderStatus.FULLY_RECEIVED,
   PurchaseOrderStatus.CLOSED,
 ]
+const QUANTITY_TOLERANCE = 0.0001
 
 const formatDateTime = (value: Date | null): string | null => {
   if (!value) {
@@ -49,6 +50,21 @@ const toNumber = (value: { toNumber(): number } | null): number => {
   }
 
   return value.toNumber()
+}
+
+const toCurrency = (value: number): number => Math.round(Math.max(0, value) * 100) / 100
+
+const toQuantity = (value: number): number => Math.round(Math.max(0, value) * 1000) / 1000
+
+const hasReceivableBalance = (line: {
+  quantityOrdered: { toNumber(): number } | number
+  quantityReceived: { toNumber(): number } | number
+  isShortClosed: boolean
+}): boolean => {
+  const quantityOrdered = typeof line.quantityOrdered === "number" ? line.quantityOrdered : toNumber(line.quantityOrdered)
+  const quantityReceived = typeof line.quantityReceived === "number" ? line.quantityReceived : toNumber(line.quantityReceived)
+  const remaining = toQuantity(quantityOrdered - quantityReceived)
+  return !line.isShortClosed && remaining > QUANTITY_TOLERANCE
 }
 
 export async function getPurchaseOrderWorkspaceData(params: {
@@ -87,6 +103,7 @@ export async function getPurchaseOrderWorkspaceData(params: {
             id: true,
             quantityOrdered: true,
             quantityReceived: true,
+            isShortClosed: true,
           },
         },
       },
@@ -96,17 +113,7 @@ export async function getPurchaseOrderWorkspaceData(params: {
         companyId: params.companyId,
         status: PurchaseRequestStatus.APPROVED,
         items: {
-          some: {
-            purchaseOrderLines: {
-              none: {
-                purchaseOrder: {
-                  status: {
-                    in: ACTIVE_PURCHASE_ORDER_STATUSES,
-                  },
-                },
-              },
-            },
-          },
+          some: {},
         },
       },
       orderBy: [{ approvedAt: "asc" }, { createdAt: "asc" }],
@@ -133,17 +140,6 @@ export async function getPurchaseOrderWorkspaceData(params: {
           },
         },
         items: {
-          where: {
-            purchaseOrderLines: {
-              none: {
-                purchaseOrder: {
-                  status: {
-                    in: ACTIVE_PURCHASE_ORDER_STATUSES,
-                  },
-                },
-              },
-            },
-          },
           orderBy: [{ lineNumber: "asc" }],
           select: {
             id: true,
@@ -154,6 +150,18 @@ export async function getPurchaseOrderWorkspaceData(params: {
             unitPrice: true,
             lineTotal: true,
             remarks: true,
+            purchaseOrderLines: {
+              where: {
+                purchaseOrder: {
+                  status: {
+                    in: ACTIVE_PURCHASE_ORDER_STATUSES,
+                  },
+                },
+              },
+              select: {
+                quantityOrdered: true,
+              },
+            },
           },
         },
       },
@@ -172,28 +180,53 @@ export async function getPurchaseOrderWorkspaceData(params: {
       createdByName: `${row.createdByUser.firstName} ${row.createdByUser.lastName}`,
       totalAmount: Number(row.grandTotal),
       lineCount: row.lines.length,
-      hasReceivableLines: row.lines.some((line) => toNumber(line.quantityOrdered) - toNumber(line.quantityReceived) > 0.0001),
+      hasReceivableLines: row.lines.some((line) => hasReceivableBalance(line)),
     })),
-    availableSourceRequests: sourceRequests.map((row) => ({
-      id: row.id,
-      requestNumber: row.requestNumber,
-      requesterName: `${row.requesterEmployee.firstName} ${row.requesterEmployee.lastName}`,
-      requesterBranchName: row.requesterBranchName ?? row.requesterEmployee.branch?.name ?? null,
-      departmentName: row.department.name,
-      requiredDateLabel: dateLabel.format(row.dateRequired),
-      totalAmount: row.items.reduce((sum, item) => sum + (item.lineTotal === null ? 0 : Number(item.lineTotal)), 0),
-      lineCount: row.items.length,
-      items: row.items.map((item) => ({
-        id: item.id,
-        itemCode: (item.itemCode ?? "").trim(),
-        description: item.description,
-        uom: item.uom,
-        quantity: Number(item.quantity),
-        unitPrice: item.unitPrice === null ? 0 : Number(item.unitPrice),
-        lineTotal: item.lineTotal === null ? 0 : Number(item.lineTotal),
-        remarks: item.remarks,
-      })),
-    })),
+    availableSourceRequests: sourceRequests
+      .map((row) => {
+        const items = row.items
+          .map((item) => {
+            const requestedQuantity = Number(item.quantity)
+            const allocatedQuantity = toQuantity(
+              item.purchaseOrderLines.reduce((sum, line) => sum + Number(line.quantityOrdered), 0)
+            )
+            const availableQuantity = toQuantity(requestedQuantity - allocatedQuantity)
+            const unitPrice = item.unitPrice === null ? 0 : Number(item.unitPrice)
+            const lineTotal = Math.round(availableQuantity * unitPrice * 100) / 100
+
+            return {
+              id: item.id,
+              itemCode: (item.itemCode ?? "").trim(),
+              description: item.description,
+              uom: item.uom,
+              requestedQuantity,
+              allocatedQuantity,
+              availableQuantity,
+              quantity: availableQuantity,
+              unitPrice,
+              lineTotal,
+              remarks: item.remarks,
+            }
+          })
+          .filter((item) => item.availableQuantity > QUANTITY_TOLERANCE)
+
+        if (items.length === 0) {
+          return null
+        }
+
+        return {
+          id: row.id,
+          requestNumber: row.requestNumber,
+          requesterName: `${row.requesterEmployee.firstName} ${row.requesterEmployee.lastName}`,
+          requesterBranchName: row.requesterBranchName ?? row.requesterEmployee.branch?.name ?? null,
+          departmentName: row.department.name,
+          requiredDateLabel: dateLabel.format(row.dateRequired),
+          totalAmount: items.reduce((sum, item) => sum + item.lineTotal, 0),
+          lineCount: items.length,
+          items,
+        }
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null),
   }
 }
 
@@ -246,6 +279,11 @@ export async function getPurchaseOrderById(params: {
       issuedAt: true,
       closedAt: true,
       cancelledAt: true,
+      goodsReceipts: {
+        select: {
+          grandTotal: true,
+        },
+      },
       lines: {
         orderBy: [{ lineNumber: "asc" }],
         select: {
@@ -256,6 +294,10 @@ export async function getPurchaseOrderById(params: {
           uom: true,
           quantityOrdered: true,
           quantityReceived: true,
+          isShortClosed: true,
+          shortClosedQuantity: true,
+          shortClosedReason: true,
+          shortClosedAt: true,
           unitPrice: true,
           lineTotal: true,
           remarks: true,
@@ -267,6 +309,9 @@ export async function getPurchaseOrderById(params: {
   if (!order) {
     return null
   }
+
+  const realizedAmount = toCurrency(order.goodsReceipts.reduce((sum, receipt) => sum + Number(receipt.grandTotal), 0))
+  const unservedAmount = toCurrency(Math.max(0, Number(order.grandTotal) - realizedAmount))
 
   return {
     id: order.id,
@@ -290,6 +335,8 @@ export async function getPurchaseOrderById(params: {
     freight: Number(order.freight),
     subtotal: Number(order.subtotal),
     grandTotal: Number(order.grandTotal),
+    realizedAmount,
+    unservedAmount,
     openedAt: formatDateTime(order.issuedAt),
     closedAt: formatDateTime(order.closedAt),
     cancelledAt: formatDateTime(order.cancelledAt),
@@ -302,6 +349,10 @@ export async function getPurchaseOrderById(params: {
       quantityOrdered: Number(line.quantityOrdered),
       quantityReceived: Number(line.quantityReceived),
       quantityRemaining: Math.max(0, Number(line.quantityOrdered) - Number(line.quantityReceived)),
+      isShortClosed: line.isShortClosed,
+      shortClosedQuantity: Number(line.shortClosedQuantity),
+      shortClosedReason: line.shortClosedReason,
+      shortClosedAtLabel: formatDateTime(line.shortClosedAt),
       unitPrice: Number(line.unitPrice),
       lineTotal: Number(line.lineTotal),
       remarks: line.remarks,
@@ -366,6 +417,7 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
       select: {
         id: true,
         poNumber: true,
+        status: true,
         supplierName: true,
         paymentTerms: true,
         applyVat: true,
@@ -407,6 +459,7 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
             uom: true,
             quantityOrdered: true,
             quantityReceived: true,
+            isShortClosed: true,
             unitPrice: true,
             lineTotal: true,
             remarks: true,
@@ -440,6 +493,7 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
       .map((order) => ({
         id: order.id,
         poNumber: order.poNumber,
+        purchaseOrderStatus: order.status,
         sourceRequestId: order.sourcePurchaseRequestId,
         sourceRequestNumber: order.sourcePurchaseRequest.requestNumber,
         supplierName: order.supplierName,
@@ -476,9 +530,11 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
               unitPrice: Number(line.unitPrice),
               lineTotal: Number(line.lineTotal),
               remarks: line.remarks,
+              isShortClosed: line.isShortClosed,
             }
           })
-          .filter((line) => line.quantityRemaining > 0.0001),
+          .filter((line) => !line.isShortClosed && line.quantityRemaining > 0.0001)
+          .map(({ isShortClosed: _isShortClosed, ...line }) => line),
       }))
       .filter((order) => order.lines.length > 0),
   }

@@ -41,6 +41,7 @@ import {
   cancelPurchaseRequestAction,
   submitPurchaseRequestAction,
 } from "@/modules/procurement/actions/purchase-request-actions"
+import { PurchaseRequestSendBackNotificationDialog } from "@/modules/procurement/components/purchase-request-send-back-notification-dialog"
 import type { PurchaseRequestRow } from "@/modules/procurement/types/purchase-request-types"
 
 type PurchaseRequestClientProps = {
@@ -78,6 +79,10 @@ export function PurchaseRequestClient({
   const [logStatus, setLogStatus] = useState("ALL")
   const itemsPerPage = Number(pageSize)
   const debouncedLogSearch = useDebouncedValue(logSearch, 180)
+  const unreadSendBackRequest = useMemo(
+    () => requests.find((request) => request.hasUnreadSendBackNotice) ?? null,
+    [requests]
+  )
 
   const summary = useMemo(() => {
     return requests.reduce(
@@ -152,6 +157,8 @@ export function PurchaseRequestClient({
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
+      <PurchaseRequestSendBackNotificationDialog companyId={companyId} request={unreadSendBackRequest} />
+
       <div className="flex flex-col justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6 md:flex-row md:items-end">
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Employee Self-Service</p>
@@ -493,6 +500,12 @@ export function PurchaseRequestClient({
                                     <p className="text-foreground">{request.submittedAtLabel ?? "-"}</p>
                                   </div>
                                 </div>
+                                {request.sentBackReason ? (
+                                  <div>
+                                    <p className="text-[11px] text-muted-foreground">Send-Back Reason</p>
+                                    <p className="text-foreground">{request.sentBackReason}</p>
+                                  </div>
+                                ) : null}
                                 {request.purpose ? (
                                   <div>
                                     <p className="text-[11px] text-muted-foreground">Purpose</p>
@@ -757,8 +770,18 @@ export function PurchaseRequestClient({
                                 </div>
                               </div>
 
-                              {(request.purpose || request.remarks || request.finalDecisionRemarks || request.cancellationReason) ? (
+                              {(request.purpose ||
+                                request.remarks ||
+                                request.finalDecisionRemarks ||
+                                request.sentBackReason ||
+                                request.cancellationReason) ? (
                                 <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                                  {request.sentBackReason ? (
+                                    <div>
+                                      <p className="font-medium text-foreground">Send-Back Reason</p>
+                                      <p>{request.sentBackReason}</p>
+                                    </div>
+                                  ) : null}
                                   {request.purpose ? (
                                     <div>
                                       <p className="font-medium text-foreground">Purpose</p>

@@ -37,6 +37,22 @@ const statusLabel = (status: string): string => status.replace(/_/g, " ")
 
 export function PurchaseRequestDetailPage({ companyId, companyName, request }: PurchaseRequestDetailPageProps) {
   const requestStatusLabel = statusLabel(request.status)
+  const approvalStepsByCycle = request.approvalSteps.reduce<
+    Array<{ cycle: number; isCurrentCycle: boolean; steps: PurchaseRequestRow["approvalSteps"] }>
+  >((groups, step) => {
+    const existing = groups.find((group) => group.cycle === step.approvalCycle)
+    if (existing) {
+      existing.steps.push(step)
+      return groups
+    }
+
+    groups.push({
+      cycle: step.approvalCycle,
+      isCurrentCycle: step.isCurrentCycle,
+      steps: [step],
+    })
+    return groups
+  }, [])
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
@@ -211,9 +227,17 @@ export function PurchaseRequestDetailPage({ companyId, companyName, request }: P
               <p className="font-medium text-foreground">Cancelled At</p>
               <p>{request.cancelledAtLabel ?? "-"}</p>
             </div>
+            <div>
+              <p className="font-medium text-foreground">Last Sent Back</p>
+              <p>{request.sentBackAtLabel ?? "-"}</p>
+            </div>
           </div>
 
-          {request.purpose || request.remarks || request.finalDecisionRemarks || request.cancellationReason ? (
+          {request.purpose ||
+          request.remarks ||
+          request.finalDecisionRemarks ||
+          request.sentBackReason ||
+          request.cancellationReason ? (
             <div className="mt-4 grid grid-cols-1 gap-3 text-xs text-muted-foreground md:grid-cols-2">
               {request.purpose ? (
                 <div>
@@ -231,6 +255,12 @@ export function PurchaseRequestDetailPage({ companyId, companyName, request }: P
                 <div>
                   <p className="font-medium text-foreground">Decision Remarks</p>
                   <p>{request.finalDecisionRemarks}</p>
+                </div>
+              ) : null}
+              {request.sentBackReason ? (
+                <div>
+                  <p className="font-medium text-foreground">Latest Send-Back Reason</p>
+                  <p>{request.sentBackReason}</p>
                 </div>
               ) : null}
               {request.cancellationReason ? (
@@ -318,21 +348,38 @@ export function PurchaseRequestDetailPage({ companyId, companyName, request }: P
           {request.approvalSteps.length === 0 ? (
             <p className="text-xs text-muted-foreground">No approval trail recorded yet for this request.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {request.approvalSteps.map((step) => (
-                <div key={step.id} className="border-t border-border/60 pt-2 text-xs">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="font-medium text-foreground">
-                      {(step.stepName?.trim() || `Step ${step.stepNumber}`)} • {step.approverName}
+            <div className="space-y-3">
+              {approvalStepsByCycle.map((cycleGroup) => (
+                <div key={`approval-cycle-${cycleGroup.cycle}`} className="border-t border-border/60 pt-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <p className="text-xs font-medium text-foreground">
+                      Approval Cycle {cycleGroup.cycle > 0 ? cycleGroup.cycle : 1}
                     </p>
-                    <Badge variant={statusVariant(step.status)} className="rounded-full border px-2 py-0.5 text-[10px]">
-                      {statusLabel(step.status)}
+                    <Badge
+                      variant={cycleGroup.isCurrentCycle ? "default" : "outline"}
+                      className="rounded-full border px-2 py-0.5 text-[10px]"
+                    >
+                      {cycleGroup.isCurrentCycle ? "Current" : "Previous"}
                     </Badge>
                   </div>
-                  <p className="text-muted-foreground">Acted by: {step.actedByName ?? "-"}</p>
-                  <p className="text-muted-foreground">Acted at: {step.actedAtLabel ?? "-"}</p>
-                  <p className="text-muted-foreground">Turnaround: {step.turnaroundTimeLabel ?? "-"}</p>
-                  {step.remarks ? <p className="mt-1 text-muted-foreground">Remarks: {step.remarks}</p> : null}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {cycleGroup.steps.map((step) => (
+                      <div key={step.id} className="border-t border-border/60 pt-2 text-xs">
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <p className="font-medium text-foreground">
+                            {(step.stepName?.trim() || `Step ${step.stepNumber}`)} • {step.approverName}
+                          </p>
+                          <Badge variant={statusVariant(step.status)} className="rounded-full border px-2 py-0.5 text-[10px]">
+                            {statusLabel(step.status)}
+                          </Badge>
+                        </div>
+                        <p className="text-muted-foreground">Acted by: {step.actedByName ?? "-"}</p>
+                        <p className="text-muted-foreground">Acted at: {step.actedAtLabel ?? "-"}</p>
+                        <p className="text-muted-foreground">Turnaround: {step.turnaroundTimeLabel ?? "-"}</p>
+                        {step.remarks ? <p className="mt-1 text-muted-foreground">Remarks: {step.remarks}</p> : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

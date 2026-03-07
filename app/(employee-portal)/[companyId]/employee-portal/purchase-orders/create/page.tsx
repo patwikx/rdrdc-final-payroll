@@ -10,10 +10,12 @@ import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/emp
 
 type PurchaseOrderCreateRouteProps = {
   params: Promise<{ companyId: string }>
+  searchParams: Promise<{ sourceRequestId?: string }>
 }
 
-export default async function PurchaseOrderCreateRoute({ params }: PurchaseOrderCreateRouteProps) {
+export default async function PurchaseOrderCreateRoute({ params, searchParams }: PurchaseOrderCreateRouteProps) {
   const { companyId } = await params
+  const query = await searchParams
   const context = await getEmployeePortalContext(companyId)
 
   if (!context) {
@@ -45,6 +47,7 @@ export default async function PurchaseOrderCreateRoute({ params }: PurchaseOrder
       companyId={context.companyId}
       availableSourceRequests={workspace.data.availableSourceRequests}
       nextPoNumber={nextPoNumber}
+      preferredSourceRequestId={query.sourceRequestId}
     />
   )
 }

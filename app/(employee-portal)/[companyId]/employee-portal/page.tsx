@@ -20,7 +20,9 @@ import { getPhYear, toPhDateOnlyUtc } from "@/lib/ph-time"
 import { Card, CardContent } from "@/components/ui/card"
 import { MaterialRequestAcknowledgmentNotificationDialog } from "@/modules/employee-portal/components/material-request-acknowledgment-notification-dialog"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 import { getEmployeePortalLeaveDashboardReadModel } from "@/modules/leave/utils/employee-portal-leave-dashboard-read-model"
+import { PurchaseRequestSendBackNotificationDialog } from "@/modules/procurement/components/purchase-request-send-back-notification-dialog"
 
 type EmployeePortalDashboardPageProps = {
   params: Promise<{ companyId: string }>
@@ -43,6 +45,16 @@ const dateLabel = new Intl.DateTimeFormat("en-PH", {
 
 const shortDay = new Intl.DateTimeFormat("en-PH", {
   weekday: "short",
+  timeZone: "Asia/Manila",
+})
+
+const dateTimeLabel = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
   timeZone: "Asia/Manila",
 })
 
@@ -89,32 +101,68 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
     redirect("/login")
   }
 
-  const pendingMaterialAcknowledgmentsRaw = await db.materialRequest.findMany({
-    where: {
-      companyId: context.companyId,
-      requesterUserId: context.userId,
-      status: MaterialRequestStatus.APPROVED,
-      processingStatus: MaterialRequestProcessingStatus.COMPLETED,
-      requiresReceiptAcknowledgment: true,
-      requesterAcknowledgedAt: null,
-    },
-    orderBy: [{ processingCompletedAt: "desc" }, { updatedAt: "desc" }],
-    select: {
-      id: true,
-      requestNumber: true,
-      processingCompletedAt: true,
-    },
-  })
+  const canViewPurchaseRequests = hasEmployeePortalCapability(context.capabilities, "purchase_requests.view")
+  const [pendingMaterialAcknowledgmentsRaw, unreadPurchaseRequestSendBack] = await Promise.all([
+    db.materialRequest.findMany({
+      where: {
+        companyId: context.companyId,
+        requesterUserId: context.userId,
+        status: MaterialRequestStatus.APPROVED,
+        processingStatus: MaterialRequestProcessingStatus.COMPLETED,
+        requiresReceiptAcknowledgment: true,
+        requesterAcknowledgedAt: null,
+      },
+      orderBy: [{ processingCompletedAt: "desc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        requestNumber: true,
+        processingCompletedAt: true,
+      },
+    }),
+    canViewPurchaseRequests
+      ? db.purchaseRequest.findFirst({
+          where: {
+            companyId: context.companyId,
+            requesterUserId: context.userId,
+            sentBackAt: {
+              not: null,
+            },
+            sentBackAcknowledgedAt: null,
+          },
+          orderBy: [{ sentBackAt: "desc" }, { updatedAt: "desc" }],
+          select: {
+            id: true,
+            requestNumber: true,
+            sentBackAt: true,
+            sentBackReason: true,
+          },
+        })
+      : Promise.resolve(null),
+  ])
 
   const pendingMaterialAcknowledgments = pendingMaterialAcknowledgmentsRaw.map((request) => ({
     id: request.id,
     requestNumber: request.requestNumber,
     processingCompletedAtLabel: request.processingCompletedAt ? dateLabel.format(request.processingCompletedAt) : null,
   }))
+  const unreadPurchaseRequestSendBackNotice = unreadPurchaseRequestSendBack
+    ? {
+        id: unreadPurchaseRequestSendBack.id,
+        requestNumber: unreadPurchaseRequestSendBack.requestNumber,
+        sentBackAtLabel: unreadPurchaseRequestSendBack.sentBackAt
+          ? dateTimeLabel.format(unreadPurchaseRequestSendBack.sentBackAt)
+          : null,
+        sentBackReason: unreadPurchaseRequestSendBack.sentBackReason,
+      }
+    : null
 
   if (!context.employee) {
     return (
       <>
+        <PurchaseRequestSendBackNotificationDialog
+          companyId={context.companyId}
+          request={unreadPurchaseRequestSendBackNotice}
+        />
         <MaterialRequestAcknowledgmentNotificationDialog
           companyId={context.companyId}
           requests={pendingMaterialAcknowledgments}
@@ -187,6 +235,10 @@ export default async function EmployeePortalDashboardPage({ params }: EmployeePo
 
   return (
     <div className="min-h-screen w-full animate-in fade-in bg-background pb-8 duration-500">
+      <PurchaseRequestSendBackNotificationDialog
+        companyId={context.companyId}
+        request={unreadPurchaseRequestSendBackNotice}
+      />
       <MaterialRequestAcknowledgmentNotificationDialog
         companyId={context.companyId}
         requests={pendingMaterialAcknowledgments}

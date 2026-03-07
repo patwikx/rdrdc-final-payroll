@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { IconBuildingOff } from "@tabler/icons-react"
 
+import { db } from "@/lib/db"
 import { ActiveCompanyContextError, getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { UserAccessPage } from "@/modules/employees/user-access/components/user-access-page"
 import { getUserAccessPreviewData } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
@@ -51,26 +52,40 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
   const employeePage = Number(parsedSearch.empPage)
   const systemUserPage = Number(parsedSearch.sysPage)
 
-  const data = await getUserAccessPreviewData(company.companyId, {
-    query: parsedSearch.q?.trim() ?? "",
-    employeePage: Number.isFinite(employeePage) ? employeePage : 1,
-    systemUserPage: Number.isFinite(systemUserPage) ? systemUserPage : 1,
-    employeeLinkFilter:
-      parsedSearch.empLink === "LINKED" || parsedSearch.empLink === "UNLINKED"
-        ? parsedSearch.empLink
-        : "ALL",
-    systemLinkFilter:
-      parsedSearch.sysLink === "LINKED" || parsedSearch.sysLink === "UNLINKED"
-        ? parsedSearch.sysLink
-        : "LINKED",
-    roleFilter:
-      parsedSearch.role === "EMPLOYEE" ||
-      parsedSearch.role === "HR_ADMIN" ||
-      parsedSearch.role === "PAYROLL_ADMIN" ||
-      parsedSearch.role === "COMPANY_ADMIN"
-        ? parsedSearch.role
-        : "ALL",
-  })
+  const [data, branchOptions] = await Promise.all([
+    getUserAccessPreviewData(company.companyId, {
+      query: parsedSearch.q?.trim() ?? "",
+      employeePage: Number.isFinite(employeePage) ? employeePage : 1,
+      systemUserPage: Number.isFinite(systemUserPage) ? systemUserPage : 1,
+      employeeLinkFilter:
+        parsedSearch.empLink === "LINKED" || parsedSearch.empLink === "UNLINKED"
+          ? parsedSearch.empLink
+          : "ALL",
+      systemLinkFilter:
+        parsedSearch.sysLink === "LINKED" || parsedSearch.sysLink === "UNLINKED"
+          ? parsedSearch.sysLink
+          : "ALL",
+      roleFilter:
+        parsedSearch.role === "EMPLOYEE" ||
+        parsedSearch.role === "HR_ADMIN" ||
+        parsedSearch.role === "PAYROLL_ADMIN" ||
+        parsedSearch.role === "COMPANY_ADMIN"
+          ? parsedSearch.role
+          : "ALL",
+    }),
+    db.branch.findMany({
+      where: {
+        companyId: company.companyId,
+        isActive: true,
+      },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    }),
+  ])
 
   return (
     <UserAccessPage
@@ -86,6 +101,11 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
       employeePagination={data.employeePagination}
       systemUserPagination={data.systemUserPagination}
       purchaseRequestWorkflowEnabled={data.purchaseRequestWorkflowEnabled}
+      branchOptions={branchOptions.map((branch) => ({
+        id: branch.id,
+        code: branch.code,
+        name: branch.name,
+      }))}
     />
   )
 }

@@ -32,7 +32,7 @@ export default async function PurchaseRequestsPage({ params }: PurchaseRequestsP
     <PurchaseRequestClient
       companyId={context.companyId}
       requests={requests}
-      canCreateRequest={Boolean(context.employee?.id)}
+      canCreateRequest={hasEmployeePortalCapability(context.capabilities, "purchase_requests.create")}
     />
   )
 }

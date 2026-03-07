@@ -26,7 +26,7 @@ export async function getEmployeePortalCapabilityContext(
   const activeCompany = await getActiveCompanyContext({ companyId })
   const companyRole = activeCompany.companyRole as CompanyRole
 
-  const [companyFeature, userRecord, activeCompanyAccess, employeeRecord, capabilityOverrides] = await Promise.all([
+  const [companyFeature, userRecord, activeCompanyAccess, employeeRecord, externalRequesterProfile, capabilityOverrides] = await Promise.all([
     db.company.findUnique({
       where: {
         id: activeCompany.companyId,
@@ -68,16 +68,26 @@ export async function getEmployeePortalCapabilityContext(
         id: true,
       },
     }),
-    db.employeePortalCapabilityOverride.findMany({
-      where: {
-        userId: activeCompany.userId,
-        companyId: activeCompany.companyId,
-      },
-      select: {
-        capability: true,
-        accessScope: true,
-      },
-    }),
+      db.externalRequesterProfile.findFirst({
+        where: {
+          userId: activeCompany.userId,
+          companyId: activeCompany.companyId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+        },
+      }),
+      db.employeePortalCapabilityOverride.findMany({
+        where: {
+          userId: activeCompany.userId,
+          companyId: activeCompany.companyId,
+        },
+        select: {
+          capability: true,
+          accessScope: true,
+        },
+      }),
   ])
 
   const snapshot: EmployeePortalAccessSnapshot = {
@@ -93,7 +103,7 @@ export async function getEmployeePortalCapabilityContext(
     isPurchaseRequestItemManager: Boolean(
       activeCompanyAccess?.isActive && activeCompanyAccess.isPurchaseRequestItemManager
     ),
-    hasEmployeeProfile: Boolean(employeeRecord?.id),
+    hasEmployeeProfile: Boolean(employeeRecord?.id || externalRequesterProfile?.id),
   }
 
   const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(capabilityOverrides)

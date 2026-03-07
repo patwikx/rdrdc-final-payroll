@@ -316,35 +316,67 @@ const ensurePurchaseRequestFeatureEnabled = async (companyId: string): Promise<b
   return getCompanyPurchaseRequestWorkflowEnabled(companyId)
 }
 
-const ensureRequesterEmployee = async (params: {
+type PurchaseRequesterProfile = {
+  requesterEmployeeId: string | null
+  requesterExternalProfileId: string | null
+  branchName: string | null
+}
+
+const resolveRequesterProfile = async (params: {
   userId: string
   companyId: string
-}): Promise<{ id: string; branchName: string | null } | null> => {
-  const employee = await db.employee.findFirst({
-    where: {
-      userId: params.userId,
-      companyId: params.companyId,
-      deletedAt: null,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      branch: {
-        select: {
-          name: true,
+}): Promise<PurchaseRequesterProfile | null> => {
+  const [employee, externalRequesterProfile] = await Promise.all([
+    db.employee.findFirst({
+      where: {
+        userId: params.userId,
+        companyId: params.companyId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        branch: {
+          select: {
+            name: true,
+          },
         },
       },
-    },
-  })
+    }),
+    db.externalRequesterProfile.findFirst({
+      where: {
+        userId: params.userId,
+        companyId: params.companyId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        branch: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
+  ])
 
-  if (!employee) {
-    return null
+  if (employee) {
+    return {
+      requesterEmployeeId: employee.id,
+      requesterExternalProfileId: null,
+      branchName: employee.branch?.name?.trim() || null,
+    }
   }
 
-  return {
-    id: employee.id,
-    branchName: employee.branch?.name?.trim() || null,
+  if (externalRequesterProfile) {
+    return {
+      requesterEmployeeId: null,
+      requesterExternalProfileId: externalRequesterProfile.id,
+      branchName: externalRequesterProfile.branch?.name?.trim() || null,
+    }
   }
+
+  return null
 }
 
 const ensurePurchaseRequestCapabilityAccess = async (params: {
@@ -463,13 +495,17 @@ export async function createPurchaseRequestDraftAction(
     return { ok: false, error: "Purchase Request workflow is disabled for this company." }
   }
 
-  const requesterEmployee = await ensureRequesterEmployee({
+  const requesterProfile = await resolveRequesterProfile({
     userId: context.userId,
     companyId: context.companyId,
   })
 
-  if (!requesterEmployee) {
-    return { ok: false, error: "No linked employee profile found in the active company for this account." }
+  if (!requesterProfile) {
+    return {
+      ok: false,
+      error:
+        "No active requester profile found for this account in the active company. Link an employee profile or enable an external requester profile.",
+    }
   }
 
   let itemInputs: PurchaseRequestItemInputPayload[]
@@ -508,9 +544,10 @@ export async function createPurchaseRequestDraftAction(
           series: payload.series,
           requestType: payload.requestType,
           status: PurchaseRequestStatus.DRAFT,
-          requesterEmployeeId: requesterEmployee.id,
+          requesterEmployeeId: requesterProfile.requesterEmployeeId,
+          requesterExternalProfileId: requesterProfile.requesterExternalProfileId,
           requesterUserId: context.userId,
-          requesterBranchName: requesterEmployee.branchName,
+          requesterBranchName: requesterProfile.branchName,
           departmentId: payload.departmentId,
           selectedInitialApproverUserId: toNullableId(payload.selectedInitialApproverUserId),
           selectedStepTwoApproverUserId: toNullableId(payload.selectedStepTwoApproverUserId),
@@ -1230,11 +1267,22 @@ export async function getPurchaseRequestApprovalDecisionDetailsAction(
       dateRequired: true,
       purpose: true,
       grandTotal: true,
+      requesterUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       requesterEmployee: {
         select: {
           firstName: true,
           lastName: true,
           employeeNumber: true,
+        },
+      },
+      requesterExternalProfile: {
+        select: {
+          requesterCode: true,
         },
       },
       department: {
@@ -1309,8 +1357,10 @@ export async function getPurchaseRequestApprovalDecisionDetailsAction(
     data: {
       id: request.id,
       requestNumber: request.requestNumber,
-      requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
-      requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
+      requesterName: request.requesterEmployee
+        ? `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`
+        : `${request.requesterUser.firstName} ${request.requesterUser.lastName}`,
+      requesterEmployeeNumber: request.requesterEmployee?.employeeNumber ?? request.requesterExternalProfile?.requesterCode ?? "N/A",
       departmentName: request.department.name,
       currentStep: request.currentStep ?? 1,
       requiredSteps: request.requiredSteps,

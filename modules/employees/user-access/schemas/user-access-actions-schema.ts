@@ -17,6 +17,10 @@ const systemUserActionSchema = companyActionSchema.extend({
   userId: z.string().uuid(),
 })
 const accessScopeSchema = z.enum(ACCESS_SCOPES)
+const employeePortalCapabilityOverrideEntrySchema = z.object({
+  capability: z.string().trim().min(1),
+  accessScope: accessScopeSchema,
+})
 
 export const createEmployeeSystemUserInputSchema = actionBaseSchema.extend({
   username: z.string().trim().min(3).max(50),
@@ -32,13 +36,23 @@ export const createStandaloneSystemUserInputSchema = companyActionSchema.extend(
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
   password: z.string().min(8).max(128),
   companyRole: companyRoleSchema.default("EMPLOYEE"),
   isRequestApprover: z.boolean().default(false),
   isMaterialRequestPurchaser: z.boolean().default(false),
   isMaterialRequestPoster: z.boolean().default(false),
   isPurchaseRequestItemManager: z.boolean().default(false),
+  enableExternalRequesterProfile: z.boolean().default(false),
+  externalRequesterBranchId: z.string().uuid().optional(),
+  overrides: z.array(employeePortalCapabilityOverrideEntrySchema).default([]),
+}).superRefine((value, ctx) => {
+  if (value.enableExternalRequesterProfile && !value.externalRequesterBranchId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["externalRequesterBranchId"],
+      message: "Branch is required when External PR Requester Profile is enabled.",
+    })
+  }
 })
 
 export const linkEmployeeToUserInputSchema = actionBaseSchema.extend({
@@ -71,7 +85,6 @@ export const updateStandaloneSystemUserInputSchema = systemUserActionSchema.exte
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   username: z.string().trim().min(3).max(50),
-  email: z.string().trim().email(),
   password: z.string().min(8).max(128).optional(),
   isActive: z.boolean(),
   companyRole: companyRoleSchema,
@@ -79,6 +92,17 @@ export const updateStandaloneSystemUserInputSchema = systemUserActionSchema.exte
   isMaterialRequestPurchaser: z.boolean().default(false),
   isMaterialRequestPoster: z.boolean().default(false),
   isPurchaseRequestItemManager: z.boolean().default(false),
+  enableExternalRequesterProfile: z.boolean().default(false),
+  externalRequesterBranchId: z.string().uuid().optional(),
+  overrides: z.array(employeePortalCapabilityOverrideEntrySchema).default([]),
+}).superRefine((value, ctx) => {
+  if (value.enableExternalRequesterProfile && !value.externalRequesterBranchId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["externalRequesterBranchId"],
+      message: "Branch is required when External PR Requester Profile is enabled.",
+    })
+  }
 })
 
 export const deleteStandaloneSystemUserInputSchema = systemUserActionSchema
@@ -110,11 +134,6 @@ export const updateEmployeeCompanyAccessInputSchema = actionBaseSchema.extend({
         seen.add(entry.companyId)
       }
     }),
-})
-
-const employeePortalCapabilityOverrideEntrySchema = z.object({
-  capability: z.string().trim().min(1),
-  accessScope: accessScopeSchema,
 })
 
 export const updateEmployeePortalCapabilityOverridesInputSchema = actionBaseSchema.extend({

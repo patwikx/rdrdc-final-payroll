@@ -3,7 +3,7 @@ import {
   hasModuleAccess,
   type AccessScope,
   type CompanyRole,
-} from "@/modules/auth/utils/authorization-policy"
+} from "../../auth/utils/authorization-policy.ts"
 
 export const EMPLOYEE_PORTAL_CAPABILITIES = [
   "portal_routes.dashboard.view",

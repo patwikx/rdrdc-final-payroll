@@ -1,4 +1,5 @@
 import { db } from "@/lib/db"
+import type { AccessScope } from "@/modules/auth/utils/authorization-policy"
 
 const DEFAULT_EMPLOYEE_PAGE_SIZE = 10
 const DEFAULT_SYSTEM_USER_PAGE_SIZE = 10
@@ -66,6 +67,12 @@ export type SystemUserAccountRow = {
   linkedEmployeeId: string | null
   linkedEmployeeNumber: string | null
   linkedEmployeeName: string | null
+  hasExternalRequesterProfile: boolean
+  externalRequesterCode: string | null
+  portalCapabilityOverrides: Array<{
+    capability: string
+    accessScope: AccessScope
+  }>
   linkedCompanyAccesses: Array<{
     companyId: string
     companyCode: string
@@ -254,6 +261,15 @@ export async function getUserAccessPreviewData(
                 },
               },
             },
+            employeePortalCapabilityOverrides: {
+              where: {
+                companyId,
+              },
+              select: {
+                capability: true,
+                accessScope: true,
+              },
+            },
           },
         },
       },
@@ -308,6 +324,26 @@ export async function getUserAccessPreviewData(
                   },
                 },
               },
+            },
+            employeePortalCapabilityOverrides: {
+              where: {
+                companyId,
+              },
+              select: {
+                capability: true,
+                accessScope: true,
+              },
+            },
+            externalRequesterProfiles: {
+              where: {
+                companyId,
+              },
+              orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+              select: {
+                requesterCode: true,
+                isActive: true,
+              },
+              take: 1,
             },
           },
         },
@@ -425,6 +461,12 @@ export async function getUserAccessPreviewData(
     linkedEmployeeName: record.user.employee
       ? `${record.user.employee.lastName}, ${record.user.employee.firstName}`
       : null,
+    hasExternalRequesterProfile: Boolean(record.user.externalRequesterProfiles[0]?.isActive),
+    externalRequesterCode: record.user.externalRequesterProfiles[0]?.requesterCode ?? null,
+    portalCapabilityOverrides: record.user.employeePortalCapabilityOverrides.map((override) => ({
+      capability: override.capability,
+      accessScope: override.accessScope,
+    })),
     linkedCompanyAccesses: record.user.companyAccess.map((access) => ({
       companyId: access.companyId,
       companyCode: access.company.code,

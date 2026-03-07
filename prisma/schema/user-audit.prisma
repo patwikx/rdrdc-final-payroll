@@ -89,6 +89,7 @@ model User {
   purchaseOrdersCreated                         PurchaseOrder[]                             @relation("PurchaseOrderCreatedByUser")
   purchaseOrderLinesShortClosed                 PurchaseOrderLine[]                         @relation("PurchaseOrderLineShortClosedByUser")
   purchaseOrderGoodsReceiptsReceived           PurchaseOrderGoodsReceipt[]                 @relation("PurchaseOrderGoodsReceiptReceivedByUser")
+  externalRequesterProfiles                    ExternalRequesterProfile[]                  @relation("ExternalRequesterProfileUser")
   employeePortalCapabilityOverrides           EmployeePortalCapabilityOverride[]
 
   // Audit Relations

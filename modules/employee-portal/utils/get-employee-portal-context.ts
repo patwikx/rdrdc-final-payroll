@@ -30,6 +30,7 @@ export type EmployeePortalContext = {
   capabilityScopes: EmployeePortalCapabilityScopes
   accessSnapshot: EmployeePortalAccessSnapshot
   purchaseRequestWorkflowEnabled: boolean
+  requesterBranchName: string | null
   user: {
     firstName: string
     lastName: string
@@ -82,7 +83,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     getUserCompanyOptions(session.user.id),
   ])
 
-  const [employeeRecord, userRecord, activeCompanyAccess, companyFeature, capabilityOverrides] = await Promise.all([
+  const [employeeRecord, externalRequesterProfile, userRecord, activeCompanyAccess, companyFeature, capabilityOverrides] = await Promise.all([
     db.employee.findFirst({
       where: {
         userId: session.user.id,
@@ -110,6 +111,21 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
         },
       },
     }),
+      db.externalRequesterProfile.findFirst({
+        where: {
+          userId: session.user.id,
+          companyId: activeCompany.companyId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          branch: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
     db.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -185,7 +201,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     isMaterialRequestPurchaser,
     isMaterialRequestPoster,
     isPurchaseRequestItemManager,
-    hasEmployeeProfile: Boolean(employeeRecord?.id),
+    hasEmployeeProfile: Boolean(employeeRecord?.id || externalRequesterProfile?.id),
   }
   const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(capabilityOverrides)
   const capabilities = getEmployeePortalCapabilities(accessSnapshot, normalizedOverrides)
@@ -360,6 +376,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     capabilityScopes,
     accessSnapshot,
     purchaseRequestWorkflowEnabled,
+    requesterBranchName: employeeRecord?.branch?.name ?? externalRequesterProfile?.branch?.name ?? null,
     user: userRecord
       ? {
           firstName: userRecord.firstName,

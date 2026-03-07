@@ -1,6 +1,8 @@
 import type { ReactNode } from "react"
 import type { UserAccessPreviewRow, SystemUserAccountRow } from "@/modules/employees/user-access/utils/get-user-access-preview-data"
 
+export type UserAccessWorkspaceTabKey = "setup" | "managed" | "agency"
+
 export type WorkspaceProps = {
   rows: UserAccessPreviewRow[]
   systemUsers: SystemUserAccountRow[]
@@ -28,6 +30,7 @@ export type WorkspaceProps = {
   }
   onEmployeePageChange: (nextPage: number) => void
   onSystemUserPageChange: (nextPage: number) => void
+  onTabChange?: (tab: UserAccessWorkspaceTabKey) => void
 }
 
 export function getEmployeeInitials(fullName: string): string {

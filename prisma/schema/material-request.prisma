@@ -324,6 +324,33 @@ model ProcurementItem {
   @@index([categoryId, isActive])
 }
 
+model ExternalRequesterProfile {
+  id String @id @default(uuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("ExternalRequesterProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  requesterCode String
+  agencyName    String?
+  branchId      String?
+  branch        Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseRequests PurchaseRequest[] @relation("PurchaseRequestRequesterExternalProfile")
+
+  @@unique([companyId, userId])
+  @@unique([companyId, requesterCode])
+  @@index([companyId, isActive])
+  @@index([userId])
+  @@index([branchId])
+}
+
 model PurchaseRequest {
   id String @id @default(uuid())
 
@@ -335,10 +362,12 @@ model PurchaseRequest {
   requestType   MaterialRequestType   @default(ITEM)
   status        PurchaseRequestStatus @default(DRAFT)
 
-  requesterEmployeeId String
-  requesterEmployee   Employee @relation("PurchaseRequestRequesterEmployee", fields: [requesterEmployeeId], references: [id], onDelete: Restrict)
-  requesterUserId     String
-  requesterUser       User     @relation("PurchaseRequestRequesterUser", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  requesterEmployeeId        String?
+  requesterEmployee          Employee?                 @relation("PurchaseRequestRequesterEmployee", fields: [requesterEmployeeId], references: [id], onDelete: Restrict)
+  requesterExternalProfileId String?
+  requesterExternalProfile   ExternalRequesterProfile? @relation("PurchaseRequestRequesterExternalProfile", fields: [requesterExternalProfileId], references: [id], onDelete: SetNull)
+  requesterUserId            String
+  requesterUser              User     @relation("PurchaseRequestRequesterUser", fields: [requesterUserId], references: [id], onDelete: Restrict)
   selectedInitialApproverUserId   String?
   selectedInitialApproverUser     User?    @relation("PurchaseRequestSelectedInitialApproverUser", fields: [selectedInitialApproverUserId], references: [id], onDelete: SetNull)
   selectedStepTwoApproverUserId   String?
@@ -396,6 +425,7 @@ model PurchaseRequest {
   @@index([companyId, status])
   @@index([departmentId])
   @@index([requesterEmployeeId])
+  @@index([requesterExternalProfileId])
   @@index([selectedInitialApproverUserId])
   @@index([selectedStepTwoApproverUserId])
   @@index([selectedStepThreeApproverUserId])

@@ -126,6 +126,7 @@ model Branch {
   updatedBy    User?    @relation("BranchUpdatedBy", fields: [updatedById], references: [id])
 
   employees               Employee[]                @relation
+  externalRequesterProfiles ExternalRequesterProfile[]
   biometricDevices        BiometricDevice[]
   previousBranchHistories EmployeePositionHistory[] @relation("PreviousBranch")
   newBranchHistories      EmployeePositionHistory[] @relation("NewBranch")

@@ -67,6 +67,43 @@ const hasReceivableBalance = (line: {
   return !line.isShortClosed && remaining > QUANTITY_TOLERANCE
 }
 
+const resolveSourceRequesterDisplay = (params: {
+  requesterEmployee?:
+    | {
+        firstName: string
+        lastName: string
+        branch?: { name: string } | null
+      }
+    | null
+  requesterExternalProfile?:
+    | {
+        branch?: { name: string } | null
+      }
+    | null
+  requesterUser?:
+    | {
+        firstName: string
+        lastName: string
+      }
+    | null
+  requesterBranchName?: string | null
+}): { requesterName: string; requesterBranchName: string | null } => {
+  const requesterName = params.requesterEmployee
+    ? `${params.requesterEmployee.firstName} ${params.requesterEmployee.lastName}`
+    : params.requesterUser
+      ? `${params.requesterUser.firstName} ${params.requesterUser.lastName}`
+      : "Unknown Requester"
+
+  return {
+    requesterName,
+    requesterBranchName:
+      params.requesterBranchName ??
+      params.requesterEmployee?.branch?.name ??
+      params.requesterExternalProfile?.branch?.name ??
+      null,
+  }
+}
+
 export async function getPurchaseOrderWorkspaceData(params: {
   companyId: string
 }): Promise<{
@@ -132,6 +169,21 @@ export async function getPurchaseOrderWorkspaceData(params: {
                 name: true,
               },
             },
+          },
+        },
+        requesterExternalProfile: {
+          select: {
+            branch: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        requesterUser: {
+          select: {
+            firstName: true,
+            lastName: true,
           },
         },
         department: {
@@ -214,11 +266,18 @@ export async function getPurchaseOrderWorkspaceData(params: {
           return null
         }
 
+        const requesterDisplay = resolveSourceRequesterDisplay({
+          requesterEmployee: row.requesterEmployee,
+          requesterExternalProfile: row.requesterExternalProfile,
+          requesterUser: row.requesterUser,
+          requesterBranchName: row.requesterBranchName,
+        })
+
         return {
           id: row.id,
           requestNumber: row.requestNumber,
-          requesterName: `${row.requesterEmployee.firstName} ${row.requesterEmployee.lastName}`,
-          requesterBranchName: row.requesterBranchName ?? row.requesterEmployee.branch?.name ?? null,
+          requesterName: requesterDisplay.requesterName,
+          requesterBranchName: requesterDisplay.requesterBranchName,
           departmentName: row.department.name,
           requiredDateLabel: dateLabel.format(row.dateRequired),
           totalAmount: items.reduce((sum, item) => sum + item.lineTotal, 0),
@@ -257,6 +316,15 @@ export async function getPurchaseOrderById(params: {
           requestNumber: true,
           requesterBranchName: true,
           requesterEmployee: {
+            select: {
+              branch: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+          requesterExternalProfile: {
             select: {
               branch: {
                 select: {
@@ -329,7 +397,8 @@ export async function getPurchaseOrderById(params: {
     sourceRequestId: order.sourcePurchaseRequestId,
     requesterBranchName:
       order.sourcePurchaseRequest.requesterBranchName ??
-      order.sourcePurchaseRequest.requesterEmployee.branch?.name ??
+      order.sourcePurchaseRequest.requesterEmployee?.branch?.name ??
+      order.sourcePurchaseRequest.requesterExternalProfile?.branch?.name ??
       null,
     createdByName: `${order.createdByUser.firstName} ${order.createdByUser.lastName}`,
     freight: Number(order.freight),
@@ -442,6 +511,21 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
                 },
               },
             },
+            requesterExternalProfile: {
+              select: {
+                branch: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+            requesterUser: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
             department: {
               select: {
                 name: true,
@@ -490,52 +574,58 @@ export async function getPurchaseOrderGoodsReceiptWorkspaceData(params: {
       grandTotal: Number(receipt.grandTotal),
     })),
     availableOrders: orders
-      .map((order) => ({
-        id: order.id,
-        poNumber: order.poNumber,
-        purchaseOrderStatus: order.status,
-        sourceRequestId: order.sourcePurchaseRequestId,
-        sourceRequestNumber: order.sourcePurchaseRequest.requestNumber,
-        supplierName: order.supplierName,
-        requesterName: `${order.sourcePurchaseRequest.requesterEmployee.firstName} ${order.sourcePurchaseRequest.requesterEmployee.lastName}`,
-        requesterBranchName:
-          order.sourcePurchaseRequest.requesterBranchName ??
-          order.sourcePurchaseRequest.requesterEmployee.branch?.name ??
-          null,
-        departmentName: order.sourcePurchaseRequest.department.name,
-        purchaseOrderDateLabel: dateLabel.format(order.purchaseOrderDate),
-        paymentTerms: order.paymentTerms,
-        applyVat: order.applyVat,
-        allocatedVatAmount: order.goodsReceipts.reduce((sum, receipt) => sum + Number(receipt.vatAmount), 0),
-        allocatedDiscount: order.goodsReceipts.reduce((sum, receipt) => sum + Number(receipt.discount), 0),
-        vatAmount: Number(order.vatAmount),
-        discount: Number(order.discount),
-        subtotal: Number(order.subtotal),
-        grandTotal: Number(order.grandTotal),
-        lines: order.lines
-          .map((line) => {
-            const quantityOrdered = Number(line.quantityOrdered)
-            const quantityReceived = Number(line.quantityReceived)
-            const quantityRemaining = Math.max(0, quantityOrdered - quantityReceived)
+      .map((order) => {
+        const requesterDisplay = resolveSourceRequesterDisplay({
+          requesterEmployee: order.sourcePurchaseRequest.requesterEmployee,
+          requesterExternalProfile: order.sourcePurchaseRequest.requesterExternalProfile,
+          requesterUser: order.sourcePurchaseRequest.requesterUser,
+          requesterBranchName: order.sourcePurchaseRequest.requesterBranchName,
+        })
 
-            return {
-              id: line.id,
-              lineNumber: line.lineNumber,
-              itemCode: line.itemCode ?? "",
-              description: line.description,
-              uom: line.uom,
-              quantityOrdered,
-              quantityReceived,
-              quantityRemaining,
-              unitPrice: Number(line.unitPrice),
-              lineTotal: Number(line.lineTotal),
-              remarks: line.remarks,
-              isShortClosed: line.isShortClosed,
-            }
-          })
-          .filter((line) => !line.isShortClosed && line.quantityRemaining > 0.0001)
-          .map(({ isShortClosed: _isShortClosed, ...line }) => line),
-      }))
+        return {
+          id: order.id,
+          poNumber: order.poNumber,
+          purchaseOrderStatus: order.status,
+          sourceRequestId: order.sourcePurchaseRequestId,
+          sourceRequestNumber: order.sourcePurchaseRequest.requestNumber,
+          supplierName: order.supplierName,
+          requesterName: requesterDisplay.requesterName,
+          requesterBranchName: requesterDisplay.requesterBranchName,
+          departmentName: order.sourcePurchaseRequest.department.name,
+          purchaseOrderDateLabel: dateLabel.format(order.purchaseOrderDate),
+          paymentTerms: order.paymentTerms,
+          applyVat: order.applyVat,
+          allocatedVatAmount: order.goodsReceipts.reduce((sum, receipt) => sum + Number(receipt.vatAmount), 0),
+          allocatedDiscount: order.goodsReceipts.reduce((sum, receipt) => sum + Number(receipt.discount), 0),
+          vatAmount: Number(order.vatAmount),
+          discount: Number(order.discount),
+          subtotal: Number(order.subtotal),
+          grandTotal: Number(order.grandTotal),
+          lines: order.lines
+            .map((line) => {
+              const quantityOrdered = Number(line.quantityOrdered)
+              const quantityReceived = Number(line.quantityReceived)
+              const quantityRemaining = Math.max(0, quantityOrdered - quantityReceived)
+
+              return {
+                id: line.id,
+                lineNumber: line.lineNumber,
+                itemCode: line.itemCode ?? "",
+                description: line.description,
+                uom: line.uom,
+                quantityOrdered,
+                quantityReceived,
+                quantityRemaining,
+                unitPrice: Number(line.unitPrice),
+                lineTotal: Number(line.lineTotal),
+                remarks: line.remarks,
+                isShortClosed: line.isShortClosed,
+              }
+            })
+            .filter((line) => !line.isShortClosed && line.quantityRemaining > 0.0001)
+            .map(({ isShortClosed: _isShortClosed, ...line }) => line),
+        }
+      })
       .filter((order) => order.lines.length > 0),
   }
 }
@@ -586,6 +676,21 @@ export async function getPurchaseOrderGoodsReceiptById(params: {
                   },
                 },
               },
+              requesterExternalProfile: {
+                select: {
+                  branch: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+              requesterUser: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
               department: {
                 select: {
                   name: true,
@@ -619,6 +724,13 @@ export async function getPurchaseOrderGoodsReceiptById(params: {
     return null
   }
 
+  const requesterDisplay = resolveSourceRequesterDisplay({
+    requesterEmployee: receipt.purchaseOrder.sourcePurchaseRequest.requesterEmployee,
+    requesterExternalProfile: receipt.purchaseOrder.sourcePurchaseRequest.requesterExternalProfile,
+    requesterUser: receipt.purchaseOrder.sourcePurchaseRequest.requesterUser,
+    requesterBranchName: receipt.purchaseOrder.sourcePurchaseRequest.requesterBranchName,
+  })
+
   return {
     id: receipt.id,
     grpoNumber: receipt.grpoNumber,
@@ -626,11 +738,8 @@ export async function getPurchaseOrderGoodsReceiptById(params: {
     poNumber: receipt.purchaseOrder.poNumber,
     sourceRequestNumber: receipt.purchaseOrder.sourcePurchaseRequest.requestNumber,
     supplierName: receipt.purchaseOrder.supplierName,
-    requesterName: `${receipt.purchaseOrder.sourcePurchaseRequest.requesterEmployee.firstName} ${receipt.purchaseOrder.sourcePurchaseRequest.requesterEmployee.lastName}`,
-    requesterBranchName:
-      receipt.purchaseOrder.sourcePurchaseRequest.requesterBranchName ??
-      receipt.purchaseOrder.sourcePurchaseRequest.requesterEmployee.branch?.name ??
-      null,
+    requesterName: requesterDisplay.requesterName,
+    requesterBranchName: requesterDisplay.requesterBranchName,
     departmentName: receipt.purchaseOrder.sourcePurchaseRequest.department.name,
     purchaseOrderDateLabel: dateLabel.format(receipt.purchaseOrder.purchaseOrderDate),
     receivedAtLabel: dateLabel.format(receipt.receivedAt),

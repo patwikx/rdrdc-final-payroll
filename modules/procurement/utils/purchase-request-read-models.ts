@@ -90,6 +90,54 @@ const parseRequestNumberSequence = (requestNumber: string): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+const resolveRequesterDisplay = (params: {
+  requesterEmployee?:
+    | {
+        firstName: string
+        lastName: string
+        employeeNumber: string
+        photoUrl?: string | null
+        branch?: { name: string } | null
+      }
+    | null
+  requesterExternalProfile?:
+    | {
+        requesterCode: string
+        branch?: { name: string } | null
+      }
+    | null
+  requesterUser?:
+    | {
+        firstName: string
+        lastName: string
+      }
+    | null
+  requesterBranchName?: string | null
+}): {
+  requesterName: string
+  requesterEmployeeNumber: string
+  requesterPhotoUrl: string | null
+  requesterBranchName: string | null
+} => {
+  const requesterName = params.requesterEmployee
+    ? `${params.requesterEmployee.firstName} ${params.requesterEmployee.lastName}`
+    : params.requesterUser
+      ? `${params.requesterUser.firstName} ${params.requesterUser.lastName}`
+      : "Unknown Requester"
+
+  return {
+    requesterName,
+    requesterEmployeeNumber:
+      params.requesterEmployee?.employeeNumber ?? params.requesterExternalProfile?.requesterCode ?? "N/A",
+    requesterPhotoUrl: params.requesterEmployee?.photoUrl ?? null,
+    requesterBranchName:
+      params.requesterBranchName ??
+      params.requesterEmployee?.branch?.name ??
+      params.requesterExternalProfile?.branch?.name ??
+      null,
+  }
+}
+
 const mapPurchaseRequestToRow = (
   request: {
     id: string
@@ -144,13 +192,27 @@ const mapPurchaseRequestToRow = (
         lastName: string
       } | null
     }>
-    requesterEmployee: {
+    requesterEmployee:
+      | {
+          firstName: string
+          lastName: string
+          employeeNumber: string
+          branch: {
+            name: string
+          } | null
+        }
+      | null
+    requesterExternalProfile:
+      | {
+          requesterCode: string
+          branch: {
+            name: string
+          } | null
+        }
+      | null
+    requesterUser: {
       firstName: string
       lastName: string
-      employeeNumber: string
-      branch: {
-        name: string
-      } | null
     }
     department: {
       id: string
@@ -176,6 +238,13 @@ const mapPurchaseRequestToRow = (
   },
   actorUserId: string | null
 ): PurchaseRequestRow => {
+  const requesterDisplay = resolveRequesterDisplay({
+    requesterEmployee: request.requesterEmployee,
+    requesterExternalProfile: request.requesterExternalProfile,
+    requesterUser: request.requesterUser,
+    requesterBranchName: request.requesterBranchName,
+  })
+
   const previousDecisionByCycle = new Map<number, Date | null>()
   const approvalSteps = [...request.steps]
     .sort((a, b) => {
@@ -237,9 +306,9 @@ const mapPurchaseRequestToRow = (
     selectedStepTwoApproverUserId: request.selectedStepTwoApproverUserId,
     selectedStepThreeApproverUserId: request.selectedStepThreeApproverUserId,
     selectedStepFourApproverUserId: request.selectedStepFourApproverUserId,
-    requesterName: `${request.requesterEmployee.firstName} ${request.requesterEmployee.lastName}`,
-    requesterEmployeeNumber: request.requesterEmployee.employeeNumber,
-    requesterBranchName: request.requesterBranchName ?? request.requesterEmployee.branch?.name ?? null,
+    requesterName: requesterDisplay.requesterName,
+    requesterEmployeeNumber: requesterDisplay.requesterEmployeeNumber,
+    requesterBranchName: requesterDisplay.requesterBranchName,
     departmentId: request.department.id,
     departmentName: request.department.name,
     datePreparedLabel: dateLabel.format(request.datePrepared),
@@ -523,6 +592,22 @@ export async function getPurchaseRequestsReadModel(params: {
           },
         },
       },
+      requesterExternalProfile: {
+        select: {
+          requesterCode: true,
+          branch: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      requesterUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       department: {
         select: {
           id: true,
@@ -643,6 +728,22 @@ export async function getPurchaseRequestById(params: {
           },
         },
       },
+      requesterExternalProfile: {
+        select: {
+          requesterCode: true,
+          branch: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+      requesterUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       department: {
         select: {
           id: true,
@@ -754,6 +855,36 @@ const buildPurchaseRequestApprovalHistoryWhere = (params: {
           },
           {
             requesterEmployee: {
+              is: {
+                firstName: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+          {
+            requesterEmployee: {
+              is: {
+                lastName: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+          {
+            requesterEmployee: {
+              is: {
+                employeeNumber: {
+                  contains: query,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+          {
+            requesterUser: {
               firstName: {
                 contains: query,
                 mode: "insensitive",
@@ -761,7 +892,7 @@ const buildPurchaseRequestApprovalHistoryWhere = (params: {
             },
           },
           {
-            requesterEmployee: {
+            requesterUser: {
               lastName: {
                 contains: query,
                 mode: "insensitive",
@@ -769,10 +900,12 @@ const buildPurchaseRequestApprovalHistoryWhere = (params: {
             },
           },
           {
-            requesterEmployee: {
-              employeeNumber: {
-                contains: query,
-                mode: "insensitive",
+            requesterExternalProfile: {
+              is: {
+                requesterCode: {
+                  contains: query,
+                  mode: "insensitive",
+                },
               },
             },
           },
@@ -821,11 +954,22 @@ const toPurchaseHistoryRow = (params: {
   rejectedAt: Date | null
   updatedAt: Date
   finalDecisionRemarks: string | null
-  requesterEmployee: {
+  requesterEmployee:
+    | {
+        firstName: string
+        lastName: string
+        employeeNumber: string
+        photoUrl: string | null
+      }
+    | null
+  requesterExternalProfile:
+    | {
+        requesterCode: string
+      }
+    | null
+  requesterUser: {
     firstName: string
     lastName: string
-    employeeNumber: string
-    photoUrl: string | null
   }
   department: {
     name: string
@@ -841,6 +985,11 @@ const toPurchaseHistoryRow = (params: {
     remarks: string | null
   }>
 }): PurchaseRequestApprovalHistoryRow => {
+  const requesterDisplay = resolveRequesterDisplay({
+    requesterEmployee: params.requesterEmployee,
+    requesterExternalProfile: params.requesterExternalProfile,
+    requesterUser: params.requesterUser,
+  })
   const latestActedStep = params.steps[0] ?? null
   const actedAt =
     latestActedStep?.actedAt ??
@@ -854,9 +1003,9 @@ const toPurchaseHistoryRow = (params: {
     companyId: params.companyId,
     companyName: params.company.name,
     requestNumber: params.requestNumber,
-    requesterName: `${params.requesterEmployee.firstName} ${params.requesterEmployee.lastName}`,
-    requesterEmployeeNumber: params.requesterEmployee.employeeNumber,
-    requesterPhotoUrl: params.requesterEmployee.photoUrl,
+    requesterName: requesterDisplay.requesterName,
+    requesterEmployeeNumber: requesterDisplay.requesterEmployeeNumber,
+    requesterPhotoUrl: requesterDisplay.requesterPhotoUrl,
     departmentName: params.department.name,
     status: params.status,
     datePreparedLabel: dateLabel.format(params.datePrepared),
@@ -949,6 +1098,17 @@ export async function getPurchaseRequestApprovalHistoryPageReadModel(params: {
             lastName: true,
             employeeNumber: true,
             photoUrl: true,
+          },
+        },
+        requesterExternalProfile: {
+          select: {
+            requesterCode: true,
+          },
+        },
+        requesterUser: {
+          select: {
+            firstName: true,
+            lastName: true,
           },
         },
         department: {
@@ -1044,6 +1204,17 @@ export async function getPurchaseRequestApprovalQueueReadModel(params: {
           photoUrl: true,
         },
       },
+      requesterExternalProfile: {
+        select: {
+          requesterCode: true,
+        },
+      },
+      requesterUser: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
       department: {
         select: {
           name: true,
@@ -1057,21 +1228,29 @@ export async function getPurchaseRequestApprovalQueueReadModel(params: {
     },
   })
 
-  return rows.map((row) => ({
-    id: row.id,
-    companyId: row.companyId,
-    companyName: row.company.name,
-    requestNumber: row.requestNumber,
-    requesterName: `${row.requesterEmployee.firstName} ${row.requesterEmployee.lastName}`,
-    requesterEmployeeNumber: row.requesterEmployee.employeeNumber,
-    requesterPhotoUrl: row.requesterEmployee.photoUrl,
-    departmentId: row.departmentId,
-    departmentName: row.department.name,
-    datePreparedLabel: dateLabel.format(row.datePrepared),
-    dateRequiredLabel: dateLabel.format(row.dateRequired),
-    currentStep: row.currentStep ?? 1,
-    requiredSteps: row.requiredSteps,
-    grandTotal: Number(row.grandTotal),
-    submittedAtLabel: formatDateTime(row.submittedAt),
-  }))
+  return rows.map((row) => {
+    const requesterDisplay = resolveRequesterDisplay({
+      requesterEmployee: row.requesterEmployee,
+      requesterExternalProfile: row.requesterExternalProfile,
+      requesterUser: row.requesterUser,
+    })
+
+    return {
+      id: row.id,
+      companyId: row.companyId,
+      companyName: row.company.name,
+      requestNumber: row.requestNumber,
+      requesterName: requesterDisplay.requesterName,
+      requesterEmployeeNumber: requesterDisplay.requesterEmployeeNumber,
+      requesterPhotoUrl: requesterDisplay.requesterPhotoUrl,
+      departmentId: row.departmentId,
+      departmentName: row.department.name,
+      datePreparedLabel: dateLabel.format(row.datePrepared),
+      dateRequiredLabel: dateLabel.format(row.dateRequired),
+      currentStep: row.currentStep ?? 1,
+      requiredSteps: row.requiredSteps,
+      grandTotal: Number(row.grandTotal),
+      submittedAtLabel: formatDateTime(row.submittedAt),
+    }
+  })
 }

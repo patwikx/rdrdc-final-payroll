@@ -39,7 +39,7 @@ export default async function NewPurchaseRequestPage({ params }: NewPurchaseRequ
       departments={formOptions.departments}
       departmentFlowPreviews={formOptions.departmentFlowPreviews}
       requestNumberPreviewBySeries={requestNumberPreviewBySeries}
-      requesterBranchName={context.employee?.branch?.name ?? null}
+      requesterBranchName={context.requesterBranchName}
     />
   )
 }

@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   IconAlertCircle,
+  IconBuilding,
   IconBriefcase,
   IconChevronLeft,
   IconChevronRight,
@@ -31,7 +32,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { WorkspaceProps } from "./workspace-types"
 import { getEmployeeInitials } from "./workspace-types"
 
-type TabKey = "setup" | "managed"
+type TabKey = "setup" | "managed" | "agency"
 
 const workflowBadgeVariant = (active: boolean): "default" | "outline" => (active ? "default" : "outline")
 
@@ -42,6 +43,7 @@ export function UserAccessWorkspace({
   onLink,
   onEditSystemAccount,
   onUnlinkSystemAccount,
+  onDeleteSystemAccount,
   onCreateSystemAccount,
   filtersToolbar,
   isPending,
@@ -49,11 +51,20 @@ export function UserAccessWorkspace({
   systemUserPagination,
   onEmployeePageChange,
   onSystemUserPageChange,
+  onTabChange,
 }: WorkspaceProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("setup")
 
+  useEffect(() => {
+    onTabChange?.(activeTab)
+  }, [activeTab, onTabChange])
+
   const unlinkedRows = useMemo(() => rows.filter((row) => !row.hasLinkedUser), [rows])
   const linkedSystemUsers = useMemo(() => systemUsers.filter((user) => user.isLinked), [systemUsers])
+  const agencySystemUsers = useMemo(
+    () => systemUsers.filter((user) => !user.isLinked && user.hasExternalRequesterProfile),
+    [systemUsers]
+  )
 
   const tabs: { key: TabKey; label: string; description: string; icon: ReactNode; count?: number }[] = [
     {
@@ -69,6 +80,13 @@ export function UserAccessWorkspace({
       description: "Linked employee accounts with company roles and workflow responsibilities.",
       icon: <IconKey className="size-3.5" />,
       count: linkedSystemUsers.length || undefined,
+    },
+    {
+      key: "agency",
+      label: "Agency Employees",
+      description: "Third-party requester accounts with external requester profiles for procurement.",
+      icon: <IconBuilding className="size-3.5" />,
+      count: agencySystemUsers.length || undefined,
     },
   ]
 
@@ -147,6 +165,7 @@ export function UserAccessWorkspace({
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground xl:justify-end">
                 <Badge variant="outline">{unlinkedRows.length} pending setup</Badge>
                 <Badge variant="outline">{linkedSystemUsers.length} linked accounts</Badge>
+                <Badge variant="outline">{agencySystemUsers.length} agency accounts</Badge>
                 <Badge variant="outline">{linkedSystemUsers.filter((user) => user.isActive).length} active</Badge>
               </div>
             </div>
@@ -269,6 +288,7 @@ export function UserAccessWorkspace({
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground xl:justify-end">
                 <Badge variant="outline">{unlinkedRows.length} pending setup</Badge>
                 <Badge variant="outline">{linkedSystemUsers.length} linked accounts</Badge>
+                <Badge variant="outline">{agencySystemUsers.length} agency accounts</Badge>
                 <Badge variant="outline">{linkedSystemUsers.filter((user) => user.isActive).length} active</Badge>
               </div>
             </div>
@@ -424,6 +444,146 @@ export function UserAccessWorkspace({
                                 <DropdownMenuItem onSelect={() => onUnlinkSystemAccount(user)} disabled={isPending}>
                                   <IconUserX className="mr-2 size-4" />
                                   Unlink from Employee
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
+
+          <WorkspaceTableFooter
+            page={systemUserPagination.page}
+            totalPages={systemUserPagination.totalPages}
+            totalItems={systemUserPagination.totalItems}
+            onPrevious={() => onSystemUserPageChange(systemUserPagination.page - 1)}
+            onNext={() => onSystemUserPageChange(systemUserPagination.page + 1)}
+            disablePrevious={isPending || systemUserPagination.page <= 1}
+            disableNext={isPending || systemUserPagination.page >= systemUserPagination.totalPages}
+          />
+        </div>
+      ) : null}
+
+      {activeTab === "agency" ? (
+        <div className="space-y-4 px-4 py-4 sm:px-6 sm:py-5">
+          {filtersToolbar ? (
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+              <div className="min-w-0 flex-1">{filtersToolbar}</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground xl:justify-end">
+                <Badge variant="outline">{agencySystemUsers.length} agency accounts</Badge>
+                <Badge variant="outline">{agencySystemUsers.filter((user) => user.isActive).length} active</Badge>
+                <Badge variant="outline">{agencySystemUsers.filter((user) => !user.isActive).length} inactive</Badge>
+              </div>
+            </div>
+          ) : null}
+
+          {agencySystemUsers.length === 0 ? (
+            <EmptyStateCard
+              title="No agency requester accounts found"
+              description="Create a standalone account, enable External PR Requester Profile, then it will appear here for management."
+            />
+          ) : (
+            <>
+              <div className="grid gap-3 md:hidden">
+                {agencySystemUsers.map((user) => (
+                  <article key={user.id} className="border border-border/60 bg-background p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-foreground">{user.displayName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{user.username}</p>
+                      </div>
+                      <Badge variant={user.isActive ? "default" : "destructive"}>
+                        {user.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+
+                    <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
+                      <CompactDataPoint label="Requester Code" value={user.externalRequesterCode ?? "-"} icon={<IconBuilding className="size-3.5" />} />
+                      <CompactDataPoint label="Role" value={user.companyRole} icon={<IconShieldCheck className="size-3.5" />} />
+                    </dl>
+
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <Button type="button" variant="outline" className="sm:flex-1" disabled={isPending} onClick={() => onEditSystemAccount(user)}>
+                        <IconEdit className="mr-2 size-4" />
+                        Manage Account
+                      </Button>
+                      <Button type="button" variant="ghost" className="sm:flex-1" disabled={isPending} onClick={() => onDeleteSystemAccount(user)}>
+                        <IconUserX className="mr-2 size-4" />
+                        Delete Account
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="hidden overflow-hidden border border-border/60 md:block">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[1040px] text-xs">
+                    <TableHeader className="bg-muted/30">
+                      <TableRow>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1.5">
+                            <IconUser className="size-3.5" />
+                            Account
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1.5">
+                            <IconBuilding className="size-3.5" />
+                            Requester Code
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1.5">
+                            <IconShieldCheck className="size-3.5" />
+                            Role
+                          </span>
+                        </TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {agencySystemUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-foreground">{user.displayName}</p>
+                              <p className="text-[11px] text-muted-foreground">{user.username}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{user.externalRequesterCode ?? "-"}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{user.companyRole}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={user.isActive ? "default" : "destructive"}>
+                              {user.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon-sm" disabled={isPending}>
+                                  <IconDots className="size-4 rotate-90" />
+                                  <span className="sr-only">Open agency account actions</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onSelect={() => onEditSystemAccount(user)} disabled={isPending}>
+                                  <IconEdit className="mr-2 size-4" />
+                                  Manage Account
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => onDeleteSystemAccount(user)} disabled={isPending}>
+                                  <IconUserX className="mr-2 size-4" />
+                                  Delete Account
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

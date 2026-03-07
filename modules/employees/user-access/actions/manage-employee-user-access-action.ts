@@ -39,6 +39,10 @@ import {
 } from "@/modules/employees/user-access/schemas/user-access-actions-schema"
 
 type ManageEmployeeUserAccessResult = { ok: true; message: string } | { ok: false; error: string }
+type CreateStandaloneSystemUserResult =
+  | { ok: true; message: string; userId: string }
+  | { ok: false; error: string }
+type DbTx = Parameters<Parameters<typeof db.$transaction>[0]>[0]
 type AvailableSystemUserOption = {
   id: string
   username: string
@@ -75,8 +79,189 @@ const resolveLinkedEmployeeUserEmail = async (params: {
   return `employee-${params.employeeId}-${randomUUID()}@local.invalid`
 }
 
+const buildStandaloneSystemUserEmail = (username: string): string => {
+  const normalizedUsername = username
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+
+  const localPart = normalizedUsername.length > 0 ? normalizedUsername : "system-user"
+  return `system-${localPart}-${randomUUID()}@local.invalid`
+}
+
+const EXTERNAL_REQUESTER_CODE_PREFIX = "EXT"
+const EXTERNAL_REQUESTER_CODE_MAX_BASE_LENGTH = 24
+
+const buildExternalRequesterCodeBase = (username: string): string => {
+  const normalized = username
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, EXTERNAL_REQUESTER_CODE_MAX_BASE_LENGTH)
+
+  return normalized.length > 0 ? `${EXTERNAL_REQUESTER_CODE_PREFIX}-${normalized}` : EXTERNAL_REQUESTER_CODE_PREFIX
+}
+
+const allocateExternalRequesterCode = async (tx: DbTx, params: { companyId: string; username: string }): Promise<string> => {
+  const baseCode = buildExternalRequesterCodeBase(params.username)
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = attempt === 0 ? baseCode : `${baseCode}-${attempt + 1}`
+    const existing = await tx.externalRequesterProfile.findFirst({
+      where: {
+        companyId: params.companyId,
+        requesterCode: candidate,
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    if (!existing) {
+      return candidate
+    }
+  }
+
+  return `${EXTERNAL_REQUESTER_CODE_PREFIX}-${randomUUID().slice(0, 8).toUpperCase()}`
+}
+
+const resolveExternalRequesterBranch = async (params: {
+  companyId: string
+  branchId?: string
+  enabled: boolean
+}): Promise<
+  | { ok: true; branchId: string | null; branchLabel: string | null }
+  | { ok: false; error: string }
+> => {
+  if (!params.enabled) {
+    return {
+      ok: true,
+      branchId: null,
+      branchLabel: null,
+    }
+  }
+
+  if (!params.branchId) {
+    return {
+      ok: false,
+      error: "Select a branch for the External PR Requester Profile.",
+    }
+  }
+
+  const branch = await db.branch.findFirst({
+    where: {
+      id: params.branchId,
+      companyId: params.companyId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+    },
+  })
+
+  if (!branch) {
+    return {
+      ok: false,
+      error: "Selected branch is invalid or inactive for the active company.",
+    }
+  }
+
+  return {
+    ok: true,
+    branchId: branch.id,
+    branchLabel: branch.code ? `${branch.code} - ${branch.name}` : branch.name,
+  }
+}
+
+const syncExternalRequesterProfile = async (
+  tx: DbTx,
+  params: {
+    companyId: string
+    userId: string
+    username: string
+    enabled: boolean
+    branchId: string | null
+  }
+): Promise<{ requesterCode: string | null; isActive: boolean }> => {
+  const existing = await tx.externalRequesterProfile.findUnique({
+    where: {
+      companyId_userId: {
+        companyId: params.companyId,
+        userId: params.userId,
+      },
+    },
+    select: {
+      id: true,
+      requesterCode: true,
+      isActive: true,
+      branchId: true,
+    },
+  })
+
+  if (!params.enabled) {
+    if (existing?.isActive) {
+      await tx.externalRequesterProfile.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          isActive: false,
+        },
+      })
+    }
+
+    return {
+      requesterCode: existing?.requesterCode ?? null,
+      isActive: false,
+    }
+  }
+
+  if (existing) {
+    if (!existing.isActive || existing.branchId !== params.branchId) {
+      await tx.externalRequesterProfile.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          isActive: true,
+          branchId: params.branchId,
+        },
+      })
+    }
+
+    return {
+      requesterCode: existing.requesterCode,
+      isActive: true,
+    }
+  }
+
+  const requesterCode = await allocateExternalRequesterCode(tx, {
+    companyId: params.companyId,
+    username: params.username,
+  })
+
+  await tx.externalRequesterProfile.create({
+    data: {
+      companyId: params.companyId,
+      userId: params.userId,
+      requesterCode,
+      isActive: true,
+      branchId: params.branchId,
+    },
+  })
+
+  return {
+    requesterCode,
+    isActive: true,
+  }
+}
+
 const applyApproverRoleFallback = async (
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  tx: DbTx,
   params: {
     userId: string
     companyId: string
@@ -358,7 +543,7 @@ export async function createEmployeeSystemUserAction(
 
 export async function createStandaloneSystemUserAction(
   input: CreateStandaloneSystemUserInput
-): Promise<ManageEmployeeUserAccessResult> {
+): Promise<CreateStandaloneSystemUserResult> {
   const parsed = createStandaloneSystemUserInputSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid create system account payload." }
@@ -372,34 +557,58 @@ export async function createStandaloneSystemUserAction(
     return { ok: false, error: "You do not have access to manage employee user accounts." }
   }
 
+  const invalidCapability = payload.overrides.find(
+    (entry) => !isEmployeePortalCapability(entry.capability)
+  )
+  if (invalidCapability) {
+    return {
+      ok: false,
+      error: `Unsupported employee portal capability: ${invalidCapability.capability}.`,
+    }
+  }
+  const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(payload.overrides)
+  if (
+    !payload.enableExternalRequesterProfile &&
+    normalizedOverrides.some((override) => override.capability === "purchase_requests.create")
+  ) {
+    return {
+      ok: false,
+      error: "Enable External Requester Profile before granting Create Purchase Requests for standalone accounts.",
+    }
+  }
+
+  const externalRequesterBranch = await resolveExternalRequesterBranch({
+    companyId: context.companyId,
+    branchId: payload.externalRequesterBranchId,
+    enabled: payload.enableExternalRequesterProfile,
+  })
+
+  if (!externalRequesterBranch.ok) {
+    return { ok: false, error: externalRequesterBranch.error }
+  }
+
   const existingUser = await db.user.findFirst({
     where: {
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (existingUser) {
-    return {
-      ok: false,
-      error:
-        existingUser.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
-    }
+    return { ok: false, error: "Username is already in use." }
   }
 
   const passwordHash = await bcrypt.hash(payload.password, 12)
+  const generatedEmail = buildStandaloneSystemUserEmail(payload.username)
 
   const created = await db.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         username: payload.username,
-        email: payload.email,
+        email: generatedEmail,
         passwordHash,
         firstName: payload.firstName,
         lastName: payload.lastName,
@@ -411,7 +620,6 @@ export async function createStandaloneSystemUserAction(
       select: {
         id: true,
         username: true,
-        email: true,
       },
     })
 
@@ -425,6 +633,25 @@ export async function createStandaloneSystemUserAction(
       isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager,
     })
 
+    const externalRequesterProfile = await syncExternalRequesterProfile(tx, {
+      companyId: context.companyId,
+      userId: user.id,
+      username: payload.username,
+      enabled: payload.enableExternalRequesterProfile,
+      branchId: externalRequesterBranch.branchId,
+    })
+
+    if (normalizedOverrides.length > 0) {
+      await tx.employeePortalCapabilityOverride.createMany({
+        data: normalizedOverrides.map((override) => ({
+          userId: user.id,
+          companyId: context.companyId,
+          capability: override.capability,
+          accessScope: override.accessScope,
+        })),
+      })
+    }
+
     await createAuditLog(
       {
         tableName: "User",
@@ -434,12 +661,17 @@ export async function createStandaloneSystemUserAction(
         reason: "CREATE_STANDALONE_SYSTEM_USER",
         changes: [
           { fieldName: "username", newValue: payload.username },
-          { fieldName: "email", newValue: payload.email },
+          { fieldName: "email", newValue: generatedEmail },
           { fieldName: "companyRole", newValue: payload.companyRole },
           { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
           { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
           { fieldName: "isMaterialRequestPoster", newValue: payload.isMaterialRequestPoster },
           { fieldName: "isPurchaseRequestItemManager", newValue: payload.isPurchaseRequestItemManager },
+          { fieldName: "enableExternalRequesterProfile", newValue: payload.enableExternalRequesterProfile },
+          { fieldName: "externalRequesterCode", newValue: externalRequesterProfile.requesterCode },
+          { fieldName: "externalRequesterBranchId", newValue: externalRequesterBranch.branchId },
+          { fieldName: "externalRequesterBranch", newValue: externalRequesterBranch.branchLabel },
+          { fieldName: "employeePortalOverrides", newValue: JSON.stringify(normalizedOverrides) },
         ],
       },
       tx
@@ -450,8 +682,9 @@ export async function createStandaloneSystemUserAction(
 
   revalidatePath(`/${context.companyId}/employees/user-access`)
   revalidatePath(`/${context.companyId}/employees`)
+  revalidatePath(`/${context.companyId}/employee-portal`)
 
-  return { ok: true, message: `System account ${created.username} created.` }
+  return { ok: true, message: `System account ${created.username} created.`, userId: created.id }
 }
 
 export async function linkEmployeeToExistingUserAction(
@@ -1153,7 +1386,6 @@ export async function updateEmployeePortalCapabilityOverridesAction(
   }
 
   const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(payload.overrides)
-
   const [linkedUser, employee, companyAccess] = await Promise.all([
     db.user.findUnique({
       where: { id: payload.userId },
@@ -1282,6 +1514,36 @@ export async function updateStandaloneSystemUserAction(
     return { ok: false, error: "You do not have access to manage employee user accounts." }
   }
 
+  const invalidCapability = payload.overrides.find(
+    (entry) => !isEmployeePortalCapability(entry.capability)
+  )
+  if (invalidCapability) {
+    return {
+      ok: false,
+      error: `Unsupported employee portal capability: ${invalidCapability.capability}.`,
+    }
+  }
+  const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(payload.overrides)
+  if (
+    !payload.enableExternalRequesterProfile &&
+    normalizedOverrides.some((override) => override.capability === "purchase_requests.create")
+  ) {
+    return {
+      ok: false,
+      error: "Enable External Requester Profile before granting Create Purchase Requests for standalone accounts.",
+    }
+  }
+
+  const externalRequesterBranch = await resolveExternalRequesterBranch({
+    companyId: context.companyId,
+    branchId: payload.externalRequesterBranchId,
+    enabled: payload.enableExternalRequesterProfile,
+  })
+
+  if (!externalRequesterBranch.ok) {
+    return { ok: false, error: externalRequesterBranch.error }
+  }
+
   const currentAccess = await db.userCompanyAccess.findUnique({
     where: {
       userId_companyId: {
@@ -1303,6 +1565,25 @@ export async function updateStandaloneSystemUserAction(
           lastName: true,
           isActive: true,
           isRequestApprover: true,
+          externalRequesterProfiles: {
+            where: {
+              companyId: context.companyId,
+            },
+            orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              requesterCode: true,
+              isActive: true,
+              branchId: true,
+              branch: {
+                select: {
+                  code: true,
+                  name: true,
+                },
+              },
+            },
+            take: 1,
+          },
         },
       },
     },
@@ -1315,24 +1596,30 @@ export async function updateStandaloneSystemUserAction(
   const duplicate = await db.user.findFirst({
     where: {
       id: { not: currentAccess.user.id },
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (duplicate) {
-    return {
-      ok: false,
-      error:
-        duplicate.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
-    }
+    return { ok: false, error: "Username is already in use." }
   }
+
+  const previousOverrides = await db.employeePortalCapabilityOverride.findMany({
+    where: {
+      userId: currentAccess.user.id,
+      companyId: context.companyId,
+    },
+    select: {
+      capability: true,
+      accessScope: true,
+    },
+    orderBy: [{ capability: "asc" }],
+  })
+  const previousExternalRequesterProfile = currentAccess.user.externalRequesterProfiles[0] ?? null
 
   await db.$transaction(async (tx) => {
     const normalizedRole: CompanyRole = payload.companyRole === "APPROVER" ? "EMPLOYEE" : payload.companyRole
@@ -1349,7 +1636,7 @@ export async function updateStandaloneSystemUserAction(
       firstName: payload.firstName,
       lastName: payload.lastName,
       username: payload.username,
-      email: payload.email,
+      email: currentAccess.user.email,
       isActive: payload.isActive,
       isRequestApprover: payload.isRequestApprover,
       isAdmin: payload.companyRole === "COMPANY_ADMIN",
@@ -1380,6 +1667,32 @@ export async function updateStandaloneSystemUserAction(
       },
     })
 
+    const externalRequesterProfile = await syncExternalRequesterProfile(tx, {
+      companyId: context.companyId,
+      userId: currentAccess.user.id,
+      username: payload.username,
+      enabled: payload.enableExternalRequesterProfile,
+      branchId: externalRequesterBranch.branchId,
+    })
+
+    await tx.employeePortalCapabilityOverride.deleteMany({
+      where: {
+        userId: currentAccess.user.id,
+        companyId: context.companyId,
+      },
+    })
+
+    if (normalizedOverrides.length > 0) {
+      await tx.employeePortalCapabilityOverride.createMany({
+        data: normalizedOverrides.map((override) => ({
+          userId: currentAccess.user.id,
+          companyId: context.companyId,
+          capability: override.capability,
+          accessScope: override.accessScope,
+        })),
+      })
+    }
+
     await createAuditLog(
       {
         tableName: "User",
@@ -1391,7 +1704,6 @@ export async function updateStandaloneSystemUserAction(
           { fieldName: "firstName", oldValue: currentAccess.user.firstName, newValue: payload.firstName },
           { fieldName: "lastName", oldValue: currentAccess.user.lastName, newValue: payload.lastName },
           { fieldName: "username", oldValue: currentAccess.user.username, newValue: payload.username },
-          { fieldName: "email", oldValue: currentAccess.user.email, newValue: payload.email },
           { fieldName: "isActive", oldValue: currentAccess.user.isActive, newValue: payload.isActive },
           {
             fieldName: "isRequestApprover",
@@ -1414,6 +1726,35 @@ export async function updateStandaloneSystemUserAction(
             oldValue: currentAccess.isPurchaseRequestItemManager,
             newValue: payload.isPurchaseRequestItemManager,
           },
+          {
+            fieldName: "enableExternalRequesterProfile",
+            oldValue: previousExternalRequesterProfile?.isActive ?? false,
+            newValue: externalRequesterProfile.isActive,
+          },
+          {
+            fieldName: "externalRequesterCode",
+            oldValue: previousExternalRequesterProfile?.requesterCode ?? null,
+            newValue: externalRequesterProfile.requesterCode,
+          },
+          {
+            fieldName: "externalRequesterBranchId",
+            oldValue: previousExternalRequesterProfile?.branchId ?? null,
+            newValue: externalRequesterBranch.branchId,
+          },
+          {
+            fieldName: "externalRequesterBranch",
+            oldValue: previousExternalRequesterProfile?.branch
+              ? previousExternalRequesterProfile.branch.code
+                ? `${previousExternalRequesterProfile.branch.code} - ${previousExternalRequesterProfile.branch.name}`
+                : previousExternalRequesterProfile.branch.name
+              : null,
+            newValue: externalRequesterBranch.branchLabel,
+          },
+          {
+            fieldName: "employeePortalOverrides",
+            oldValue: JSON.stringify(previousOverrides),
+            newValue: JSON.stringify(normalizedOverrides),
+          },
           { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
         ],
       },
@@ -1423,6 +1764,8 @@ export async function updateStandaloneSystemUserAction(
 
   revalidatePath(`/${context.companyId}/employees/user-access`)
   revalidatePath(`/${context.companyId}/employees`)
+  revalidatePath(`/${context.companyId}/employees/user-access/agency/${payload.userId}`)
+  revalidatePath(`/${context.companyId}/employee-portal`)
 
   return { ok: true, message: `Updated system account ${currentAccess.user.username}.` }
 }

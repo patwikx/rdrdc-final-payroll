@@ -98,6 +98,7 @@ model Company {
   payPeriodPatterns                      PayPeriodPattern[]
   payrollRuns                            PayrollRun[]
   materialRequests                       MaterialRequest[]
+  externalRequesterProfiles              ExternalRequesterProfile[]
   purchaseRequests                       PurchaseRequest[]
   purchaseOrders                         PurchaseOrder[]
   purchaseOrderGoodsReceipts             PurchaseOrderGoodsReceipt[]

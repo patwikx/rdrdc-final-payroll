@@ -681,13 +681,14 @@ export function UserAccessPage({
         firstName: systemFirstName,
         lastName: systemLastName,
         username: systemUsername,
-        email: systemEmail,
         password: systemPassword,
         companyRole: systemRole,
         isRequestApprover: systemApprover,
         isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
         isMaterialRequestPoster: systemIsMaterialRequestPoster,
         isPurchaseRequestItemManager: false,
+        enableExternalRequesterProfile: false,
+        overrides: [],
       })
 
       if (!result.ok) {

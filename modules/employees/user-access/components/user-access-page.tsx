@@ -22,9 +22,11 @@ import {
   type ModuleKey,
 } from "@/modules/auth/utils/authorization-policy"
 import {
+  isEmployeePortalCapability,
   resolveEmployeePortalCapabilityScopes,
   type EmployeePortalAccessSnapshot,
   type EmployeePortalCapability,
+  type EmployeePortalCapabilityOverride,
 } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 import {
   deleteStandaloneSystemUserAction,
@@ -71,10 +73,16 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { UserAccessWorkspace } from "./user-access-workspace"
+import type { UserAccessWorkspaceTabKey } from "./workspace-types"
 
 type UserAccessPageProps = {
   companyId: string
   companyName: string
+  branchOptions: Array<{
+    id: string
+    code: string
+    name: string
+  }>
   rows: UserAccessPreviewRow[]
   systemUsers: SystemUserAccountRow[]
   companyOptions: UserAccessCompanyOption[]
@@ -204,11 +212,15 @@ const PORTAL_CAPABILITY_PREVIEWS: Array<{ key: EmployeePortalCapability; label: 
   { key: "payslips.view", label: "Payslips" },
   { key: "leave_requests.manage", label: "Leave Requests" },
   { key: "overtime_requests.manage", label: "Overtime Requests" },
+  { key: "material_request_approvals.view", label: "MRS/PR Approvals" },
+  { key: "approval_history.view", label: "Approval History" },
   { key: "leave_approvals.view", label: "Leave Approvals" },
   { key: "material_requests.processing.manage", label: "Material Processing" },
   { key: "material_requests.posting.manage", label: "Material Posting" },
+  { key: "purchase_requests.view", label: "Purchase Requests" },
   { key: "procurement_item_catalog.manage", label: "Item Catalog" },
   { key: "purchase_orders.manage", label: "Purchase Orders" },
+  { key: "goods_receipt_pos.manage", label: "Goods Receipt PO" },
 ]
 
 const ACCESS_SCOPE_LABELS: Record<AccessScope, string> = {
@@ -224,6 +236,94 @@ const scopeBadgeVariant = (scope: AccessScope): "secondary" | "outline" | "defau
   return "outline"
 }
 
+type SystemPortalOverrideMap = Partial<Record<EmployeePortalCapability, AccessScope>>
+
+type SystemPortalToggleItem = {
+  capability: EmployeePortalCapability
+  label: string
+  grantedScope: AccessScope
+  requiresEmployeeProfile?: boolean
+}
+
+const SYSTEM_OPERATION_ACCESS_ITEMS: SystemPortalToggleItem[] = [
+  { capability: "payslips.view", label: "Payslips", grantedScope: "OWN" },
+  { capability: "leave_requests.manage", label: "Leave Requests", grantedScope: "OWN" },
+  { capability: "overtime_requests.manage", label: "Overtime Requests", grantedScope: "OWN" },
+  { capability: "material_request_approvals.view", label: "MRS/PR Approvals", grantedScope: "APPROVAL_QUEUE" },
+  { capability: "leave_approvals.view", label: "Leave Approvals", grantedScope: "APPROVAL_QUEUE" },
+  { capability: "overtime_approvals.view", label: "Overtime Approvals", grantedScope: "APPROVAL_QUEUE" },
+  { capability: "approval_history.view", label: "Approval History", grantedScope: "APPROVAL_QUEUE" },
+]
+
+const SYSTEM_PROCUREMENT_ACCESS_ITEMS: SystemPortalToggleItem[] = [
+  { capability: "purchase_requests.view", label: "Purchase Requests", grantedScope: "OWN" },
+  {
+    capability: "purchase_requests.create",
+    label: "Create Purchase Requests",
+    grantedScope: "OWN",
+    requiresEmployeeProfile: true,
+  },
+  { capability: "purchase_requests.view_all", label: "View All Purchase Requests", grantedScope: "COMPANY" },
+  { capability: "purchase_requests.manage_all", label: "Manage All Purchase Requests", grantedScope: "COMPANY" },
+  { capability: "purchase_orders.manage", label: "Purchase Orders", grantedScope: "COMPANY" },
+  { capability: "goods_receipt_pos.manage", label: "Goods Receipt PO", grantedScope: "COMPANY" },
+  { capability: "procurement_item_catalog.manage", label: "Item Catalog", grantedScope: "COMPANY" },
+  { capability: "material_requests.processing.manage", label: "Material Processing", grantedScope: "COMPANY" },
+  { capability: "material_requests.posting.manage", label: "Material Posting", grantedScope: "COMPANY" },
+]
+
+const SYSTEM_PORTAL_ACCESS_ITEMS: SystemPortalToggleItem[] = [
+  ...SYSTEM_OPERATION_ACCESS_ITEMS,
+  ...SYSTEM_PROCUREMENT_ACCESS_ITEMS,
+]
+
+const buildOverrideMap = (
+  entries: ReadonlyArray<{ capability: string; accessScope: AccessScope }>
+): SystemPortalOverrideMap => {
+  const next: SystemPortalOverrideMap = {}
+  for (const entry of entries) {
+    if (isEmployeePortalCapability(entry.capability)) {
+      next[entry.capability] = entry.accessScope
+    }
+  }
+  return next
+}
+
+const toCapabilityOverrideEntries = (overrides: SystemPortalOverrideMap): EmployeePortalCapabilityOverride[] => {
+  return Object.entries(overrides).flatMap(([capability, accessScope]) =>
+    isEmployeePortalCapability(capability)
+      ? [
+          {
+            capability,
+            accessScope,
+          },
+        ]
+      : []
+  )
+}
+
+const toggleCapabilityOverride = (
+  previous: SystemPortalOverrideMap,
+  capability: EmployeePortalCapability,
+  checked: boolean,
+  defaultScope: AccessScope,
+  grantedScope: AccessScope
+): SystemPortalOverrideMap => {
+  const next = { ...previous }
+
+  if (checked) {
+    if (defaultScope !== "NONE") {
+      delete next[capability]
+    } else {
+      next[capability] = grantedScope
+    }
+    return next
+  }
+
+  next[capability] = "NONE"
+  return next
+}
+
 type ActionDialogState =
   | { type: "NONE" }
   | { type: "CREATE"; row: UserAccessPreviewRow }
@@ -236,6 +336,15 @@ const resolveUnifiedLinkFilter = (
   employeeFilter: UserAccessLinkFilter,
   systemFilter: UserAccessLinkFilter
 ): UserAccessLinkFilter => (employeeFilter !== "ALL" ? employeeFilter : systemFilter)
+
+const resolveSystemLinkFilterForWorkspaceTab = (
+  tab: UserAccessWorkspaceTabKey,
+  fallbackFilter: UserAccessLinkFilter
+): UserAccessLinkFilter => {
+  if (tab === "managed") return "LINKED"
+  if (tab === "agency") return "UNLINKED"
+  return fallbackFilter
+}
 
 type UserAccessQueryState = {
   q: string
@@ -263,6 +372,7 @@ type UserAccessDataResponse = {
 export function UserAccessPage({
   companyId,
   companyName,
+  branchOptions,
   rows,
   systemUsers,
   companyOptions,
@@ -280,6 +390,7 @@ export function UserAccessPage({
   const [linkFilterInput, setLinkFilterInput] = useState<UserAccessLinkFilter>(
     resolveUnifiedLinkFilter(employeeLinkFilter, systemLinkFilter)
   )
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<UserAccessWorkspaceTabKey>("setup")
   const [roleFilterInput, setRoleFilterInput] = useState<UserAccessRoleFilter>(roleFilter)
   const [rowsState, setRowsState] = useState<UserAccessPreviewRow[]>(rows)
   const [systemUsersState, setSystemUsersState] = useState<SystemUserAccountRow[]>(systemUsers)
@@ -341,17 +452,18 @@ export function UserAccessPage({
   const [systemFirstName, setSystemFirstName] = useState("")
   const [systemLastName, setSystemLastName] = useState("")
   const [systemUsername, setSystemUsername] = useState("")
-  const [systemEmail, setSystemEmail] = useState("")
   const [systemPassword, setSystemPassword] = useState("")
   const [systemRole, setSystemRole] = useState<EditableCompanyAccess["role"]>("EMPLOYEE")
   const [systemApprover, setSystemApprover] = useState(false)
   const [systemIsMaterialRequestPurchaser, setSystemIsMaterialRequestPurchaser] = useState(false)
   const [systemIsMaterialRequestPoster, setSystemIsMaterialRequestPoster] = useState(false)
   const [systemIsPurchaseRequestItemManager, setSystemIsPurchaseRequestItemManager] = useState(false)
+  const [systemEnableExternalRequesterProfile, setSystemEnableExternalRequesterProfile] = useState(false)
+  const [systemExternalRequesterBranchId, setSystemExternalRequesterBranchId] = useState("")
+  const [systemPortalOverrides, setSystemPortalOverrides] = useState<SystemPortalOverrideMap>({})
   const [systemEditFirstName, setSystemEditFirstName] = useState("")
   const [systemEditLastName, setSystemEditLastName] = useState("")
   const [systemEditUsername, setSystemEditUsername] = useState("")
-  const [systemEditEmail, setSystemEditEmail] = useState("")
   const [systemEditPassword, setSystemEditPassword] = useState("")
   const [systemEditRole, setSystemEditRole] = useState<EditableCompanyAccess["role"]>("EMPLOYEE")
   const [systemEditApprover, setSystemEditApprover] = useState(false)
@@ -359,7 +471,15 @@ export function UserAccessPage({
   const [systemEditIsMaterialRequestPurchaser, setSystemEditIsMaterialRequestPurchaser] = useState(false)
   const [systemEditIsMaterialRequestPoster, setSystemEditIsMaterialRequestPoster] = useState(false)
   const [systemEditIsPurchaseRequestItemManager, setSystemEditIsPurchaseRequestItemManager] = useState(false)
+  const [systemEditEnableExternalRequesterProfile, setSystemEditEnableExternalRequesterProfile] = useState(false)
+  const [systemEditExternalRequesterBranchId, setSystemEditExternalRequesterBranchId] = useState("")
+  const [systemEditPortalOverrides, setSystemEditPortalOverrides] = useState<SystemPortalOverrideMap>({})
   const [systemDeleteTarget, setSystemDeleteTarget] = useState<SystemUserAccountRow | null>(null)
+
+  const systemLinkFilterInput = useMemo(
+    () => resolveSystemLinkFilterForWorkspaceTab(activeWorkspaceTab, linkFilterInput),
+    [activeWorkspaceTab, linkFilterInput]
+  )
 
   useEffect(() => {
     setQueryInput(query)
@@ -487,7 +607,7 @@ export function UserAccessPage({
     return {
       q: typeof updates.q !== "undefined" ? updates.q : queryInput,
       empLink: typeof updates.empLink !== "undefined" ? updates.empLink : linkFilterInput,
-      sysLink: typeof updates.sysLink !== "undefined" ? updates.sysLink : "LINKED",
+      sysLink: typeof updates.sysLink !== "undefined" ? updates.sysLink : systemLinkFilterInput,
       role: typeof updates.role !== "undefined" ? updates.role : roleFilterInput,
       empPage:
         typeof updates.empPage !== "undefined" ? updates.empPage : employeePaginationState.page,
@@ -499,6 +619,7 @@ export function UserAccessPage({
     linkFilterInput,
     queryInput,
     roleFilterInput,
+    systemLinkFilterInput,
     systemUserPaginationState.page,
   ])
 
@@ -514,7 +635,7 @@ export function UserAccessPage({
       params.set("empLink", state.empLink)
     }
 
-    if (state.sysLink !== "LINKED") {
+    if (state.sysLink !== "ALL") {
       params.set("sysLink", state.sysLink)
     }
 
@@ -539,7 +660,7 @@ export function UserAccessPage({
     const queryValue = state.q.trim()
     if (queryValue) params.set("q", queryValue)
     if (state.empLink !== "ALL") params.set("empLink", state.empLink)
-    if (state.sysLink !== "LINKED") params.set("sysLink", state.sysLink)
+    if (state.sysLink !== "ALL") params.set("sysLink", state.sysLink)
     if (state.role !== "ALL") params.set("role", state.role)
     if (state.empPage > 1) params.set("empPage", String(state.empPage))
     if (state.sysPage > 1) params.set("sysPage", String(state.sysPage))
@@ -711,12 +832,27 @@ export function UserAccessPage({
     prefetchNeighborPages,
   ])
 
+  const handleWorkspaceTabChange = useCallback(
+    (tab: UserAccessWorkspaceTabKey) => {
+      setActiveWorkspaceTab(tab)
+
+      const nextSystemLink = resolveSystemLinkFilterForWorkspaceTab(tab, linkFilterInput)
+      void updateWorkspaceData({
+        empLink: linkFilterInput,
+        sysLink: nextSystemLink,
+        sysPage: 1,
+        scope: tab === "setup" ? "ALL" : "SYSTEM_USERS",
+      })
+    },
+    [linkFilterInput, updateWorkspaceData]
+  )
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       void updateWorkspaceData({
         q: queryInput,
         empLink: linkFilterInput,
-        sysLink: "LINKED",
+        sysLink: systemLinkFilterInput,
         role: roleFilterInput,
         empPage: 1,
         sysPage: 1,
@@ -727,7 +863,7 @@ export function UserAccessPage({
     return () => clearTimeout(timeoutId)
     // Only re-run when filter inputs change; pagination changes should not reset to page 1.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkFilterInput, queryInput, roleFilterInput])
+  }, [linkFilterInput, queryInput, roleFilterInput, systemLinkFilterInput, updateWorkspaceData])
 
   const resetFilters = () => {
     setQueryInput("")
@@ -736,7 +872,7 @@ export function UserAccessPage({
     void updateWorkspaceData({
       q: "",
       empLink: "ALL",
-      sysLink: "LINKED",
+      sysLink: resolveSystemLinkFilterForWorkspaceTab(activeWorkspaceTab, "ALL"),
       role: "ALL",
       empPage: 1,
       sysPage: 1,
@@ -772,17 +908,7 @@ export function UserAccessPage({
   }
 
   const openCreateSystemAccount = () => {
-    setSystemFirstName("")
-    setSystemLastName("")
-    setSystemUsername("")
-    setSystemEmail("")
-    setSystemPassword("")
-    setSystemRole("EMPLOYEE")
-    setSystemApprover(false)
-    setSystemIsMaterialRequestPurchaser(false)
-    setSystemIsMaterialRequestPoster(false)
-    setSystemIsPurchaseRequestItemManager(false)
-    setDialogState({ type: "CREATE_SYSTEM" })
+    router.push(`/${companyId}/employees/user-access/standalone/new`)
   }
 
   const openEdit = (row: UserAccessPreviewRow) => {
@@ -800,20 +926,40 @@ export function UserAccessPage({
       return
     }
 
-    const [lastName = "", firstName = ""] = user.displayName.split(",").map((value) => value.trim())
-    setSystemEditFirstName(firstName)
-    setSystemEditLastName(lastName)
-    setSystemEditUsername(user.username)
-    setSystemEditEmail(user.email)
-    setSystemEditPassword("")
-    setSystemEditRole(user.companyRole as EditableCompanyAccess["role"])
-    setSystemEditApprover(user.isRequestApprover)
-    setSystemEditIsActive(user.isActive)
-    setSystemEditIsMaterialRequestPurchaser(user.isMaterialRequestPurchaser)
-    setSystemEditIsMaterialRequestPoster(user.isMaterialRequestPoster)
-    setSystemEditIsPurchaseRequestItemManager(user.isPurchaseRequestItemManager)
-    setDialogState({ type: "EDIT_SYSTEM", user })
+    router.push(`/${companyId}/employees/user-access/agency/${user.id}`)
   }
+
+  useEffect(() => {
+    if (systemEnableExternalRequesterProfile) {
+      return
+    }
+
+    setSystemPortalOverrides((previous) => {
+      if (!previous["purchase_requests.create"]) {
+        return previous
+      }
+
+      const next = { ...previous }
+      delete next["purchase_requests.create"]
+      return next
+    })
+  }, [systemEnableExternalRequesterProfile])
+
+  useEffect(() => {
+    if (systemEditEnableExternalRequesterProfile) {
+      return
+    }
+
+    setSystemEditPortalOverrides((previous) => {
+      if (!previous["purchase_requests.create"]) {
+        return previous
+      }
+
+      const next = { ...previous }
+      delete next["purchase_requests.create"]
+      return next
+    })
+  }, [systemEditEnableExternalRequesterProfile])
 
   const closeDialog = () => {
     if (isPending) return
@@ -1022,18 +1168,25 @@ export function UserAccessPage({
     if (dialogState.type !== "CREATE_SYSTEM") return
 
     startMutationTransition(async () => {
+      if (systemEnableExternalRequesterProfile && !systemExternalRequesterBranchId) {
+        toast.error("Select a branch for the External PR Requester Profile.")
+        return
+      }
+
       const result = await createStandaloneSystemUserAction({
         companyId,
         firstName: systemFirstName,
         lastName: systemLastName,
         username: systemUsername,
-        email: systemEmail,
         password: systemPassword,
         companyRole: systemRole,
         isRequestApprover: systemApprover,
         isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
         isMaterialRequestPoster: systemIsMaterialRequestPoster,
         isPurchaseRequestItemManager: systemIsPurchaseRequestItemManager,
+        enableExternalRequesterProfile: systemEnableExternalRequesterProfile,
+        externalRequesterBranchId: systemEnableExternalRequesterProfile ? systemExternalRequesterBranchId : undefined,
+        overrides: toCapabilityOverrideEntries(systemPortalOverrides),
       })
 
       if (!result.ok) {
@@ -1051,13 +1204,17 @@ export function UserAccessPage({
     if (dialogState.type !== "EDIT_SYSTEM") return
 
     startMutationTransition(async () => {
+      if (systemEditEnableExternalRequesterProfile && !systemEditExternalRequesterBranchId) {
+        toast.error("Select a branch for the External PR Requester Profile.")
+        return
+      }
+
       const result = await updateStandaloneSystemUserAction({
         companyId,
         userId: dialogState.user.id,
         firstName: systemEditFirstName,
         lastName: systemEditLastName,
         username: systemEditUsername,
-        email: systemEditEmail,
         password: systemEditPassword.trim().length > 0 ? systemEditPassword : undefined,
         isActive: systemEditIsActive,
         companyRole: systemEditRole,
@@ -1065,6 +1222,11 @@ export function UserAccessPage({
         isMaterialRequestPurchaser: systemEditIsMaterialRequestPurchaser,
         isMaterialRequestPoster: systemEditIsMaterialRequestPoster,
         isPurchaseRequestItemManager: systemEditIsPurchaseRequestItemManager,
+        enableExternalRequesterProfile: systemEditEnableExternalRequesterProfile,
+        externalRequesterBranchId: systemEditEnableExternalRequesterProfile
+          ? systemEditExternalRequesterBranchId
+          : undefined,
+        overrides: toCapabilityOverrideEntries(systemEditPortalOverrides),
       })
 
       if (!result.ok) {
@@ -1161,6 +1323,100 @@ export function UserAccessPage({
   const createPreviewAccess = getPreviewAccessFromAssignments(createCompanyAccesses)
   const linkPreviewAccess = getPreviewAccessFromAssignments(linkCompanyAccesses)
   const editPreviewAccess = getPreviewAccessFromAssignments(editCompanyAccesses)
+
+  const createSystemAccessSnapshot: EmployeePortalAccessSnapshot = useMemo(
+    () => ({
+      companyRole: systemRole as CompanyRole,
+      purchaseRequestWorkflowEnabled,
+      isRequestApprover: systemApprover,
+      isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
+      isMaterialRequestPoster: systemIsMaterialRequestPoster,
+      isPurchaseRequestItemManager: systemIsPurchaseRequestItemManager,
+      hasEmployeeProfile: systemEnableExternalRequesterProfile,
+    }),
+    [
+      purchaseRequestWorkflowEnabled,
+      systemApprover,
+      systemEnableExternalRequesterProfile,
+      systemIsMaterialRequestPoster,
+      systemIsMaterialRequestPurchaser,
+      systemIsPurchaseRequestItemManager,
+      systemRole,
+    ]
+  )
+
+  const createSystemDefaultCapabilityScopes = useMemo(
+    () => resolveEmployeePortalCapabilityScopes(createSystemAccessSnapshot, []),
+    [createSystemAccessSnapshot]
+  )
+  const createSystemEffectiveCapabilityScopes = useMemo(
+    () =>
+      resolveEmployeePortalCapabilityScopes(
+        createSystemAccessSnapshot,
+        toCapabilityOverrideEntries(systemPortalOverrides)
+      ),
+    [createSystemAccessSnapshot, systemPortalOverrides]
+  )
+
+  const editSystemAccessSnapshot: EmployeePortalAccessSnapshot = useMemo(
+    () => ({
+      companyRole: systemEditRole as CompanyRole,
+      purchaseRequestWorkflowEnabled,
+      isRequestApprover: systemEditApprover,
+      isMaterialRequestPurchaser: systemEditIsMaterialRequestPurchaser,
+      isMaterialRequestPoster: systemEditIsMaterialRequestPoster,
+      isPurchaseRequestItemManager: systemEditIsPurchaseRequestItemManager,
+      hasEmployeeProfile: systemEditEnableExternalRequesterProfile,
+    }),
+    [
+      purchaseRequestWorkflowEnabled,
+      systemEditApprover,
+      systemEditEnableExternalRequesterProfile,
+      systemEditIsMaterialRequestPoster,
+      systemEditIsMaterialRequestPurchaser,
+      systemEditIsPurchaseRequestItemManager,
+      systemEditRole,
+    ]
+  )
+
+  const editSystemDefaultCapabilityScopes = useMemo(
+    () => resolveEmployeePortalCapabilityScopes(editSystemAccessSnapshot, []),
+    [editSystemAccessSnapshot]
+  )
+  const editSystemEffectiveCapabilityScopes = useMemo(
+    () =>
+      resolveEmployeePortalCapabilityScopes(
+        editSystemAccessSnapshot,
+        toCapabilityOverrideEntries(systemEditPortalOverrides)
+      ),
+    [editSystemAccessSnapshot, systemEditPortalOverrides]
+  )
+
+  const toggleCreateSystemCapability = useCallback(
+    (capability: EmployeePortalCapability, checked: boolean) => {
+      const config = SYSTEM_PORTAL_ACCESS_ITEMS.find((item) => item.capability === capability)
+      if (!config) return
+
+      const defaultScope = createSystemDefaultCapabilityScopes[capability] ?? "NONE"
+      setSystemPortalOverrides((previous) =>
+        toggleCapabilityOverride(previous, capability, checked, defaultScope, config.grantedScope)
+      )
+    },
+    [createSystemDefaultCapabilityScopes]
+  )
+
+  const toggleEditSystemCapability = useCallback(
+    (capability: EmployeePortalCapability, checked: boolean) => {
+      const config = SYSTEM_PORTAL_ACCESS_ITEMS.find((item) => item.capability === capability)
+      if (!config) return
+
+      const defaultScope = editSystemDefaultCapabilityScopes[capability] ?? "NONE"
+      setSystemEditPortalOverrides((previous) =>
+        toggleCapabilityOverride(previous, capability, checked, defaultScope, config.grantedScope)
+      )
+    },
+    [editSystemDefaultCapabilityScopes]
+  )
 
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
@@ -1261,6 +1517,7 @@ export function UserAccessPage({
           onSystemUserPageChange={(nextPage) =>
             void updateWorkspaceData({ sysPage: nextPage, scope: "SYSTEM_USERS" })
           }
+          onTabChange={handleWorkspaceTabChange}
         />
       </section>
 
@@ -1543,13 +1800,13 @@ export function UserAccessPage({
       </Dialog>
 
       <Dialog open={dialogState.type === "CREATE_SYSTEM"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create System Account</DialogTitle>
+        <DialogContent className="max-h-[90vh] overflow-hidden border border-border/60 px-0 pt-0 pb-2 sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/60 bg-muted/20 px-6 py-4">
+            <DialogTitle className="text-base">Create System Account</DialogTitle>
             <DialogDescription>Create an unlinked account for HR/Payroll staff use in {companyName}.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3">
+          <div className="max-h-[calc(90vh-156px)] space-y-3 overflow-y-auto px-6 py-5">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>First Name<span className="ml-1 text-destructive">*</span></Label>
@@ -1563,10 +1820,6 @@ export function UserAccessPage({
             <div className="space-y-2">
               <Label>Username<span className="ml-1 text-destructive">*</span></Label>
               <Input value={systemUsername} onChange={(event) => setSystemUsername(event.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={systemEmail} onChange={(event) => setSystemEmail(event.target.value)} disabled={isPending} />
             </div>
             <div className="space-y-2">
               <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
@@ -1584,11 +1837,11 @@ export function UserAccessPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
-              <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
-              <Switch checked={systemApprover} onCheckedChange={setSystemApprover} disabled={isPending} />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">Request Approver (Leave &amp; OT)</span>
+                <Switch checked={systemApprover} onCheckedChange={setSystemApprover} disabled={isPending} />
+              </div>
               <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                 <span className="text-xs text-foreground">MRS Purchaser</span>
                 <Switch
@@ -1613,21 +1866,52 @@ export function UserAccessPage({
                   disabled={isPending}
                 />
               </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5 sm:col-span-2">
+                <span className="text-xs text-foreground">External PR Requester Profile</span>
+                <Switch
+                  checked={systemEnableExternalRequesterProfile}
+                  onCheckedChange={setSystemEnableExternalRequesterProfile}
+                  disabled={isPending}
+                />
+              </div>
             </div>
-            <EffectiveAccessPreview
-              title="System Account Access Preview"
-              description="Standalone accounts do not get self-service employee routes unless they are linked to an employee record."
-              companyRole={systemRole}
-              isRequestApprover={systemApprover}
-              isMaterialRequestPurchaser={systemIsMaterialRequestPurchaser}
-              isMaterialRequestPoster={systemIsMaterialRequestPoster}
-              isPurchaseRequestItemManager={systemIsPurchaseRequestItemManager}
-              hasEmployeeProfile={false}
-              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            {systemEnableExternalRequesterProfile ? (
+              <div className="space-y-2">
+                <Label>
+                  Requester Branch<span className="ml-1 text-destructive">*</span>
+                </Label>
+                <Select
+                  value={systemExternalRequesterBranchId}
+                  onValueChange={setSystemExternalRequesterBranchId}
+                  disabled={isPending || branchOptions.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={branchOptions.length === 0 ? "No active branches available" : "Select branch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchOptions.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.code ? `${branch.code} - ${branch.name}` : branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Agency requester accounts are scoped to a company branch for purchase request creation.
+                </p>
+              </div>
+            ) : null}
+            <SystemPortalAccessControlPanel
+              operationItems={SYSTEM_OPERATION_ACCESS_ITEMS}
+              procurementItems={SYSTEM_PROCUREMENT_ACCESS_ITEMS}
+              effectiveCapabilityScopes={createSystemEffectiveCapabilityScopes}
+              hasEmployeeProfile={systemEnableExternalRequesterProfile}
+              disabled={isPending}
+              onToggleCapability={toggleCreateSystemCapability}
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t border-border/60 px-6 py-4">
             <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
             <Button onClick={submitCreateSystemAccount} disabled={isPending}>Create System Account</Button>
           </DialogFooter>
@@ -1635,15 +1919,15 @@ export function UserAccessPage({
       </Dialog>
 
       <Dialog open={dialogState.type === "EDIT_SYSTEM"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit System Account</DialogTitle>
+        <DialogContent className="max-h-[90vh] overflow-hidden border border-border/60 px-0 pt-0 pb-2 sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/60 bg-muted/20 px-6 py-4">
+            <DialogTitle className="text-base">Edit System Account</DialogTitle>
             <DialogDescription>
               {dialogState.type === "EDIT_SYSTEM" ? `${dialogState.user.displayName} (${dialogState.user.username})` : ""}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3">
+          <div className="max-h-[calc(90vh-156px)] space-y-3 overflow-y-auto px-6 py-5">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>First Name<span className="ml-1 text-destructive">*</span></Label>
@@ -1657,10 +1941,6 @@ export function UserAccessPage({
             <div className="space-y-2">
               <Label>Username<span className="ml-1 text-destructive">*</span></Label>
               <Input value={systemEditUsername} onChange={(event) => setSystemEditUsername(event.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={systemEditEmail} onChange={(event) => setSystemEditEmail(event.target.value)} disabled={isPending} />
             </div>
             <div className="space-y-2">
               <Label>New Password</Label>
@@ -1690,11 +1970,9 @@ export function UserAccessPage({
                 <Switch checked={systemEditIsActive} onCheckedChange={setSystemEditIsActive} disabled={isPending} />
               </div>
               <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
-                <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
+                <span className="text-xs text-foreground">Request Approver (Leave &amp; OT)</span>
                 <Switch checked={systemEditApprover} onCheckedChange={setSystemEditApprover} disabled={isPending} />
               </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
               <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                 <span className="text-xs text-foreground">MRS Purchaser</span>
                 <Switch
@@ -1719,21 +1997,49 @@ export function UserAccessPage({
                   disabled={isPending}
                 />
               </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5 sm:col-span-2">
+                <span className="text-xs text-foreground">External PR Requester Profile</span>
+                <Switch
+                  checked={systemEditEnableExternalRequesterProfile}
+                  onCheckedChange={setSystemEditEnableExternalRequesterProfile}
+                  disabled={isPending}
+                />
+              </div>
             </div>
-            <EffectiveAccessPreview
-              title="System Account Access Preview"
-              description="Use this preview to confirm what this standalone user can view or manage in the active company."
-              companyRole={systemEditRole}
-              isRequestApprover={systemEditApprover}
-              isMaterialRequestPurchaser={systemEditIsMaterialRequestPurchaser}
-              isMaterialRequestPoster={systemEditIsMaterialRequestPoster}
-              isPurchaseRequestItemManager={systemEditIsPurchaseRequestItemManager}
-              hasEmployeeProfile={false}
-              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            {systemEditEnableExternalRequesterProfile ? (
+              <div className="space-y-2">
+                <Label>
+                  Requester Branch<span className="ml-1 text-destructive">*</span>
+                </Label>
+                <Select
+                  value={systemEditExternalRequesterBranchId}
+                  onValueChange={setSystemEditExternalRequesterBranchId}
+                  disabled={isPending || branchOptions.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={branchOptions.length === 0 ? "No active branches available" : "Select branch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchOptions.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.code ? `${branch.code} - ${branch.name}` : branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <SystemPortalAccessControlPanel
+              operationItems={SYSTEM_OPERATION_ACCESS_ITEMS}
+              procurementItems={SYSTEM_PROCUREMENT_ACCESS_ITEMS}
+              effectiveCapabilityScopes={editSystemEffectiveCapabilityScopes}
+              hasEmployeeProfile={systemEditEnableExternalRequesterProfile}
+              disabled={isPending}
+              onToggleCapability={toggleEditSystemCapability}
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t border-border/60 px-6 py-4">
             <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
             <Button onClick={submitEditSystemAccount} disabled={isPending}>Save Changes</Button>
           </DialogFooter>
@@ -1944,6 +2250,105 @@ export function UserAccessPage({
   )
 }
 
+function SystemPortalAccessControlPanel({
+  operationItems,
+  procurementItems,
+  effectiveCapabilityScopes,
+  hasEmployeeProfile,
+  disabled,
+  onToggleCapability,
+}: {
+  operationItems: readonly SystemPortalToggleItem[]
+  procurementItems: readonly SystemPortalToggleItem[]
+  effectiveCapabilityScopes: Partial<Record<EmployeePortalCapability, AccessScope>>
+  hasEmployeeProfile: boolean
+  disabled: boolean
+  onToggleCapability: (capability: EmployeePortalCapability, checked: boolean) => void
+}) {
+  return (
+    <section className="space-y-3 border border-border/60 bg-muted/10 px-4 py-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">Employee Portal Access</p>
+        <p className="text-xs text-muted-foreground">
+          Manage operation and procurement access directly. These controls save actual permission overrides.
+        </p>
+      </div>
+
+      <PortalAccessSwitchGroup
+        title="Operation Access"
+        items={operationItems}
+        effectiveCapabilityScopes={effectiveCapabilityScopes}
+        hasEmployeeProfile={hasEmployeeProfile}
+        disabled={disabled}
+        onToggleCapability={onToggleCapability}
+      />
+
+      <PortalAccessSwitchGroup
+        title="Procurement Access"
+        items={procurementItems}
+        effectiveCapabilityScopes={effectiveCapabilityScopes}
+        hasEmployeeProfile={hasEmployeeProfile}
+        disabled={disabled}
+        onToggleCapability={onToggleCapability}
+      />
+    </section>
+  )
+}
+
+function PortalAccessSwitchGroup({
+  title,
+  items,
+  effectiveCapabilityScopes,
+  hasEmployeeProfile,
+  disabled,
+  onToggleCapability,
+}: {
+  title: string
+  items: readonly SystemPortalToggleItem[]
+  effectiveCapabilityScopes: Partial<Record<EmployeePortalCapability, AccessScope>>
+  hasEmployeeProfile: boolean
+  disabled: boolean
+  onToggleCapability: (capability: EmployeePortalCapability, checked: boolean) => void
+}) {
+  return (
+    <div className="border border-border/60 bg-background">
+      <div className="border-b border-border/60 px-3 py-2">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
+      </div>
+      <div className="grid gap-2 px-3 py-3">
+        {items.map((item) => {
+          const scope = effectiveCapabilityScopes[item.capability] ?? "NONE"
+          const checked = scope !== "NONE"
+          const requiresEmployeeProfile = Boolean(item.requiresEmployeeProfile)
+          const blockedByProfile = requiresEmployeeProfile && !hasEmployeeProfile
+          const isToggleDisabled = disabled || blockedByProfile
+
+          return (
+            <div key={item.capability} className="flex h-8 items-center justify-between gap-3 border border-border/60 px-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-xs text-foreground">{item.label}</span>
+                <Badge variant={scopeBadgeVariant(scope)} className="h-5 px-1.5 text-[10px]">
+                  {ACCESS_SCOPE_LABELS[scope]}
+                </Badge>
+                {blockedByProfile ? (
+                  <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                    Requires requester profile
+                  </Badge>
+                ) : null}
+              </div>
+              <Switch
+                checked={checked}
+                onCheckedChange={(nextChecked) => onToggleCapability(item.capability, nextChecked)}
+                disabled={isToggleDisabled}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function EffectiveAccessPreview({
   title,
   description,
@@ -1954,6 +2359,12 @@ function EffectiveAccessPreview({
   isPurchaseRequestItemManager,
   hasEmployeeProfile,
   purchaseRequestWorkflowEnabled,
+  editableFlags = false,
+  flagsDisabled = false,
+  onRequestApproverChange,
+  onMaterialRequestPurchaserChange,
+  onMaterialRequestPosterChange,
+  onPurchaseRequestItemManagerChange,
 }: {
   title: string
   description: string
@@ -1964,6 +2375,12 @@ function EffectiveAccessPreview({
   isPurchaseRequestItemManager: boolean
   hasEmployeeProfile: boolean
   purchaseRequestWorkflowEnabled: boolean
+  editableFlags?: boolean
+  flagsDisabled?: boolean
+  onRequestApproverChange?: (checked: boolean) => void
+  onMaterialRequestPurchaserChange?: (checked: boolean) => void
+  onMaterialRequestPosterChange?: (checked: boolean) => void
+  onPurchaseRequestItemManagerChange?: (checked: boolean) => void
 }) {
   const accessSnapshot: EmployeePortalAccessSnapshot = {
     companyRole: companyRole as CompanyRole,
@@ -2000,10 +2417,42 @@ function EffectiveAccessPreview({
             {purchaseRequestWorkflowEnabled ? "PR Workflow On" : "PR Workflow Off"}
           </Badge>
           <Badge variant={hasEmployeeProfile ? "secondary" : "outline"}>
-            {hasEmployeeProfile ? "Employee-linked" : "No employee profile"}
+            {hasEmployeeProfile ? "Requester profile ready" : "No requester profile"}
           </Badge>
         </div>
       </div>
+
+      {editableFlags ? (
+        <div className="border border-border/60 bg-background px-3 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Access Controls</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <AccessFlagSwitch
+              label="Request Approver"
+              checked={isRequestApprover}
+              disabled={flagsDisabled || !onRequestApproverChange}
+              onCheckedChange={onRequestApproverChange ?? (() => undefined)}
+            />
+            <AccessFlagSwitch
+              label="MRS Purchaser"
+              checked={isMaterialRequestPurchaser}
+              disabled={flagsDisabled || !onMaterialRequestPurchaserChange}
+              onCheckedChange={onMaterialRequestPurchaserChange ?? (() => undefined)}
+            />
+            <AccessFlagSwitch
+              label="MRS Poster"
+              checked={isMaterialRequestPoster}
+              disabled={flagsDisabled || !onMaterialRequestPosterChange}
+              onCheckedChange={onMaterialRequestPosterChange ?? (() => undefined)}
+            />
+            <AccessFlagSwitch
+              label="Item Manager"
+              checked={isPurchaseRequestItemManager}
+              disabled={flagsDisabled || !onPurchaseRequestItemManagerChange}
+              onCheckedChange={onPurchaseRequestItemManagerChange ?? (() => undefined)}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
         <div className="space-y-3">
@@ -2060,6 +2509,25 @@ function EffectiveAccessPreview({
         </div>
       </div>
     </section>
+  )
+}
+
+function AccessFlagSwitch({
+  label,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  label: string
+  checked: boolean
+  disabled: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex h-8 items-center justify-between gap-2 border border-border/60 px-2.5">
+      <span className="text-xs text-foreground">{label}</span>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    </div>
   )
 }
 

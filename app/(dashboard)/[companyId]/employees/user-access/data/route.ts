@@ -45,8 +45,8 @@ export async function GET(request: Request, context: RouteContext) {
     const roleRaw = searchParams.get("role")
     const employeeLinkFilter =
       employeeLinkRaw === "LINKED" || employeeLinkRaw === "UNLINKED" ? employeeLinkRaw : undefined
-    const systemLinkFilter =
-      systemLinkRaw === "LINKED" || systemLinkRaw === "UNLINKED" ? systemLinkRaw : "LINKED"
+    const normalizedSystemLinkFilter =
+      systemLinkRaw === "LINKED" || systemLinkRaw === "UNLINKED" ? systemLinkRaw : "ALL"
     const roleFilter =
       roleRaw === "EMPLOYEE" ||
       roleRaw === "HR_ADMIN" ||
@@ -62,7 +62,7 @@ export async function GET(request: Request, context: RouteContext) {
       employeePage: parsePositiveInt(searchParams.get("empPage")),
       systemUserPage: parsePositiveInt(searchParams.get("sysPage")),
       employeeLinkFilter,
-      systemLinkFilter,
+      systemLinkFilter: normalizedSystemLinkFilter,
       roleFilter,
     })
 

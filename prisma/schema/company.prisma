@@ -58,9 +58,10 @@ model Company {
   payslipWatermarkText String?
 
   // Fiscal Settings
-  fiscalYearStartMonth Int     @default(1)
-  defaultCurrency      String  @default("PHP")
-  minimumWageRegion    String?
+  fiscalYearStartMonth          Int     @default(1)
+  defaultCurrency               String  @default("PHP")
+  minimumWageRegion             String?
+  enablePurchaseRequestWorkflow Boolean @default(false)
 
   // Soft Delete & Audit
   isActive    Boolean   @default(true)
@@ -97,7 +98,11 @@ model Company {
   payPeriodPatterns                      PayPeriodPattern[]
   payrollRuns                            PayrollRun[]
   materialRequests                       MaterialRequest[]
+  purchaseRequests                       PurchaseRequest[]
+  purchaseOrders                         PurchaseOrder[]
+  purchaseOrderGoodsReceipts             PurchaseOrderGoodsReceipt[]
   materialRequestReceivingReports        MaterialRequestReceivingReport[]
+  employeePortalCapabilityOverrides     EmployeePortalCapabilityOverride[]
   userCompanyAccess                      UserCompanyAccess[]
   selectedByUsers                        User[]                                  @relation("UserSelectedCompany")
   biometricDevices                       BiometricDevice[]
@@ -164,18 +169,19 @@ model CompanyEmail {
 }
 
 model UserCompanyAccess {
-  id                         String      @id @default(uuid())
-  userId                     String
-  user                       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  companyId                  String
-  company                    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  role                       CompanyRole @default(EMPLOYEE)
-  isMaterialRequestPurchaser Boolean     @default(false)
-  isMaterialRequestPoster    Boolean     @default(false)
-  isDefault                  Boolean     @default(false)
-  isActive                   Boolean     @default(true)
-  createdAt                  DateTime    @default(now())
-  updatedAt                  DateTime    @updatedAt
+  id                           String      @id @default(uuid())
+  userId                       String
+  user                         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId                    String
+  company                      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role                         CompanyRole @default(EMPLOYEE)
+  isMaterialRequestPurchaser   Boolean     @default(false)
+  isMaterialRequestPoster      Boolean     @default(false)
+  isPurchaseRequestItemManager Boolean     @default(false)
+  isDefault                    Boolean     @default(false)
+  isActive                     Boolean     @default(true)
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
 
   @@unique([userId, companyId])
   @@index([userId])

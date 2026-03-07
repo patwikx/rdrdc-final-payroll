@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { MaterialRequestReceivingReportDetailPage } from "@/modules/material-requests/components/material-request-receiving-report-detail-page"
 import { getEmployeePortalMaterialRequestReceivingReportDetailReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestReceivingReportDetailRouteProps = {
   params: Promise<{ companyId: string; reportId: string }>
@@ -18,14 +19,14 @@ export default async function MaterialRequestReceivingReportDetailRoute({
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canViewCompanyWide =
-    isHR ||
-    context.isMaterialRequestPurchaser ||
-    context.isMaterialRequestPoster
+  if (!hasEmployeePortalCapability(context.capabilities, "material_requests.receiving_reports.view")) {
+    redirect(`/${context.companyId}/employee-portal`)
+  }
+
+  const canViewCompanyWide = hasEmployeePortalCapability(
+    context.capabilities,
+    "material_requests.receiving_reports.view_company"
+  )
 
   const detail = await getEmployeePortalMaterialRequestReceivingReportDetailReadModel({
     companyId: context.companyId,

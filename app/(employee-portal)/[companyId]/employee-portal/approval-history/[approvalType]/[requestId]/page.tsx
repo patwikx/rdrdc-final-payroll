@@ -7,6 +7,10 @@ import { getMaterialRequestApprovalHistoryDetailsAction } from "@/modules/materi
 import { MaterialRequestApprovalHistoryDetailPage } from "@/modules/material-requests/components/material-request-approval-history-detail-page"
 import { OvertimeApprovalHistoryDetailPage } from "@/modules/overtime/components/overtime-approval-history-detail-page"
 import { getEmployeePortalOvertimeApprovalHistoryDetailReadModel } from "@/modules/overtime/utils/overtime-domain"
+import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type ApprovalTypeParam = "leave" | "overtime" | "material"
 
@@ -41,11 +45,8 @@ export default async function ApprovalHistoryRequestDetailPage({
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = isHR || context.isRequestApprover
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "approval_history.view")
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)

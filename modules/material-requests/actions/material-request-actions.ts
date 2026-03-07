@@ -29,12 +29,7 @@ import {
 } from "@/modules/material-requests/schemas/material-request-actions-schema"
 import type { MaterialRequestActionResult } from "@/modules/material-requests/types/material-request-action-result"
 
-const REQUEST_NUMBER_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  timeZone: "Asia/Manila",
-})
+const MATERIAL_REQUEST_NUMBER_PATTERN = /^MRS-(PO|JO|OTHERS)-(\d{6})$/
 const REQUEST_NUMBER_SEQUENCE_DIGITS = 6
 const QUANTITY_TOLERANCE = 0.0005
 const ACKNOWLEDGE_RECEIPT_MAX_RETRIES = 3
@@ -171,17 +166,13 @@ const computeMaterialRequestTotals = (params: {
   }
 }
 
-const getRequestNumberDateStamp = (): string => {
-  return REQUEST_NUMBER_DATE_FORMAT.format(new Date()).replace(/-/g, "")
-}
-
 const parseRequestNumberSequence = (requestNumber: string): number => {
-  const suffix = requestNumber.split("-").at(-1) ?? ""
-  if (!/^\d+$/.test(suffix)) {
+  const match = MATERIAL_REQUEST_NUMBER_PATTERN.exec(requestNumber)
+  if (!match) {
     return 0
   }
 
-  const parsed = Number(suffix)
+  const parsed = Number(match[2] ?? "")
   return Number.isFinite(parsed) ? parsed : 0
 }
 
@@ -190,26 +181,27 @@ const generateMaterialRequestNumber = async (params: {
   series: string
   attemptOffset?: number
 }): Promise<string> => {
-  const stamp = getRequestNumberDateStamp()
-  const prefix = `MR-${params.series}-${stamp}-`
-  const latestRequest = await db.materialRequest.findFirst({
+  const seriesPrefix = `MRS-${params.series}-`
+  const existingRequestNumbers = await db.materialRequest.findMany({
     where: {
       companyId: params.companyId,
       requestNumber: {
-        startsWith: prefix,
+        startsWith: seriesPrefix,
       },
-    },
-    orderBy: {
-      requestNumber: "desc",
     },
     select: {
       requestNumber: true,
     },
   })
 
-  const nextSequence = parseRequestNumberSequence(latestRequest?.requestNumber ?? "") + 1 + (params.attemptOffset ?? 0)
+  const nextSequence =
+    existingRequestNumbers.reduce((maxSequence, request) => {
+      return Math.max(maxSequence, parseRequestNumberSequence(request.requestNumber))
+    }, 0) +
+    1 +
+    (params.attemptOffset ?? 0)
   const suffix = nextSequence.toString().padStart(REQUEST_NUMBER_SEQUENCE_DIGITS, "0")
-  return `${prefix}${suffix}`
+  return `${seriesPrefix}${suffix}`
 }
 
 const hasUniqueConflictTarget = (error: Prisma.PrismaClientKnownRequestError, fields: string[]): boolean => {

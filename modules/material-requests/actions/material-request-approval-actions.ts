@@ -279,6 +279,7 @@ export async function getMaterialRequestApprovalDecisionDetailsAction(
       requiredSteps: true,
       datePrepared: true,
       dateRequired: true,
+      purpose: true,
       grandTotal: true,
       requesterEmployee: {
         select: {
@@ -364,6 +365,7 @@ export async function getMaterialRequestApprovalDecisionDetailsAction(
       requiredSteps: request.requiredSteps,
       datePreparedLabel: toPhDateInputValue(request.datePrepared),
       dateRequiredLabel: toPhDateInputValue(request.dateRequired),
+      purpose: request.purpose,
       grandTotal: Number(request.grandTotal),
       totalItems,
       page: payload.page,

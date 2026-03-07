@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, type ComponentType } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -8,12 +8,13 @@ import {
   IconChartBar,
   IconChecklist,
   IconClockHour4,
+  IconFileInvoice,
   IconFileText,
   IconHome2,
   IconPackage,
   IconReceipt2,
+  IconSettings,
   IconUser,
-  IconUserCheck,
 } from "@tabler/icons-react"
 
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -32,9 +33,10 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { setActiveCompanyAction } from "@/modules/auth/actions/set-active-company-action"
-import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
-
-type PortalRole = CompanyRole
+import {
+  hasEmployeePortalCapability,
+  type EmployeePortalCapability,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type EmployeePortalCompany = {
   companyId: string
@@ -47,131 +49,158 @@ type EmployeePortalCompany = {
 type EmployeePortalSidebarProps = {
   companies: EmployeePortalCompany[]
   activeCompanyId: string
-  companyRole: PortalRole
-  canApproveRequests: boolean
-  canProcessMaterialRequests: boolean
-  canPostMaterialRequests: boolean
+  capabilities: EmployeePortalCapability[]
   taskCounts: {
     leaveApprovalPending: number
     overtimeApprovalPending: number
     materialRequestApprovalPending: number
     materialRequestProcessingPending: number
     materialRequestPostingPending: number
+    purchaseRequestApprovalPending: number
+    purchaseOrderPending: number
   }
 }
 
-const menuItems = [
+type SidebarItem = {
+  title: string
+  href: string
+  icon: ComponentType<{ className?: string }>
+  capability: EmployeePortalCapability
+}
+
+const menuItems: SidebarItem[] = [
   {
     title: "Dashboard",
     href: "/employee-portal",
     icon: IconHome2,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.dashboard.view",
   },
   {
     title: "My Payslips",
     href: "/employee-portal/payslips",
     icon: IconFileText,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.payslips.view",
   },
   {
     title: "Leave Requests",
     href: "/employee-portal/leaves",
     icon: IconCalendarEvent,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.leave_requests.view",
   },
   {
     title: "Overtime Requests",
     href: "/employee-portal/overtime",
     icon: IconClockHour4,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.overtime_requests.view",
   },
   {
     title: "Material Requests",
     href: "/employee-portal/material-requests",
     icon: IconPackage,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.material_requests.view",
   },
   {
     title: "Material Request KPI",
     href: "/employee-portal/material-request-kpis",
     icon: IconChartBar,
-    roles: ["COMPANY_ADMIN"],
-  },
-  {
-    title: "Receiving Reports",
-    href: "/employee-portal/material-request-receiving-reports",
-    icon: IconReceipt2,
-    roles: ["COMPANY_ADMIN"],
+    capability: "portal_routes.material_request_kpis.view",
   },
   {
     title: "My Profile",
     href: "/employee-portal/profile",
     icon: IconUser,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.profile.view",
   },
-] as const
+]
 
-const approverMenuItems = [
+const approverMenuItems: SidebarItem[] = [
   {
     title: "Leave Approvals",
     href: "/employee-portal/leave-approvals",
     icon: IconChecklist,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.leave_approvals.view",
   },
   {
     title: "Overtime Approvals",
     href: "/employee-portal/overtime-approvals",
     icon: IconChecklist,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.overtime_approvals.view",
   },
   {
-    title: "Material Request Approvals",
+    title: "MRS/PR Approvals",
     href: "/employee-portal/material-request-approvals",
     icon: IconChecklist,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.material_request_approvals.view",
   },
   {
     title: "Approval History",
     href: "/employee-portal/approval-history",
     icon: IconChecklist,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.approval_history.view",
   },
-] as const
+]
 
-const processingMenuItems = [
+const processingMenuItems: SidebarItem[] = [
   {
     title: "Material Request Processing",
     href: "/employee-portal/material-request-processing",
     icon: IconPackage,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.material_request_processing.view",
   },
-] as const
+  {
+    title: "Purchase Orders",
+    href: "/employee-portal/purchase-orders",
+    icon: IconFileInvoice,
+    capability: "portal_routes.purchase_orders.view",
+  },
+  {
+    title: "Goods Receipt PO",
+    href: "/employee-portal/goods-receipt-pos",
+    icon: IconReceipt2,
+    capability: "portal_routes.goods_receipt_pos.view",
+  },
+]
 
-const postingMenuItems = [
+const postingMenuItems: SidebarItem[] = [
   {
     title: "Material Request Posting",
     href: "/employee-portal/material-request-posting",
     icon: IconPackage,
-    roles: ["EMPLOYEE", "COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN", "APPROVER"],
+    capability: "portal_routes.material_request_posting.view",
   },
-] as const
-
-const adminMenuItems = [
   {
-    title: "Request Approvers",
-    href: "/employee-portal/approvers",
-    icon: IconUserCheck,
-    roles: ["COMPANY_ADMIN", "HR_ADMIN", "PAYROLL_ADMIN"],
+    title: "Receiving Reports",
+    href: "/employee-portal/material-request-receiving-reports",
+    icon: IconReceipt2,
+    capability: "portal_routes.material_request_receiving_reports.view",
   },
-] as const
+]
+
+const procurementMenuItems: SidebarItem[] = [
+  {
+    title: "MRS/PR Settings",
+    href: "/employee-portal/request-settings",
+    icon: IconSettings,
+    capability: "portal_routes.request_settings.view",
+  },
+  {
+    title: "Global Item Catalog",
+    href: "/employee-portal/procurement-item-catalog",
+    icon: IconPackage,
+    capability: "portal_routes.procurement_item_catalog.view",
+  },
+  {
+    title: "Purchase Requests",
+    href: "/employee-portal/purchase-requests",
+    icon: IconPackage,
+    capability: "portal_routes.purchase_requests.view",
+  },
+]
 
 export function EmployeePortalSidebar({
   companies,
   activeCompanyId,
-  companyRole,
-  canApproveRequests,
-  canProcessMaterialRequests,
-  canPostMaterialRequests,
+  capabilities,
   taskCounts,
 }: EmployeePortalSidebarProps) {
   const pathname = usePathname()
@@ -197,32 +226,34 @@ export function EmployeePortalSidebar({
     router.refresh()
   }
 
-  const isAdminRole = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN"
   const changeLogHref = `/${activeCompanyId}/employee-portal/change-log`
   const isChangeLogActive = pathname === changeLogHref || pathname.startsWith(`${changeLogHref}/`)
-  const visibleMenuItems = menuItems.filter((item) => (item.roles as readonly PortalRole[]).includes(companyRole))
-  const visibleApproverItems = (canApproveRequests || isAdminRole)
-    ? approverMenuItems.filter((item) => item.roles.includes(companyRole))
-    : []
-  const visibleProcessingItems = (canProcessMaterialRequests || isAdminRole)
-    ? processingMenuItems.filter((item) => item.roles.includes(companyRole))
-    : []
-  const visiblePostingItems = (canPostMaterialRequests || isAdminRole)
-    ? postingMenuItems.filter((item) => item.roles.includes(companyRole))
-    : []
-  const visibleAdminItems = isAdminRole
-    ? adminMenuItems.filter((item) => item.roles.includes(companyRole))
-    : []
+  const canViewChangeLog = hasEmployeePortalCapability(capabilities, "portal_routes.change_log.view")
+  const visibleMenuItems = menuItems.filter((item) => hasEmployeePortalCapability(capabilities, item.capability))
+  const visibleApproverItems = approverMenuItems.filter((item) =>
+    hasEmployeePortalCapability(capabilities, item.capability)
+  )
+  const visibleProcessingItems = processingMenuItems.filter((item) =>
+    hasEmployeePortalCapability(capabilities, item.capability)
+  )
+  const visiblePostingItems = postingMenuItems.filter((item) =>
+    hasEmployeePortalCapability(capabilities, item.capability)
+  )
+  const visibleProcurementItems = procurementMenuItems.filter((item) =>
+    hasEmployeePortalCapability(capabilities, item.capability)
+  )
 
   const taskCountByHref: Record<string, number> = {
     "/employee-portal/leave-approvals": taskCounts.leaveApprovalPending,
     "/employee-portal/overtime-approvals": taskCounts.overtimeApprovalPending,
-    "/employee-portal/material-request-approvals": taskCounts.materialRequestApprovalPending,
+    "/employee-portal/material-request-approvals":
+      taskCounts.materialRequestApprovalPending + taskCounts.purchaseRequestApprovalPending,
     "/employee-portal/material-request-processing": taskCounts.materialRequestProcessingPending,
     "/employee-portal/material-request-posting": taskCounts.materialRequestPostingPending,
+    "/employee-portal/purchase-orders": taskCounts.purchaseOrderPending,
   }
 
-  const renderItem = (item: { title: string; href: string; icon: (typeof menuItems)[number]["icon"] }) => {
+  const renderItem = (item: SidebarItem) => {
     const href = `/${activeCompanyId}${item.href}`
     const isActive =
       item.href === "/employee-portal"
@@ -239,8 +270,8 @@ export function EmployeePortalSidebar({
           className={cn(
             "h-8 rounded-none px-3 transition-all duration-200",
             isActive
-              ? "bg-primary/10 text-primary font-mono font-bold border-l-2 border-primary"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50 font-medium"
+              ? "border-l-2 border-primary bg-primary/10 font-mono font-bold text-primary"
+              : "font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
           )}
         >
           <Link href={href} className="flex w-full items-center gap-2.5">
@@ -275,6 +306,17 @@ export function EmployeePortalSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {visibleProcurementItems.length > 0 ? (
+          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
+            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
+              Procurement
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5 px-1.5">{visibleProcurementItems.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+
         {visibleApproverItems.length > 0 ? (
           <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
             <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
@@ -300,21 +342,10 @@ export function EmployeePortalSidebar({
         {visiblePostingItems.length > 0 ? (
           <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
             <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
-              Posting
+              Acctg Posting
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5 px-1.5">{visiblePostingItems.map(renderItem)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ) : null}
-
-        {visibleAdminItems.length > 0 ? (
-          <SidebarGroup className="mb-1.5 border-t border-border/40 p-0 pt-1.5">
-            <SidebarGroupLabel className="px-5 pb-0.5 pt-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.11em] text-muted-foreground/70">
-              Administration
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5 px-1.5">{visibleAdminItems.map(renderItem)}</SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
@@ -322,15 +353,17 @@ export function EmployeePortalSidebar({
 
       <SidebarFooter className="border-t border-border/40 px-3 py-2">
         <div className="flex items-center justify-end">
-          <Link
-            href={changeLogHref}
-            className={cn(
-              "text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline group-data-[collapsible=icon]:hidden",
-              isChangeLogActive ? "text-foreground underline" : ""
-            )}
-          >
-            Change Log
-          </Link>
+          {canViewChangeLog ? (
+            <Link
+              href={changeLogHref}
+              className={cn(
+                "text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline group-data-[collapsible=icon]:hidden",
+                isChangeLogActive ? "text-foreground underline" : ""
+              )}
+            >
+              Change Log
+            </Link>
+          ) : null}
         </div>
       </SidebarFooter>
 

@@ -105,13 +105,13 @@ model Employee {
   headedDivisions    Division[]   @relation("DivisionHead")
 
   // Work Schedule
-  workScheduleId      String?
-  workSchedule        WorkSchedule? @relation(fields: [workScheduleId], references: [id])
-  isNightDiffEligible Boolean       @default(false)
-  isOvertimeEligible  Boolean       @default(true)
-  isAuthorizedSignatory Boolean     @default(false)
-  isWfhEligible       Boolean       @default(false)
-  wfhSchedule         String?
+  workScheduleId        String?
+  workSchedule          WorkSchedule? @relation(fields: [workScheduleId], references: [id])
+  isNightDiffEligible   Boolean       @default(false)
+  isOvertimeEligible    Boolean       @default(true)
+  isAuthorizedSignatory Boolean       @default(false)
+  isWfhEligible         Boolean       @default(false)
+  wfhSchedule           String?
 
   // Tax Information
   taxStatusId                 TaxStatus?
@@ -163,6 +163,7 @@ model Employee {
   leaveRequestsSupervisorApproved LeaveRequest[]            @relation("LeaveSupervisorApprover")
   leaveRequestsHRApproved         LeaveRequest[]            @relation("LeaveHRApprover")
   materialRequestsRequested       MaterialRequest[]         @relation("MaterialRequestRequesterEmployee")
+  purchaseRequestsRequested       PurchaseRequest[]         @relation("PurchaseRequestRequesterEmployee")
   loans                           Loan[]
   loanCoMaker                     Loan[]                    @relation("LoanCoMaker")
   recurringDeductions             RecurringDeduction[]

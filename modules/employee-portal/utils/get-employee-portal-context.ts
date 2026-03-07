@@ -4,26 +4,41 @@ import {
   MaterialRequestProcessingStatus,
   MaterialRequestStatus,
   MaterialRequestStepStatus,
+  PurchaseOrderStatus,
+  PurchaseRequestStatus,
   RequestStatus,
 } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { getActiveCompanyContext, getUserCompanyOptions } from "@/modules/auth/utils/active-company-context"
 import type { CompanyRole } from "@/modules/auth/utils/authorization-policy"
+import {
+  getEmployeePortalCapabilities,
+  resolveEmployeePortalCapabilityScopes,
+  toEmployeePortalCapabilityOverrideEntries,
+  type EmployeePortalAccessSnapshot,
+  type EmployeePortalCapabilityScopes,
+  type EmployeePortalCapability,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 export type EmployeePortalContext = {
   userId: string
   companyId: string
   companyName: string
   companyRole: CompanyRole
+  capabilities: EmployeePortalCapability[]
+  capabilityScopes: EmployeePortalCapabilityScopes
+  accessSnapshot: EmployeePortalAccessSnapshot
+  purchaseRequestWorkflowEnabled: boolean
   user: {
     firstName: string
     lastName: string
-    email: string
+    username: string
   } | null
   isRequestApprover: boolean
   isMaterialRequestPurchaser: boolean
   isMaterialRequestPoster: boolean
+  isPurchaseRequestItemManager: boolean
   companies: Awaited<ReturnType<typeof getUserCompanyOptions>>
   employee: {
     id: string
@@ -31,6 +46,7 @@ export type EmployeePortalContext = {
     photoUrl: string | null
     firstName: string
     lastName: string
+    branch: { name: string } | null
     hireDate: Date
     regularizationDate: Date | null
     department: { name: string } | null
@@ -38,7 +54,7 @@ export type EmployeePortalContext = {
     employmentStatus: { name: string } | null
     employmentType: { name: string } | null
     user: {
-      email: string
+      username: string
       isRequestApprover: boolean
       isMaterialRequestPurchaser: boolean
       isMaterialRequestPoster: boolean
@@ -50,6 +66,8 @@ export type EmployeePortalContext = {
     materialRequestApprovalPending: number
     materialRequestProcessingPending: number
     materialRequestPostingPending: number
+    purchaseRequestApprovalPending: number
+    purchaseOrderPending: number
   }
 }
 
@@ -64,7 +82,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     getUserCompanyOptions(session.user.id),
   ])
 
-  const [employeeRecord, userRecord, activeCompanyAccess] = await Promise.all([
+  const [employeeRecord, userRecord, activeCompanyAccess, companyFeature, capabilityOverrides] = await Promise.all([
     db.employee.findFirst({
       where: {
         userId: session.user.id,
@@ -78,6 +96,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
         photoUrl: true,
         firstName: true,
         lastName: true,
+        branch: { select: { name: true } },
         hireDate: true,
         regularizationDate: true,
         department: { select: { name: true } },
@@ -86,7 +105,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
         employmentType: { select: { name: true } },
         user: {
           select: {
-            email: true,
+            username: true,
           },
         },
       },
@@ -96,7 +115,7 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
       select: {
         firstName: true,
         lastName: true,
-        email: true,
+        username: true,
         isRequestApprover: true,
       },
     }),
@@ -109,6 +128,25 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
       select: {
         isMaterialRequestPurchaser: true,
         isMaterialRequestPoster: true,
+        isPurchaseRequestItemManager: true,
+      },
+    }),
+    db.company.findUnique({
+      where: {
+        id: activeCompany.companyId,
+      },
+      select: {
+        enablePurchaseRequestWorkflow: true,
+      },
+    }),
+    db.employeePortalCapabilityOverride.findMany({
+      where: {
+        userId: session.user.id,
+        companyId: activeCompany.companyId,
+      },
+      select: {
+        capability: true,
+        accessScope: true,
       },
     }),
   ])
@@ -116,13 +154,14 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
   const isRequestApprover = Boolean(userRecord?.isRequestApprover)
   const isMaterialRequestPurchaser = Boolean(activeCompanyAccess?.isMaterialRequestPurchaser)
   const isMaterialRequestPoster = Boolean(activeCompanyAccess?.isMaterialRequestPoster)
+  const isPurchaseRequestItemManager = Boolean(activeCompanyAccess?.isPurchaseRequestItemManager)
 
   const employee = employeeRecord
     ? {
         ...employeeRecord,
         user: employeeRecord.user
           ? {
-              email: employeeRecord.user.email,
+              username: employeeRecord.user.username,
               isRequestApprover,
               isMaterialRequestPurchaser,
               isMaterialRequestPoster,
@@ -133,10 +172,24 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
 
   const companyRole = activeCompany.companyRole as CompanyRole
   const isHR = companyRole === "COMPANY_ADMIN" || companyRole === "HR_ADMIN" || companyRole === "PAYROLL_ADMIN"
+  const purchaseRequestWorkflowEnabled = Boolean(companyFeature?.enablePurchaseRequestWorkflow)
   const canApprove = isHR || isRequestApprover
   const canProcess = isHR || isMaterialRequestPurchaser
   const canPost = isHR || isMaterialRequestPoster
+  const canManagePurchaseOrders = purchaseRequestWorkflowEnabled && (isHR || isMaterialRequestPurchaser)
   const accessibleCompanyIds = companies.map((company) => company.companyId)
+  const accessSnapshot: EmployeePortalAccessSnapshot = {
+    companyRole,
+    purchaseRequestWorkflowEnabled,
+    isRequestApprover,
+    isMaterialRequestPurchaser,
+    isMaterialRequestPoster,
+    isPurchaseRequestItemManager,
+    hasEmployeeProfile: Boolean(employeeRecord?.id),
+  }
+  const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(capabilityOverrides)
+  const capabilities = getEmployeePortalCapabilities(accessSnapshot, normalizedOverrides)
+  const capabilityScopes = resolveEmployeePortalCapabilityScopes(accessSnapshot, normalizedOverrides)
 
   const [
     leaveApprovalPending,
@@ -144,6 +197,8 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     materialRequestApprovalPending,
     materialRequestProcessingPending,
     materialRequestPostingPending,
+    purchaseRequestApprovalPending,
+    purchaseOrderPending,
   ] = await Promise.all([
     canApprove
       ? db.leaveRequest.count({
@@ -256,6 +311,44 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
           },
         })
       : Promise.resolve(0),
+    purchaseRequestWorkflowEnabled && canApprove
+      ? db.purchaseRequest.count({
+          where: {
+            companyId: {
+              in: accessibleCompanyIds,
+            },
+            company: {
+              enablePurchaseRequestWorkflow: true,
+            },
+            status: PurchaseRequestStatus.PENDING_APPROVAL,
+            OR: [1, 2, 3, 4].map((stepNumber) => ({
+              currentStep: stepNumber,
+              steps: {
+                some: {
+                  approverUserId: session.user.id,
+                  status: MaterialRequestStepStatus.PENDING,
+                  stepNumber,
+                },
+              },
+            })),
+          },
+        })
+      : Promise.resolve(0),
+    canManagePurchaseOrders
+      ? db.purchaseOrder.count({
+          where: {
+            companyId: activeCompany.companyId,
+            status: {
+              in: [
+                PurchaseOrderStatus.DRAFT,
+                PurchaseOrderStatus.OPEN,
+                PurchaseOrderStatus.PARTIALLY_RECEIVED,
+                PurchaseOrderStatus.FULLY_RECEIVED,
+              ],
+            },
+          },
+        })
+      : Promise.resolve(0),
   ])
 
   return {
@@ -263,16 +356,21 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
     companyId: activeCompany.companyId,
     companyName: activeCompany.companyName,
     companyRole,
+    capabilities,
+    capabilityScopes,
+    accessSnapshot,
+    purchaseRequestWorkflowEnabled,
     user: userRecord
       ? {
           firstName: userRecord.firstName,
           lastName: userRecord.lastName,
-          email: userRecord.email,
+          username: userRecord.username,
         }
       : null,
     isRequestApprover,
     isMaterialRequestPurchaser,
     isMaterialRequestPoster,
+    isPurchaseRequestItemManager,
     companies,
     employee,
     taskCounts: {
@@ -281,6 +379,8 @@ export async function getEmployeePortalContext(companyId: string): Promise<Emplo
       materialRequestApprovalPending,
       materialRequestProcessingPending,
       materialRequestPostingPending,
+      purchaseRequestApprovalPending,
+      purchaseOrderPending,
     },
   }
 }

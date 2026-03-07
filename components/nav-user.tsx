@@ -55,7 +55,7 @@ export function NavUser({
 }: {
   user: {
     name: string
-    email: string
+    username: string
     avatar?: string | null
   }
   inSidebar?: boolean
@@ -103,7 +103,7 @@ export function NavUser({
         }
       >
         <span className="truncate font-medium text-foreground">{user.name}</span>
-        <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+        <span className="truncate text-xs text-muted-foreground">{user.username}</span>
       </div>
       <IconSelector className={cn("ml-auto size-4", isCompactOnMobile && "hidden sm:block")} />
     </>
@@ -124,7 +124,7 @@ export function NavUser({
           </Avatar>
           <div className="grid flex-1 text-left text-sm leading-tight">
             <span className="truncate font-medium text-foreground">{user.name}</span>
-            <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+            <span className="truncate text-xs text-muted-foreground">{user.username}</span>
           </div>
         </div>
       </DropdownMenuLabel>

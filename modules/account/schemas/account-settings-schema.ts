@@ -1,18 +1,12 @@
 import { z } from "zod"
 
 const userNameSchema = z.string().trim().min(1, "This field is required.").max(100, "Maximum length is 100 characters.")
-const userEmailSchema = z
-  .string()
-  .trim()
-  .email("Please enter a valid email address.")
-  .max(320, "Maximum length is 320 characters.")
 const passwordSchema = z.string().min(8, "Password must be at least 8 characters.").max(128, "Password is too long.")
 
 export const updateOwnProfileInputSchema = z.object({
   companyId: z.string().uuid(),
   firstName: userNameSchema,
   lastName: userNameSchema,
-  email: userEmailSchema,
 })
 
 export const changeOwnPasswordInputSchema = z

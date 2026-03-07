@@ -24,14 +24,13 @@ type AccountSettingsPageProps = {
   initialProfile: {
     firstName: string
     lastName: string
-    email: string
+    username: string
   }
 }
 
 type ProfileFormState = {
   firstName: string
   lastName: string
-  email: string
 }
 
 type PasswordFormState = {
@@ -77,7 +76,6 @@ export function AccountSettingsPage({ companyId, companyName, initialProfile }: 
         companyId,
         firstName: profile.firstName,
         lastName: profile.lastName,
-        email: profile.email,
       })
 
       if (!result.ok) {
@@ -88,7 +86,6 @@ export function AccountSettingsPage({ companyId, companyName, initialProfile }: 
       const updatedProfile = {
         firstName: profile.firstName.trim(),
         lastName: profile.lastName.trim(),
-        email: profile.email.trim(),
       }
       setSavedProfile(updatedProfile)
       setProfile(updatedProfile)
@@ -148,7 +145,7 @@ export function AccountSettingsPage({ companyId, companyName, initialProfile }: 
               <IconAt className="size-4 text-primary" />
               Profile Information
             </h2>
-            <p className="text-sm text-muted-foreground">These details are used for your login identity and account display.</p>
+            <p className="text-sm text-muted-foreground">These details are used for your account display. Login uses your assigned username.</p>
           </div>
 
           <Separator />
@@ -183,17 +180,15 @@ export function AccountSettingsPage({ companyId, companyName, initialProfile }: 
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="account-email">
-              Email Address
-              <Required />
+            <Label htmlFor="account-username">
+              Username
             </Label>
             <Input
-              id="account-email"
-              type="email"
-              value={profile.email}
-              onChange={(event) => updateProfileField("email", event.target.value)}
-              disabled={isProfilePending}
-              autoComplete="email"
+              id="account-username"
+              value={initialProfile.username}
+              disabled
+              readOnly
+              autoComplete="username"
             />
           </div>
 

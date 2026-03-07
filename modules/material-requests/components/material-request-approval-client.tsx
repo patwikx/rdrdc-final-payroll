@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   IconCheck,
   IconExternalLink,
@@ -22,7 +23,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
@@ -33,6 +33,15 @@ import {
   getMaterialRequestsForMyApprovalAction,
   rejectMaterialRequestStepAction,
 } from "@/modules/material-requests/actions/material-request-approval-actions"
+import {
+  approvePurchaseRequestAction,
+  getPurchaseRequestApprovalDecisionDetailsAction,
+  rejectPurchaseRequestAction,
+} from "@/modules/procurement/actions/purchase-request-actions"
+import type {
+  PurchaseRequestApprovalDecisionDetail,
+  PurchaseRequestApprovalQueueRow,
+} from "@/modules/procurement/types/purchase-request-types"
 import type {
   EmployeePortalMaterialRequestDepartmentOption,
   EmployeePortalMaterialRequestApprovalDecisionDetail,
@@ -57,6 +66,7 @@ type MaterialRequestApprovalClientProps = {
   initialHistoryTotal: number
   initialHistoryPage: number
   initialHistoryPageSize: number
+  purchaseRequestRows?: PurchaseRequestApprovalQueueRow[]
   view?: "queue" | "history" | "both"
 }
 
@@ -102,14 +112,17 @@ export function MaterialRequestApprovalClient({
   initialHistoryTotal,
   initialHistoryPage,
   initialHistoryPageSize,
+  purchaseRequestRows = [],
   view = "both",
 }: MaterialRequestApprovalClientProps) {
+  const router = useRouter()
   const queueRequestTokenRef = useRef(0)
   const queueSearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRequestTokenRef = useRef(0)
   const historySearchDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
   const [decisionType, setDecisionType] = useState<"approve" | "reject">("approve")
+  const [decisionRequestType, setDecisionRequestType] = useState<"material" | "purchase">("material")
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [selectedRequestCompanyId, setSelectedRequestCompanyId] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
@@ -123,6 +136,7 @@ export function MaterialRequestApprovalClient({
   const [isPending, startTransition] = useTransition()
   const [isQueuePending, startQueueTransition] = useTransition()
   const [isDetailPending, startDetailTransition] = useTransition()
+  const [isPurchaseDetailPending, startPurchaseDetailTransition] = useTransition()
   const [isHistoryPending, startHistoryTransition] = useTransition()
   const [isHistoryDetailPending, startHistoryDetailTransition] = useTransition()
   const [queuePage, setQueuePage] = useState(initialQueuePage)
@@ -140,11 +154,18 @@ export function MaterialRequestApprovalClient({
   const [historyDetailsById, setHistoryDetailsById] = useState<Record<string, EmployeePortalMaterialRequestApprovalHistoryDetail>>({})
   const [historyDetailErrorById, setHistoryDetailErrorById] = useState<Record<string, string>>({})
   const [historyDetailLoadingId, setHistoryDetailLoadingId] = useState<string | null>(null)
+  const [purchaseQueueRowsState, setPurchaseQueueRowsState] = useState(purchaseRequestRows)
+  const [purchaseDecisionDetail, setPurchaseDecisionDetail] = useState<PurchaseRequestApprovalDecisionDetail | null>(null)
+  const [purchaseDecisionDetailError, setPurchaseDecisionDetailError] = useState<string | null>(null)
 
   const queueItemsPerPage = initialQueuePageSize
   const historyItemsPerPage = Number(historyPageSize)
   const DECISION_ITEMS_PAGE_SIZE = 8
   const selectedRequest = useMemo(() => queueRowsState.find((row) => row.id === selectedRequestId) ?? null, [queueRowsState, selectedRequestId])
+  const selectedPurchaseRequest = useMemo(
+    () => purchaseQueueRowsState.find((row) => row.id === selectedRequestId) ?? null,
+    [purchaseQueueRowsState, selectedRequestId]
+  )
   const queueDepartmentOptions = useMemo(
     () =>
       queueCompanyId === "ALL"
@@ -174,11 +195,48 @@ export function MaterialRequestApprovalClient({
         requesters: new Set<string>(),
       }
     )
+
+    for (const purchaseRow of purchaseQueueRowsState) {
+      summary.totalAmount += purchaseRow.grandTotal
+      summary.requesters.add(purchaseRow.requesterEmployeeNumber)
+    }
+
     return {
       ...summary,
-      requests: queueTotal,
+      requests: queueTotal + purchaseQueueRowsState.length,
     }
-  }, [queueRowsState, queueTotal])
+  }, [queueRowsState, queueTotal, purchaseQueueRowsState])
+
+  const queueFilteredPurchaseRows = useMemo(() => {
+    const query = queueSearch.trim().toLowerCase()
+    return purchaseQueueRowsState.filter((row) => {
+      if (queueCompanyId !== "ALL" && row.companyId !== queueCompanyId) {
+        return false
+      }
+
+      if (queueDepartmentId !== "ALL" && row.departmentId !== queueDepartmentId) {
+        return false
+      }
+
+      if (!query) {
+        return true
+      }
+
+      const haystack = [
+        row.requestNumber,
+        row.requesterName,
+        row.requesterEmployeeNumber,
+        row.departmentName,
+        row.companyName,
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [purchaseQueueRowsState, queueCompanyId, queueDepartmentId, queueSearch])
+
+  const combinedQueueTotal = queueTotal + queueFilteredPurchaseRows.length
 
   const queueTotalPages = Math.max(1, Math.ceil(queueTotal / queueItemsPerPage))
   const activeQueuePage = Math.min(queuePage, queueTotalPages)
@@ -326,15 +384,51 @@ export function MaterialRequestApprovalClient({
     })
   }
 
+  const loadPurchaseDecisionDetail = (requestId: string, requestCompanyId: string, page: number) => {
+    setPurchaseDecisionDetailError(null)
+    startPurchaseDetailTransition(async () => {
+      const response = await getPurchaseRequestApprovalDecisionDetailsAction({
+        companyId: requestCompanyId,
+        requestId,
+        page,
+        pageSize: DECISION_ITEMS_PAGE_SIZE,
+      })
+
+      if (!response.ok) {
+        setPurchaseDecisionDetailError(response.error)
+        return
+      }
+
+      setPurchaseDecisionDetail(response.data)
+    })
+  }
+
   const openDecisionDialog = (request: EmployeePortalMaterialRequestApprovalQueueRow, type: "approve" | "reject") => {
+    setDecisionRequestType("material")
     setSelectedRequestId(request.id)
     setSelectedRequestCompanyId(request.companyId)
     setDecisionType(type)
     setRemarks("")
     setDecisionDetail(null)
     setDecisionDetailError(null)
+    setPurchaseDecisionDetail(null)
+    setPurchaseDecisionDetailError(null)
     setOpen(true)
     loadDecisionDetail(request.id, request.companyId, 1)
+  }
+
+  const openPurchaseDecisionDialog = (request: PurchaseRequestApprovalQueueRow, type: "approve" | "reject") => {
+    setDecisionRequestType("purchase")
+    setSelectedRequestId(request.id)
+    setSelectedRequestCompanyId(request.companyId)
+    setDecisionType(type)
+    setRemarks("")
+    setDecisionDetail(null)
+    setDecisionDetailError(null)
+    setPurchaseDecisionDetail(null)
+    setPurchaseDecisionDetailError(null)
+    setOpen(true)
+    loadPurchaseDecisionDetail(request.id, request.companyId, 1)
   }
 
   const toggleHistoryDetails = (request: EmployeePortalMaterialRequestApprovalHistoryRow) => {
@@ -379,6 +473,49 @@ export function MaterialRequestApprovalClient({
 
   const submitDecision = () => {
     if (!selectedRequestId || !selectedRequestCompanyId) {
+      return
+    }
+
+    if (decisionRequestType === "purchase") {
+      const purchaseRequest = purchaseQueueRowsState.find((row) => row.id === selectedRequestId)
+      if (!purchaseRequest) {
+        toast.error("Purchase request not found in approval queue.")
+        return
+      }
+
+      const decisionRemarks = remarks.trim()
+      if (decisionType === "reject" && decisionRemarks.length === 0) {
+        toast.error("Rejection remarks are required.")
+        return
+      }
+
+      setOpen(false)
+
+      startTransition(async () => {
+        const response =
+          decisionType === "approve"
+            ? await approvePurchaseRequestAction({
+                companyId: purchaseRequest.companyId,
+                requestId: purchaseRequest.id,
+                remarks: decisionRemarks.length > 0 ? decisionRemarks : undefined,
+              })
+            : await rejectPurchaseRequestAction({
+                companyId: purchaseRequest.companyId,
+                requestId: purchaseRequest.id,
+                remarks: decisionRemarks,
+              })
+
+        if (!response.ok) {
+          setOpen(true)
+          toast.error(response.error)
+          return
+        }
+
+        setPurchaseQueueRowsState((rowsState) => rowsState.filter((row) => row.id !== purchaseRequest.id))
+        toast.success(response.message)
+        router.refresh()
+      })
+
       return
     }
 
@@ -438,13 +575,34 @@ export function MaterialRequestApprovalClient({
     historyStatus !== "ALL" ||
     historyCompanyId !== "ALL" ||
     historyDepartmentId !== "ALL"
+  const isMaterialDecision = decisionRequestType === "material"
+  const activeDecisionRequest = isMaterialDecision
+    ? (decisionDetail ?? selectedRequest)
+    : (purchaseDecisionDetail ?? selectedPurchaseRequest)
+  const activeDecisionRequesterPhotoUrl = isMaterialDecision
+    ? selectedRequest?.requesterPhotoUrl
+    : selectedPurchaseRequest?.requesterPhotoUrl
+  const activeDecisionPurpose = isMaterialDecision ? decisionDetail?.purpose : purchaseDecisionDetail?.purpose
+  const activeDecisionItems = isMaterialDecision ? (decisionDetail?.items ?? []) : (purchaseDecisionDetail?.items ?? [])
+  const activeDecisionTotalItems = isMaterialDecision
+    ? (decisionDetail?.totalItems ?? 0)
+    : (purchaseDecisionDetail?.totalItems ?? 0)
+  const activeDecisionPage = isMaterialDecision ? decisionDetail?.page : purchaseDecisionDetail?.page
+  const activeDecisionPageSize = isMaterialDecision ? decisionDetail?.pageSize : purchaseDecisionDetail?.pageSize
+  const activeDecisionTotalPages = activeDecisionPageSize
+    ? Math.max(1, Math.ceil(activeDecisionTotalItems / activeDecisionPageSize))
+    : 1
+  const isDecisionItemsLoading = isMaterialDecision
+    ? isDetailPending && !decisionDetail
+    : isPurchaseDetailPending && !purchaseDecisionDetail
+  const activeDecisionDetailError = isMaterialDecision ? decisionDetailError : purchaseDecisionDetailError
 
   return (
     <div className="w-full min-h-screen bg-background pb-8 animate-in fade-in duration-500">
       <div className="border-b border-border/60 bg-muted/30 px-4 py-4 sm:px-6">
         <p className="text-xs text-muted-foreground">Approval Workspace</p>
         <div className="mt-2 flex items-center gap-4">
-          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Material Request Approvals</h1>
+          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">MRS/PR Approvals</h1>
           <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
             {isHR ? "HR/Admin Reviewer" : "Assigned Reviewer"}
           </div>
@@ -494,11 +652,11 @@ export function MaterialRequestApprovalClient({
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Approval Queue</h2>
             <span className="text-xs text-muted-foreground">
-              {queueTotal} records{isQueuePending ? " • Loading..." : ""}
+              {combinedQueueTotal} records{isQueuePending ? " • Loading..." : ""}
             </span>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="grid grid-cols-4 gap-2 lg:flex lg:items-center lg:flex-nowrap">
             <div className="relative col-span-3 sm:w-[360px]">
               <IconSearch className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -588,7 +746,7 @@ export function MaterialRequestApprovalClient({
               <span className="hidden sm:inline">Clear Filters</span>
             </Button>
             {view === "queue" ? (
-              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg sm:ml-auto sm:w-auto">
+              <Button asChild variant="outline" className="col-span-3 w-full rounded-lg lg:ml-auto lg:w-auto">
                 <Link href={`/${companyId}/employee-portal/approval-history`}>
                   View Approval History
                 </Link>
@@ -602,11 +760,11 @@ export function MaterialRequestApprovalClient({
             </div>
           ) : null}
 
-          {queueTotal === 0 && !hasQueueFilters ? (
+          {combinedQueueTotal === 0 && !hasQueueFilters ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-              No material requests pending your current approval step.
+              No requests pending your current approval step.
             </div>
-          ) : queueRowsState.length === 0 ? (
+          ) : queueRowsState.length === 0 && queueFilteredPurchaseRows.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/60 bg-muted/30 p-10 text-center text-sm text-muted-foreground">
               No requests match the current filters.
             </div>
@@ -734,6 +892,93 @@ export function MaterialRequestApprovalClient({
                           </div>
                         </motion.div>
                       ))}
+                  {queueFilteredPurchaseRows.map((row) => (
+                    <motion.div
+                      key={`purchase-queue-mobile-${row.id}`}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                      className="rounded-xl border border-border/60 bg-background p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Purchase Request</p>
+                          <p className="truncate whitespace-nowrap text-sm font-semibold text-foreground">{row.requestNumber}</p>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
+                          Step {row.currentStep}/{row.requiredSteps}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                            <AvatarImage
+                              src={row.requesterPhotoUrl ?? undefined}
+                              alt={row.requesterName}
+                              className="!rounded-md object-cover"
+                            />
+                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                              {getNameInitials(row.requesterName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">{row.requesterName}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {row.requesterEmployeeNumber} • {row.departmentName} • {row.companyName}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
+                          <p className="mt-0.5 text-xs font-medium text-foreground">{row.datePreparedLabel}</p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Date Required</p>
+                          <p className="mt-0.5 text-xs font-medium text-foreground">{row.dateRequiredLabel}</p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Amount</p>
+                          <p className="mt-0.5 text-xs font-medium text-foreground">PHP {currency.format(row.grandTotal)}</p>
+                        </div>
+                        <div className="rounded-md border border-border/60 bg-background px-2.5 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Submitted</p>
+                          <p className="mt-0.5 text-xs font-medium text-foreground">{row.submittedAtLabel ?? "-"}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-lg text-xs"
+                          disabled={isPending}
+                          onClick={() => openPurchaseDecisionDialog(row, "reject")}
+                        >
+                          <IconX className="mr-1 h-3.5 w-3.5" />
+                          Reject
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="rounded-lg bg-green-600 text-xs hover:bg-green-700"
+                          disabled={isPending}
+                          onClick={() => openPurchaseDecisionDialog(row, "approve")}
+                        >
+                          <IconCheck className="mr-1 h-3.5 w-3.5" />
+                          Approve
+                        </Button>
+                        <Button asChild type="button" size="sm" className="rounded-lg bg-primary text-xs hover:bg-primary/90">
+                          <Link href={`/${row.companyId}/employee-portal/purchase-requests/${row.id}`}>
+                            <IconExternalLink className="mr-1 h-3.5 w-3.5" />
+                            View
+                          </Link>
+                        </Button>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
 
                 <div className="hidden lg:block">
@@ -831,12 +1076,83 @@ export function MaterialRequestApprovalClient({
                           </div>
                         </motion.div>
                       ))}
+                  {queueFilteredPurchaseRows.map((row) => (
+                    <motion.div
+                      key={`purchase-queue-${row.id}`}
+                      layout
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                      className="hidden grid-cols-12 items-center gap-3 border-b border-border/60 px-3 py-2 last:border-b-0 hover:bg-muted/20 lg:grid"
+                    >
+                      <div className="col-span-1 truncate whitespace-nowrap text-xs text-foreground">{row.requestNumber}</div>
+                      <div className="col-span-2">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7 shrink-0 rounded-md border border-border/60 after:rounded-md">
+                            <AvatarImage
+                              src={row.requesterPhotoUrl ?? undefined}
+                              alt={row.requesterName}
+                              className="!rounded-md object-cover"
+                            />
+                            <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
+                              {getNameInitials(row.requesterName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <p className="truncate text-xs text-foreground">{row.requesterName}</p>
+                        </div>
+                      </div>
+                      <div className="col-span-1 text-xs text-foreground">
+                        <p className="truncate whitespace-nowrap" title={row.departmentName}>
+                          {row.departmentName}
+                        </p>
+                        <p className="truncate whitespace-nowrap text-[10px] text-muted-foreground" title={row.companyName}>
+                          {row.companyName}
+                        </p>
+                      </div>
+                      <div className="col-span-2 text-xs text-foreground">
+                        <p>{row.datePreparedLabel}</p>
+                        <p className="text-muted-foreground">to {row.dateRequiredLabel}</p>
+                      </div>
+                      <div className="col-span-1 text-sm text-foreground">{row.currentStep}/{row.requiredSteps}</div>
+                      <div className="col-span-2 text-sm font-medium text-foreground">PHP {currency.format(row.grandTotal)}</div>
+                      <div className="col-span-1 text-xs text-muted-foreground">{row.submittedAtLabel ?? "-"}</div>
+                      <div className="col-span-2 flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-lg"
+                          disabled={isPending}
+                          onClick={() => openPurchaseDecisionDialog(row, "reject")}
+                        >
+                          <IconX className="mr-1 h-3.5 w-3.5" />
+                          Reject
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="rounded-lg bg-green-600 hover:bg-green-700"
+                          disabled={isPending}
+                          onClick={() => openPurchaseDecisionDialog(row, "approve")}
+                        >
+                          <IconCheck className="mr-1 h-3.5 w-3.5" />
+                          Approve
+                        </Button>
+                        <Button asChild type="button" size="sm" className="rounded-lg bg-primary hover:bg-primary/90">
+                          <Link href={`/${row.companyId}/employee-portal/purchase-requests/${row.id}`}>
+                            <IconExternalLink className="h-3.5 w-3.5" />
+                            <span className="sr-only">View Purchase Request</span>
+                          </Link>
+                        </Button>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
 
                 {queueTotalPages > 1 ? (
                   <div className="flex flex-col gap-2 border-t border-border/60 bg-muted/30 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs text-muted-foreground">
-                      Page {activeQueuePage} of {queueTotalPages} • {queueTotal} records
+                      MR Page {activeQueuePage} of {queueTotalPages} • {queueTotal} material request records
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
@@ -1398,10 +1714,13 @@ export function MaterialRequestApprovalClient({
         onOpenChange={(nextOpen) => {
           setOpen(nextOpen)
           if (!nextOpen) {
+            setDecisionRequestType("material")
             setSelectedRequestId(null)
             setSelectedRequestCompanyId(null)
             setDecisionDetail(null)
             setDecisionDetailError(null)
+            setPurchaseDecisionDetail(null)
+            setPurchaseDecisionDetailError(null)
             setRemarks("")
           }
         }}
@@ -1409,11 +1728,13 @@ export function MaterialRequestApprovalClient({
         <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border-border/60 shadow-none sm:max-w-2xl">
           <DialogHeader className="mb-1.5 border-b border-border/60 pb-2">
             <DialogTitle className="text-base font-semibold">
-              {decisionType === "approve" ? "Approve Material Request" : "Reject Material Request"}
+              {decisionType === "approve"
+                ? `Approve ${isMaterialDecision ? "Material Request" : "Purchase Request"}`
+                : `Reject ${isMaterialDecision ? "Material Request" : "Purchase Request"}`}
             </DialogTitle>
             <DialogDescription className="break-words text-sm text-muted-foreground">
-              {(decisionDetail ?? selectedRequest)
-                ? `${(decisionDetail ?? selectedRequest)?.requestNumber} • ${(decisionDetail ?? selectedRequest)?.requesterName} • Step ${(decisionDetail ?? selectedRequest)?.currentStep}/${(decisionDetail ?? selectedRequest)?.requiredSteps}`
+              {activeDecisionRequest
+                ? `${activeDecisionRequest.requestNumber} • ${activeDecisionRequest.requesterName} • Step ${activeDecisionRequest.currentStep}/${activeDecisionRequest.requiredSteps}`
                 : "Confirm your decision."}
             </DialogDescription>
           </DialogHeader>
@@ -1425,26 +1746,23 @@ export function MaterialRequestApprovalClient({
                   <div className="flex min-w-0 flex-1 items-start gap-2.5">
                     <Avatar className="h-9 w-9 shrink-0 rounded-md border border-border/60 after:rounded-md">
                       <AvatarImage
-                        src={selectedRequest?.requesterPhotoUrl ?? undefined}
-                        alt={(decisionDetail ?? selectedRequest)?.requesterName ?? "Requester"}
+                        src={activeDecisionRequesterPhotoUrl ?? undefined}
+                        alt={activeDecisionRequest?.requesterName ?? "Requester"}
                         className="!rounded-md object-cover"
                       />
                       <AvatarFallback className="!rounded-md bg-primary/5 text-[10px] font-semibold text-primary">
-                        {getNameInitials((decisionDetail ?? selectedRequest)?.requesterName ?? "")}
+                        {getNameInitials(activeDecisionRequest?.requesterName ?? "")}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{(decisionDetail ?? selectedRequest)?.requesterName ?? "-"}</p>
+                      <p className="truncate text-sm font-semibold text-foreground">{activeDecisionRequest?.requesterName ?? "-"}</p>
                       <p className="truncate text-[11px] text-muted-foreground">
-                        {(decisionDetail ?? selectedRequest)?.requesterEmployeeNumber ?? "-"} • {(decisionDetail ?? selectedRequest)?.departmentName ?? "-"}
-                      </p>
-                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                        Request {(decisionDetail ?? selectedRequest)?.requestNumber ?? "-"}
+                        {activeDecisionRequest?.requesterEmployeeNumber ?? "-"} • {activeDecisionRequest?.departmentName ?? "-"}
                       </p>
                     </div>
                   </div>
                   <Badge variant="secondary" className="shrink-0 rounded-full text-[10px]">
-                    Step {(decisionDetail ?? selectedRequest)?.currentStep ?? "-"}/{(decisionDetail ?? selectedRequest)?.requiredSteps ?? "-"}
+                    Step {activeDecisionRequest?.currentStep ?? "-"}/{activeDecisionRequest?.requiredSteps ?? "-"}
                   </Badge>
                 </div>
               </div>
@@ -1453,41 +1771,48 @@ export function MaterialRequestApprovalClient({
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</p>
                   <p className="mt-0.5 text-xs font-medium text-foreground">
-                    PHP {currency.format(decisionDetail?.grandTotal ?? selectedRequest?.grandTotal ?? 0)}
+                    PHP {currency.format(activeDecisionRequest?.grandTotal ?? 0)}
                   </p>
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Prepared</p>
-                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.datePreparedLabel ?? "-"}</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{activeDecisionRequest?.datePreparedLabel ?? "-"}</p>
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Date Required</p>
-                  <p className="mt-0.5 text-xs font-medium text-foreground">{(decisionDetail ?? selectedRequest)?.dateRequiredLabel ?? "-"}</p>
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{activeDecisionRequest?.dateRequiredLabel ?? "-"}</p>
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
+              <div>
+                <Label className="text-xs text-foreground">Purpose</Label>
+                <p className="mt-1 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-foreground">
+                  {activeDecisionPurpose?.trim() || "-"}
+                </p>
+              </div>
+
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-foreground">Request Items</Label>
+                <Label className="text-xs text-foreground">Requested Items</Label>
                 <span className="text-xs text-muted-foreground">
-                  {decisionDetail ? `${decisionDetail.totalItems} items` : "Loading..."}
+                  {activeDecisionRequest ? `${activeDecisionTotalItems} items` : "Loading..."}
                 </span>
               </div>
 
-              {decisionDetailError ? (
+              {activeDecisionDetailError ? (
                 <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  {decisionDetailError}
+                  {activeDecisionDetailError}
                 </div>
               ) : null}
 
-              {isDetailPending && !decisionDetail ? (
+              {isDecisionItemsLoading ? (
                 <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
                   Loading request items...
                 </div>
               ) : null}
 
-              {decisionDetail ? (
+              {activeDecisionRequest ? (
                 <div className="space-y-2">
                   <div className="max-h-[28vh] overflow-y-auto rounded-lg border border-border/60 sm:max-h-56">
                     <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2 border-b border-border/60 bg-muted/30 px-2 py-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -1497,7 +1822,7 @@ export function MaterialRequestApprovalClient({
                       <p>Qty</p>
                       <p>Price</p>
                     </div>
-                    {decisionDetail.items.map((item) => (
+                    {activeDecisionItems.map((item) => (
                       <div key={item.id} className="border-b border-border/60 px-2 py-2 text-[11px] last:border-b-0">
                         <div className="grid grid-cols-[34px_minmax(0,1fr)_52px_64px_96px] items-center gap-2">
                           <p className="text-foreground">{item.lineNumber}</p>
@@ -1518,10 +1843,10 @@ export function MaterialRequestApprovalClient({
                     ))}
                   </div>
 
-                  {decisionDetail.totalItems > decisionDetail.pageSize ? (
+                  {activeDecisionTotalItems > (activeDecisionPageSize ?? 0) ? (
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-muted-foreground">
-                        Page {decisionDetail.page} of {Math.ceil(decisionDetail.totalItems / decisionDetail.pageSize)}
+                        Page {activeDecisionPage ?? 1} of {activeDecisionTotalPages}
                       </p>
                       <div className="flex items-center gap-2">
                         <Button
@@ -1529,12 +1854,23 @@ export function MaterialRequestApprovalClient({
                           variant="outline"
                           size="sm"
                           className="h-7 rounded-lg text-xs"
-                          disabled={isDetailPending || decisionDetail.page <= 1 || !selectedRequestId || !selectedRequestCompanyId}
+                          disabled={
+                            isDecisionItemsLoading ||
+                            (activeDecisionPage ?? 1) <= 1 ||
+                            !selectedRequestId ||
+                            !selectedRequestCompanyId
+                          }
                           onClick={() => {
-                            if (!selectedRequestId || !selectedRequestCompanyId) {
+                            if (!selectedRequestId || !selectedRequestCompanyId || !activeDecisionPage) {
                               return
                             }
-                            loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, decisionDetail.page - 1)
+
+                            if (isMaterialDecision) {
+                              loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, activeDecisionPage - 1)
+                              return
+                            }
+
+                            loadPurchaseDecisionDetail(selectedRequestId, selectedRequestCompanyId, activeDecisionPage - 1)
                           }}
                         >
                           Previous
@@ -1545,16 +1881,22 @@ export function MaterialRequestApprovalClient({
                           size="sm"
                           className="h-7 rounded-lg text-xs"
                           disabled={
-                            isDetailPending ||
-                            decisionDetail.page >= Math.ceil(decisionDetail.totalItems / decisionDetail.pageSize) ||
+                            isDecisionItemsLoading ||
+                            (activeDecisionPage ?? 1) >= activeDecisionTotalPages ||
                             !selectedRequestId ||
                             !selectedRequestCompanyId
                           }
                           onClick={() => {
-                            if (!selectedRequestId || !selectedRequestCompanyId) {
+                            if (!selectedRequestId || !selectedRequestCompanyId || !activeDecisionPage) {
                               return
                             }
-                            loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, decisionDetail.page + 1)
+
+                            if (isMaterialDecision) {
+                              loadDecisionDetail(selectedRequestId, selectedRequestCompanyId, activeDecisionPage + 1)
+                              return
+                            }
+
+                            loadPurchaseDecisionDetail(selectedRequestId, selectedRequestCompanyId, activeDecisionPage + 1)
                           }}
                         >
                           Next
@@ -1570,11 +1912,11 @@ export function MaterialRequestApprovalClient({
               <Label className="text-xs text-foreground">
                 {decisionType === "approve" ? "Approval Remarks (Optional)" : "Rejection Reason"}
               </Label>
-              <Textarea
+              <Input
                 value={remarks}
                 onChange={(event) => setRemarks(event.target.value)}
                 placeholder={decisionType === "approve" ? "Add remarks..." : "Provide rejection reason..."}
-                className="min-h-[84px] rounded-lg text-sm"
+                className="rounded-lg"
               />
             </div>
 
@@ -1586,7 +1928,7 @@ export function MaterialRequestApprovalClient({
                 type="button"
                 className={cn("rounded-lg sm:min-w-[96px]", decisionType === "reject" && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
                 onClick={submitDecision}
-                disabled={isPending || isDetailPending || Boolean(decisionDetailError)}
+                disabled={isPending || isDecisionItemsLoading || Boolean(activeDecisionDetailError)}
               >
                 {isPending ? "Saving..." : decisionType === "approve" ? "Approve" : "Reject"}
               </Button>

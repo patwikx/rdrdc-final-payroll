@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { db } from "@/lib/db"
 import { PayslipsClient } from "@/modules/employee-portal/components/payslips-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type PayslipsPageProps = {
   params: Promise<{ companyId: string }>
@@ -19,7 +20,7 @@ export default async function PayslipsPage({ params }: PayslipsPageProps) {
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
+  if (!hasEmployeePortalCapability(context.capabilities, "payslips.view")) {
     redirect(`/${context.companyId}/dashboard`)
   }
 

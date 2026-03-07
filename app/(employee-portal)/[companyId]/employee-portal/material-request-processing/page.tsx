@@ -6,6 +6,10 @@ import {
   getEmployeePortalMaterialRequestProcessingPageReadModel,
 } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestProcessingPageProps = {
   params: Promise<{ companyId: string }>
@@ -19,11 +23,8 @@ export default async function MaterialRequestProcessingPage({ params }: Material
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canProcess = context.isMaterialRequestPurchaser || isHR
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canProcess = hasEmployeePortalCapability(context.capabilities, "material_requests.processing.manage")
 
   if (!canProcess) {
     redirect(`/${context.companyId}/employee-portal`)

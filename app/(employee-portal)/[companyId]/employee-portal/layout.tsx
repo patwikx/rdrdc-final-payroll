@@ -46,7 +46,7 @@ export default async function EmployeePortalLayout({ children, params }: Employe
     (`${context.employee?.firstName ?? ""} ${context.employee?.lastName ?? ""}`.trim() ||
       `${context.user?.firstName ?? ""} ${context.user?.lastName ?? ""}`.trim() ||
       "User")
-  const userEmail = context.employee?.user?.email ?? context.user?.email ?? ""
+  const username = context.employee?.user?.username ?? context.user?.username ?? ""
   const userAvatar = context.employee?.photoUrl ?? null
 
   return (
@@ -56,10 +56,7 @@ export default async function EmployeePortalLayout({ children, params }: Employe
         <EmployeePortalSidebar
           companies={context.companies}
           activeCompanyId={context.companyId}
-          companyRole={context.companyRole}
-          canApproveRequests={context.isRequestApprover}
-          canProcessMaterialRequests={context.isMaterialRequestPurchaser}
-          canPostMaterialRequests={context.isMaterialRequestPoster}
+          capabilities={context.capabilities}
           taskCounts={context.taskCounts}
         />
         <SidebarInset>
@@ -69,7 +66,7 @@ export default async function EmployeePortalLayout({ children, params }: Employe
             accountLabel="Profile"
             user={{
               name: userName,
-              email: userEmail,
+              username,
               avatar: userAvatar,
             }}
           />

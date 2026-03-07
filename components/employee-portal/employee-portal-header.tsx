@@ -13,7 +13,7 @@ type EmployeePortalHeaderProps = {
   accountLabel?: string
   user: {
     name: string
-    email: string
+    username: string
     avatar?: string | null
   }
 }

@@ -62,7 +62,7 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
     systemLinkFilter:
       parsedSearch.sysLink === "LINKED" || parsedSearch.sysLink === "UNLINKED"
         ? parsedSearch.sysLink
-        : "ALL",
+        : "LINKED",
     roleFilter:
       parsedSearch.role === "EMPLOYEE" ||
       parsedSearch.role === "HR_ADMIN" ||
@@ -85,6 +85,7 @@ export default async function UserAccessRoutePage({ params, searchParams }: User
       roleFilter={data.roleFilter}
       employeePagination={data.employeePagination}
       systemUserPagination={data.systemUserPagination}
+      purchaseRequestWorkflowEnabled={data.purchaseRequestWorkflowEnabled}
     />
   )
 }

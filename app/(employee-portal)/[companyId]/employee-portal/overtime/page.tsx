@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { OvertimeRequestClient } from "@/modules/employee-portal/components/overtime-request-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 import { getEmployeePortalOvertimeRequestsReadModel } from "@/modules/overtime/utils/overtime-domain"
 
 type OvertimePageProps = {
@@ -17,7 +18,7 @@ export default async function OvertimePage({ params }: OvertimePageProps) {
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
+  if (!hasEmployeePortalCapability(context.capabilities, "overtime_requests.manage")) {
     redirect(`/${context.companyId}/dashboard`)
   }
 

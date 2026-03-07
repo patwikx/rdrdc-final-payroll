@@ -1,0 +1,1 @@
+ALTER TYPE "PurchaseOrderStatus" RENAME VALUE 'ISSUED' TO 'OPEN';

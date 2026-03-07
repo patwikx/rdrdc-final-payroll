@@ -117,26 +117,17 @@ const normalizeStepName = (stepName: string | null | undefined, stepNumber: numb
   return trimmed ? trimmed : `Step ${stepNumber}`
 }
 
-const REQUEST_NUMBER_DATE_FORMAT = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  timeZone: "Asia/Manila",
-})
+const MATERIAL_REQUEST_NUMBER_PATTERN = /^MRS-(PO|JO|OTHERS)-(\d{6})$/
 const REQUEST_NUMBER_SEQUENCE_DIGITS = 6
 const MATERIAL_REQUEST_SERIES: MaterialRequestSeries[] = ["PO", "JO", "OTHERS"]
 
-const getRequestNumberDateStamp = (): string => {
-  return REQUEST_NUMBER_DATE_FORMAT.format(new Date()).replace(/-/g, "")
-}
-
 const parseRequestNumberSequence = (requestNumber: string): number => {
-  const suffix = requestNumber.split("-").at(-1) ?? ""
-  if (!/^\d+$/.test(suffix)) {
+  const match = MATERIAL_REQUEST_NUMBER_PATTERN.exec(requestNumber)
+  if (!match) {
     return 0
   }
 
-  const parsed = Number(suffix)
+  const parsed = Number(match[2] ?? "")
   return Number.isFinite(parsed) ? parsed : 0
 }
 
@@ -534,33 +525,30 @@ export async function getEmployeePortalMaterialRequestDepartmentOptions(params: 
 export async function getEmployeePortalMaterialRequestNumberPreview(params: {
   companyId: string
 }): Promise<Record<MaterialRequestSeries, string>> {
-  const stamp = getRequestNumberDateStamp()
-  const previewEntries = await Promise.all(
-    MATERIAL_REQUEST_SERIES.map(async (series) => {
-      const prefix = `MR-${series}-${stamp}-`
-      const latestRequest = await db.materialRequest.findFirst({
-        where: {
-          companyId: params.companyId,
-          requestNumber: {
-            startsWith: prefix,
-          },
-        },
-        orderBy: {
-          requestNumber: "desc",
-        },
-        select: {
-          requestNumber: true,
-        },
-      })
+  const response = {} as Record<MaterialRequestSeries, string>
 
-      const nextSequence = parseRequestNumberSequence(latestRequest?.requestNumber ?? "") + 1
-      const suffix = nextSequence.toString().padStart(REQUEST_NUMBER_SEQUENCE_DIGITS, "0")
-
-      return [series, `${prefix}${suffix}`] as const
+  for (const series of MATERIAL_REQUEST_SERIES) {
+    const seriesPrefix = `MRS-${series}-`
+    const existingRequestNumbers = await db.materialRequest.findMany({
+      where: {
+        companyId: params.companyId,
+        requestNumber: {
+          startsWith: seriesPrefix,
+        },
+      },
+      select: {
+        requestNumber: true,
+      },
     })
-  )
 
-  return Object.fromEntries(previewEntries) as Record<MaterialRequestSeries, string>
+    const nextSequence =
+      existingRequestNumbers.reduce((maxSequence, request) => {
+        return Math.max(maxSequence, parseRequestNumberSequence(request.requestNumber))
+      }, 0) + 1
+    response[series] = `${seriesPrefix}${nextSequence.toString().padStart(REQUEST_NUMBER_SEQUENCE_DIGITS, "0")}`
+  }
+
+  return response
 }
 
 const toQueueRow = (request: {

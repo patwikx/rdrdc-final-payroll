@@ -5,6 +5,10 @@ import {
 } from "@/modules/employee-portal/components/overtime-approval-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
+import {
   getEmployeePortalOvertimeApprovalDepartmentOptions,
   getEmployeePortalOvertimeApprovalReadModel,
 } from "@/modules/overtime/utils/overtime-domain"
@@ -21,8 +25,8 @@ export default async function OvertimeApprovalsPage({ params }: OvertimeApproval
     redirect("/login")
   }
 
-  const isHR = context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = context.isRequestApprover || isHR
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "overtime_approvals.view")
   const approverCompanyIds = context.companies.map((company) => company.companyId)
   const hrApproverCompanyIds = context.companies
     .filter(

@@ -9,6 +9,7 @@ type AuthorizedArgs = {
 
 type JwtUser = {
   id?: string
+  username?: string
   role?: string
   companyRole?: string | null
   defaultCompanyId?: string | null
@@ -60,6 +61,7 @@ export const authConfig = {
     async jwt({ token, user }: { token: JWT; user?: JwtUser }) {
       if (user) {
         token.id = user.id
+        token.username = user.username
         token.role = user.role
         token.companyRole = user.companyRole
         token.defaultCompanyId = user.defaultCompanyId
@@ -81,6 +83,7 @@ export const authConfig = {
     async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
         if (token.id) session.user.id = token.id as string
+        if (token.username) session.user.username = token.username as string
         if (token.name) session.user.name = token.name
         if (token.role) session.user.role = token.role as string
         if (token.companyRole !== undefined) {

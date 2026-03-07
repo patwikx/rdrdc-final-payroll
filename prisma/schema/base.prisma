@@ -556,6 +556,13 @@ enum AuditAction {
   RESTORE
 }
 
+enum PortalAccessScope {
+  NONE
+  OWN
+  APPROVAL_QUEUE
+  COMPANY
+}
+
 enum SeparationAuditAction {
   CREATED
   APPROVED

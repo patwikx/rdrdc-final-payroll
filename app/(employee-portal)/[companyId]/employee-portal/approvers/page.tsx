@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type ApproversPageProps = {
   params: Promise<{ companyId: string }>
@@ -14,8 +15,7 @@ export default async function ApproversPage({ params }: ApproversPageProps) {
     redirect("/login")
   }
 
-  const canManageApprovers =
-    context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN"
+  const canManageApprovers = hasEmployeePortalCapability(context.capabilities, "request_settings.manage")
 
   if (!canManageApprovers) {
     redirect(`/${context.companyId}/employee-portal`)

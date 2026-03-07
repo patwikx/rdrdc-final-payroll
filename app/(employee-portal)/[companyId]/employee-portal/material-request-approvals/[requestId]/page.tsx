@@ -3,6 +3,10 @@ import { redirect } from "next/navigation"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import { getMaterialRequestApprovalQueueDetailsAction } from "@/modules/material-requests/actions/material-request-approval-actions"
 import { MaterialRequestApprovalHistoryDetailPage } from "@/modules/material-requests/components/material-request-approval-history-detail-page"
+import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestApprovalQueueDetailPageProps = {
   params: Promise<{
@@ -26,11 +30,8 @@ export default async function MaterialRequestApprovalQueueDetailPage({
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = context.isRequestApprover || isHR
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "material_request_approvals.view")
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)

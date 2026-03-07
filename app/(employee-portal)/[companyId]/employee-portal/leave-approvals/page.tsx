@@ -5,6 +5,10 @@ import {
 } from "@/modules/employee-portal/components/leave-approval-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
+import {
   getEmployeePortalLeaveApprovalDepartmentOptions,
   getEmployeePortalLeaveApprovalReadModel,
 } from "@/modules/leave/utils/employee-portal-leave-read-models"
@@ -21,8 +25,8 @@ export default async function LeaveApprovalsPage({ params }: LeaveApprovalsPageP
     redirect("/login")
   }
 
-  const isHR = context.companyRole === "COMPANY_ADMIN" || context.companyRole === "HR_ADMIN" || context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = context.isRequestApprover || isHR
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "leave_approvals.view")
   const approverCompanyIds = context.companies.map((company) => company.companyId)
   const hrApproverCompanyIds = context.companies
     .filter(

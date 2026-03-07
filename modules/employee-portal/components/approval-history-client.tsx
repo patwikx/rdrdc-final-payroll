@@ -6,6 +6,7 @@ import {
   IconCalendarEvent,
   IconClockHour4,
   IconExternalLink,
+  IconFileInvoice,
   IconFilterOff,
   IconPackage,
   IconSearch,
@@ -49,11 +50,13 @@ const typeBadgeVariant = (
 ): "default" | "secondary" | "destructive" | "outline" => {
   if (approvalType === "LEAVE") return "secondary"
   if (approvalType === "OVERTIME") return "outline"
+  if (approvalType === "PURCHASE") return "secondary"
   return "default"
 }
 
 const typeBadgeLabel = (approvalType: EmployeePortalConsolidatedApprovalHistoryItem["approvalType"]): string => {
   if (approvalType === "MATERIAL") return "MRS"
+  if (approvalType === "PURCHASE") return "PR"
   return approvalType
 }
 
@@ -172,7 +175,7 @@ export function ApprovalHistoryClient({
       </div>
 
       <div className="space-y-5 p-4 sm:p-5">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
           <div className="rounded-xl border border-border/60 bg-card p-3">
             <p className="text-xs text-muted-foreground">Total</p>
             <p className="mt-1 text-lg font-semibold text-foreground">{stats.total}</p>
@@ -188,6 +191,10 @@ export function ApprovalHistoryClient({
           <div className="rounded-xl border border-border/60 bg-card p-3">
             <p className="text-xs text-muted-foreground">Material</p>
             <p className="mt-1 text-lg font-semibold text-foreground">{stats.material}</p>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-card p-3">
+            <p className="text-xs text-muted-foreground">Purchase</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{stats.purchase}</p>
           </div>
         </div>
 
@@ -228,6 +235,7 @@ export function ApprovalHistoryClient({
                   <SelectItem value="LEAVE">Leave</SelectItem>
                   <SelectItem value="OVERTIME">Overtime</SelectItem>
                   <SelectItem value="MATERIAL">Material</SelectItem>
+                  <SelectItem value="PURCHASE">Purchase</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -370,8 +378,8 @@ export function ApprovalHistoryClient({
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Type</p>
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Employee</p>
                   <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
-                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
-                  <p className="col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Decided At</p>
+                  <p className="col-span-2 pr-4 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                  <p className="col-span-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Decided At</p>
                   <p className="col-span-1 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</p>
                 </div>
                 {rowsState.map((item) => (
@@ -402,12 +410,12 @@ export function ApprovalHistoryClient({
                       <p className="truncate text-xs text-foreground">{item.summaryPrimary}</p>
                       <p className="truncate text-[10px] text-muted-foreground">{item.summarySecondary}</p>
                     </div>
-                    <div className="col-span-1">
-                      <Badge variant={statusVariant(item.statusCode)} className="rounded-full text-[10px]">
+                    <div className="col-span-2 pr-4">
+                      <Badge variant={statusVariant(item.statusCode)} className="rounded-full text-[10px] whitespace-nowrap">
                         {toStatusLabel(item.statusCode)}
                       </Badge>
                     </div>
-                    <div className="col-span-2 text-xs text-muted-foreground">{item.decidedAtLabel}</div>
+                    <div className="col-span-1 text-xs text-muted-foreground">{item.decidedAtLabel}</div>
                     <div className="col-span-1 flex justify-end">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -489,6 +497,12 @@ export function ApprovalHistoryClient({
             <Link href={`/${companyId}/employee-portal/material-request-approvals`}>
               <IconPackage className="mr-2 h-4 w-4" />
               Material Queue
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-lg">
+            <Link href={`/${companyId}/employee-portal/purchase-requests`}>
+              <IconFileInvoice className="mr-2 h-4 w-4" />
+              Purchase Queue
             </Link>
           </Button>
         </div>

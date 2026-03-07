@@ -3,6 +3,9 @@ import { db } from "@/lib/db"
 export type MaterialRequestApprovalSettingsViewModel = {
   companyId: string
   companyName: string
+  procurementFeature: {
+    purchaseRequestWorkflowEnabled: boolean
+  }
   departments: Array<{
     id: string
     code: string
@@ -38,7 +41,15 @@ export async function getMaterialRequestApprovalSettingsViewModel(params: {
   companyId: string
   companyName: string
 }): Promise<MaterialRequestApprovalSettingsViewModel> {
-  const [departments, approverAccess, flowsRaw] = await Promise.all([
+  const [company, departments, approverAccess, flowsRaw] = await Promise.all([
+    db.company.findUnique({
+      where: {
+        id: params.companyId,
+      },
+      select: {
+        enablePurchaseRequestWorkflow: true,
+      },
+    }),
     db.department.findMany({
       where: {
         companyId: params.companyId,
@@ -134,6 +145,9 @@ export async function getMaterialRequestApprovalSettingsViewModel(params: {
   return {
     companyId: params.companyId,
     companyName: params.companyName,
+    procurementFeature: {
+      purchaseRequestWorkflowEnabled: company?.enablePurchaseRequestWorkflow ?? false,
+    },
     departments,
     approvers: approverAccess.map((access) => ({
       userId: access.userId,

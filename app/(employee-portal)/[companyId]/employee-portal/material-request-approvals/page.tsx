@@ -5,7 +5,12 @@ import {
   getEmployeePortalMaterialRequestApprovalReadModel,
   getEmployeePortalMaterialRequestDepartmentOptions,
 } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
+import { getPurchaseRequestApprovalQueueReadModel } from "@/modules/procurement/utils/purchase-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestApprovalsPageProps = {
   params: Promise<{ companyId: string }>
@@ -19,10 +24,7 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
+  const isHR = isEmployeePortalHrRole(context.companyRole)
   const approverCompanyIds = context.companies.map((company) => company.companyId)
   const hrApproverCompanyIds = context.companies
     .filter(
@@ -30,13 +32,13 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
         company.role === "COMPANY_ADMIN" || company.role === "HR_ADMIN" || company.role === "PAYROLL_ADMIN"
     )
     .map((company) => company.companyId)
-  const canApprove = context.isRequestApprover || isHR
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "material_request_approvals.view")
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)
   }
 
-  const [approvalData, departmentOptions] = await Promise.all([
+  const [approvalData, departmentOptions, purchaseRequestRows] = await Promise.all([
     getEmployeePortalMaterialRequestApprovalReadModel({
       companyIds: approverCompanyIds,
       approverUserId: context.userId,
@@ -44,6 +46,10 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
     }),
     getEmployeePortalMaterialRequestDepartmentOptions({
       companyIds: approverCompanyIds,
+    }),
+    getPurchaseRequestApprovalQueueReadModel({
+      companyIds: approverCompanyIds,
+      approverUserId: context.userId,
     }),
   ])
 
@@ -64,6 +70,7 @@ export default async function MaterialRequestApprovalsPage({ params }: MaterialR
       initialHistoryTotal={approvalData.historyTotal}
       initialHistoryPage={approvalData.historyPage}
       initialHistoryPageSize={approvalData.historyPageSize}
+      purchaseRequestRows={purchaseRequestRows}
       view="queue"
     />
   )

@@ -3,6 +3,10 @@ import { redirect } from "next/navigation"
 import { ApprovalHistoryClient } from "@/modules/employee-portal/components/approval-history-client"
 import { getEmployeePortalConsolidatedApprovalHistoryPageReadModel } from "@/modules/employee-portal/utils/approval-history-read-model"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import {
+  hasEmployeePortalCapability,
+  isEmployeePortalHrRole,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type ApprovalHistoryPageProps = {
   params: Promise<{ companyId: string }>
@@ -16,11 +20,8 @@ export default async function ApprovalHistoryPage({ params }: ApprovalHistoryPag
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canApprove = isHR || context.isRequestApprover
+  const isHR = isEmployeePortalHrRole(context.companyRole)
+  const canApprove = hasEmployeePortalCapability(context.capabilities, "approval_history.view")
 
   if (!canApprove) {
     redirect(`/${context.companyId}/employee-portal`)

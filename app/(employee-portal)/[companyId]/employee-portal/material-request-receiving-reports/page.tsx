@@ -6,6 +6,7 @@ import {
   getEmployeePortalMaterialRequestReceivingReportPageReadModel,
 } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestReceivingReportsPageProps = {
   params: Promise<{ companyId: string }>
@@ -21,14 +22,14 @@ export default async function MaterialRequestReceivingReportsPage({
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canViewCompanyWide =
-    isHR ||
-    context.isMaterialRequestPurchaser ||
-    context.isMaterialRequestPoster
+  if (!hasEmployeePortalCapability(context.capabilities, "material_requests.receiving_reports.view")) {
+    redirect(`/${context.companyId}/employee-portal`)
+  }
+
+  const canViewCompanyWide = hasEmployeePortalCapability(
+    context.capabilities,
+    "material_requests.receiving_reports.view_company"
+  )
 
   const [receivingPage, departmentOptions] = await Promise.all([
     getEmployeePortalMaterialRequestReceivingReportPageReadModel({

@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { getPhYear } from "@/lib/ph-time"
 import { LeaveRequestClient } from "@/modules/employee-portal/components/leave-request-client"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 import { getEmployeePortalLeaveRequestsReadModel } from "@/modules/leave/utils/employee-portal-leave-read-models"
 
 type LeavesPageProps = {
@@ -18,7 +19,7 @@ export default async function LeavesPage({ params }: LeavesPageProps) {
     redirect("/login")
   }
 
-  if (context.companyRole !== "EMPLOYEE") {
+  if (!hasEmployeePortalCapability(context.capabilities, "leave_requests.manage")) {
     redirect(`/${context.companyId}/dashboard`)
   }
 

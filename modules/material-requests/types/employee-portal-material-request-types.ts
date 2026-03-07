@@ -204,6 +204,7 @@ export type EmployeePortalMaterialRequestApprovalDecisionDetail = {
   requiredSteps: number
   datePreparedLabel: string
   dateRequiredLabel: string
+  purpose: string | null
   grandTotal: number
   totalItems: number
   page: number

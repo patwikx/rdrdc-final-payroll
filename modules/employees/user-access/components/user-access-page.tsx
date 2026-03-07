@@ -1,9 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  IconAlertCircle,
   IconBuilding,
+  IconKey,
   IconLink,
   IconRefresh,
   IconSearch,
@@ -13,6 +15,19 @@ import {
 import { toast } from "sonner"
 
 import {
+  USER_ACCESS_FLAG_DEFINITIONS,
+  getModuleAccessScope,
+  type AccessScope,
+  type CompanyRole,
+  type ModuleKey,
+} from "@/modules/auth/utils/authorization-policy"
+import {
+  resolveEmployeePortalCapabilityScopes,
+  type EmployeePortalAccessSnapshot,
+  type EmployeePortalCapability,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
+import {
+  deleteStandaloneSystemUserAction,
   createEmployeeSystemUserAction,
   createStandaloneSystemUserAction,
   getAvailableSystemUsersAction,
@@ -20,6 +35,7 @@ import {
   unlinkEmployeeUserAction,
   updateEmployeeCompanyAccessAction,
   updateLinkedUserCredentialsAction,
+  updateStandaloneSystemUserAction,
 } from "@/modules/employees/user-access/actions/manage-employee-user-access-action"
 import type {
   AvailableSystemUserOption,
@@ -40,6 +56,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -68,6 +94,7 @@ type UserAccessPageProps = {
     totalItems: number
     totalPages: number
   }
+  purchaseRequestWorkflowEnabled: boolean
 }
 
 type EditableCompanyAccess = {
@@ -76,6 +103,7 @@ type EditableCompanyAccess = {
   isDefault: boolean
   isMaterialRequestPurchaser: boolean
   isMaterialRequestPoster: boolean
+  isPurchaseRequestItemManager: boolean
   enabled: boolean
 }
 
@@ -89,6 +117,7 @@ const buildDefaultCompanyAccesses = (
     isDefault: company.companyId === currentCompanyId,
     isMaterialRequestPurchaser: false,
     isMaterialRequestPoster: false,
+    isPurchaseRequestItemManager: false,
     enabled: company.companyId === currentCompanyId,
   }))
 }
@@ -133,7 +162,12 @@ const setAccessDefaultInList = (list: EditableCompanyAccess[], targetCompanyId: 
 const patchAccessInList = (
   list: EditableCompanyAccess[],
   targetCompanyId: string,
-  patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+  patch: Partial<
+    Pick<
+      EditableCompanyAccess,
+      "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+    >
+  >
 ): EditableCompanyAccess[] => {
   return list.map((entry) => (entry.companyId === targetCompanyId ? { ...entry, ...patch } : entry))
 }
@@ -152,7 +186,42 @@ const normalizeEnabledCompanyAccesses = (list: EditableCompanyAccess[]) => {
     isDefault: hasDefault ? entry.isDefault : index === 0,
     isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
     isMaterialRequestPoster: entry.isMaterialRequestPoster,
+    isPurchaseRequestItemManager: entry.isPurchaseRequestItemManager,
   }))
+}
+
+const DASHBOARD_MODULE_PREVIEWS: Array<{ key: ModuleKey; label: string }> = [
+  { key: "employees", label: "Employees" },
+  { key: "attendance", label: "Attendance" },
+  { key: "leave", label: "Leave" },
+  { key: "overtime", label: "Overtime" },
+  { key: "payroll", label: "Payroll" },
+  { key: "reports", label: "Reports" },
+  { key: "settings", label: "Settings" },
+]
+
+const PORTAL_CAPABILITY_PREVIEWS: Array<{ key: EmployeePortalCapability; label: string }> = [
+  { key: "payslips.view", label: "Payslips" },
+  { key: "leave_requests.manage", label: "Leave Requests" },
+  { key: "overtime_requests.manage", label: "Overtime Requests" },
+  { key: "leave_approvals.view", label: "Leave Approvals" },
+  { key: "material_requests.processing.manage", label: "Material Processing" },
+  { key: "material_requests.posting.manage", label: "Material Posting" },
+  { key: "procurement_item_catalog.manage", label: "Item Catalog" },
+  { key: "purchase_orders.manage", label: "Purchase Orders" },
+]
+
+const ACCESS_SCOPE_LABELS: Record<AccessScope, string> = {
+  NONE: "No Access",
+  OWN: "Own Only",
+  APPROVAL_QUEUE: "Approval Queue",
+  COMPANY: "Company-Wide",
+}
+
+const scopeBadgeVariant = (scope: AccessScope): "secondary" | "outline" | "default" => {
+  if (scope === "COMPANY") return "default"
+  if (scope === "APPROVAL_QUEUE") return "secondary"
+  return "outline"
 }
 
 type ActionDialogState =
@@ -160,7 +229,8 @@ type ActionDialogState =
   | { type: "CREATE"; row: UserAccessPreviewRow }
   | { type: "LINK"; row: UserAccessPreviewRow }
   | { type: "CREATE_SYSTEM" }
-  | { type: "EDIT"; row: UserAccessPreviewRow }
+  | { type: "EDIT"; row: { employeeId: string; employeeNumber: string; fullName: string } }
+  | { type: "EDIT_SYSTEM"; user: SystemUserAccountRow }
 
 const resolveUnifiedLinkFilter = (
   employeeFilter: UserAccessLinkFilter,
@@ -202,6 +272,7 @@ export function UserAccessPage({
   roleFilter,
   employeePagination,
   systemUserPagination,
+  purchaseRequestWorkflowEnabled,
 }: UserAccessPageProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -250,7 +321,6 @@ export function UserAccessPage({
   }, [])
 
   const [createUsername, setCreateUsername] = useState("")
-  const [createEmail, setCreateEmail] = useState("")
   const [createPassword, setCreatePassword] = useState("")
   const [createApprover, setCreateApprover] = useState(false)
   const [createCompanyAccesses, setCreateCompanyAccesses] = useState<EditableCompanyAccess[]>(() =>
@@ -263,7 +333,6 @@ export function UserAccessPage({
   )
 
   const [editUsername, setEditUsername] = useState("")
-  const [editEmail, setEditEmail] = useState("")
   const [editPassword, setEditPassword] = useState("")
   const [editApprover, setEditApprover] = useState(false)
   const [editIsActive, setEditIsActive] = useState(true)
@@ -278,6 +347,19 @@ export function UserAccessPage({
   const [systemApprover, setSystemApprover] = useState(false)
   const [systemIsMaterialRequestPurchaser, setSystemIsMaterialRequestPurchaser] = useState(false)
   const [systemIsMaterialRequestPoster, setSystemIsMaterialRequestPoster] = useState(false)
+  const [systemIsPurchaseRequestItemManager, setSystemIsPurchaseRequestItemManager] = useState(false)
+  const [systemEditFirstName, setSystemEditFirstName] = useState("")
+  const [systemEditLastName, setSystemEditLastName] = useState("")
+  const [systemEditUsername, setSystemEditUsername] = useState("")
+  const [systemEditEmail, setSystemEditEmail] = useState("")
+  const [systemEditPassword, setSystemEditPassword] = useState("")
+  const [systemEditRole, setSystemEditRole] = useState<EditableCompanyAccess["role"]>("EMPLOYEE")
+  const [systemEditApprover, setSystemEditApprover] = useState(false)
+  const [systemEditIsActive, setSystemEditIsActive] = useState(true)
+  const [systemEditIsMaterialRequestPurchaser, setSystemEditIsMaterialRequestPurchaser] = useState(false)
+  const [systemEditIsMaterialRequestPoster, setSystemEditIsMaterialRequestPoster] = useState(false)
+  const [systemEditIsPurchaseRequestItemManager, setSystemEditIsPurchaseRequestItemManager] = useState(false)
+  const [systemDeleteTarget, setSystemDeleteTarget] = useState<SystemUserAccountRow | null>(null)
 
   useEffect(() => {
     setQueryInput(query)
@@ -359,17 +441,21 @@ export function UserAccessPage({
     }
   }, [])
 
-  const buildEditableCompanyAccesses = (row: UserAccessPreviewRow): EditableCompanyAccess[] => {
-    const accessByCompanyId = new Map(row.linkedCompanyAccesses.map((entry) => [entry.companyId, entry]))
+  const buildEditableCompanyAccesses = (
+    linkedCompanyAccesses: UserAccessPreviewRow["linkedCompanyAccesses"],
+    linkedCompanyRole: string | null
+  ): EditableCompanyAccess[] => {
+    const accessByCompanyId = new Map(linkedCompanyAccesses.map((entry) => [entry.companyId, entry]))
 
     const mapped = companyOptions.map((company) => {
       const existing = accessByCompanyId.get(company.companyId)
       return {
         companyId: company.companyId,
-        role: (existing?.role ?? (company.companyId === companyId ? (row.linkedCompanyRole ?? "EMPLOYEE") : "EMPLOYEE")) as EditableCompanyAccess["role"],
+        role: (existing?.role ?? (company.companyId === companyId ? (linkedCompanyRole ?? "EMPLOYEE") : "EMPLOYEE")) as EditableCompanyAccess["role"],
         isDefault: existing?.isDefault ?? false,
         isMaterialRequestPurchaser: existing?.isMaterialRequestPurchaser ?? false,
         isMaterialRequestPoster: existing?.isMaterialRequestPoster ?? false,
+        isPurchaseRequestItemManager: existing?.isPurchaseRequestItemManager ?? false,
         enabled: Boolean(existing) || company.companyId === companyId,
       }
     })
@@ -401,7 +487,7 @@ export function UserAccessPage({
     return {
       q: typeof updates.q !== "undefined" ? updates.q : queryInput,
       empLink: typeof updates.empLink !== "undefined" ? updates.empLink : linkFilterInput,
-      sysLink: typeof updates.sysLink !== "undefined" ? updates.sysLink : linkFilterInput,
+      sysLink: typeof updates.sysLink !== "undefined" ? updates.sysLink : "LINKED",
       role: typeof updates.role !== "undefined" ? updates.role : roleFilterInput,
       empPage:
         typeof updates.empPage !== "undefined" ? updates.empPage : employeePaginationState.page,
@@ -428,7 +514,7 @@ export function UserAccessPage({
       params.set("empLink", state.empLink)
     }
 
-    if (state.sysLink !== "ALL") {
+    if (state.sysLink !== "LINKED") {
       params.set("sysLink", state.sysLink)
     }
 
@@ -453,7 +539,7 @@ export function UserAccessPage({
     const queryValue = state.q.trim()
     if (queryValue) params.set("q", queryValue)
     if (state.empLink !== "ALL") params.set("empLink", state.empLink)
-    if (state.sysLink !== "ALL") params.set("sysLink", state.sysLink)
+    if (state.sysLink !== "LINKED") params.set("sysLink", state.sysLink)
     if (state.role !== "ALL") params.set("role", state.role)
     if (state.empPage > 1) params.set("empPage", String(state.empPage))
     if (state.sysPage > 1) params.set("sysPage", String(state.sysPage))
@@ -630,7 +716,7 @@ export function UserAccessPage({
       void updateWorkspaceData({
         q: queryInput,
         empLink: linkFilterInput,
-        sysLink: linkFilterInput,
+        sysLink: "LINKED",
         role: roleFilterInput,
         empPage: 1,
         sysPage: 1,
@@ -650,7 +736,7 @@ export function UserAccessPage({
     void updateWorkspaceData({
       q: "",
       empLink: "ALL",
-      sysLink: "ALL",
+      sysLink: "LINKED",
       role: "ALL",
       empPage: 1,
       sysPage: 1,
@@ -664,7 +750,6 @@ export function UserAccessPage({
       .replace(/\s+/g, "")
       .replace(/[^a-z0-9._-]/g, "")
     setCreateUsername(nameBase || `user.${row.employeeNumber.toLowerCase()}`)
-    setCreateEmail("")
     setCreatePassword("")
     setCreateApprover(false)
     setCreateCompanyAccesses(buildDefaultCompanyAccesses(companyOptions, companyId))
@@ -696,17 +781,38 @@ export function UserAccessPage({
     setSystemApprover(false)
     setSystemIsMaterialRequestPurchaser(false)
     setSystemIsMaterialRequestPoster(false)
+    setSystemIsPurchaseRequestItemManager(false)
     setDialogState({ type: "CREATE_SYSTEM" })
   }
 
   const openEdit = (row: UserAccessPreviewRow) => {
-    setEditUsername(row.linkedUsername ?? "")
-    setEditEmail(row.linkedEmail ?? "")
-    setEditPassword("")
-    setEditApprover(row.requestApprover)
-    setEditIsActive(row.linkedUserActive)
-    setEditCompanyAccesses(buildEditableCompanyAccesses(row))
-    setDialogState({ type: "EDIT", row })
+    router.push(`/${companyId}/employees/user-access/${row.employeeId}`)
+  }
+
+  const openEditSystemAccount = (user: SystemUserAccountRow) => {
+    if (user.isLinked) {
+      if (!user.linkedEmployeeId || !user.linkedEmployeeNumber || !user.linkedEmployeeName) {
+        toast.error("Linked employee record could not be resolved. Refresh and try again.")
+        return
+      }
+
+      router.push(`/${companyId}/employees/user-access/${user.linkedEmployeeId}`)
+      return
+    }
+
+    const [lastName = "", firstName = ""] = user.displayName.split(",").map((value) => value.trim())
+    setSystemEditFirstName(firstName)
+    setSystemEditLastName(lastName)
+    setSystemEditUsername(user.username)
+    setSystemEditEmail(user.email)
+    setSystemEditPassword("")
+    setSystemEditRole(user.companyRole as EditableCompanyAccess["role"])
+    setSystemEditApprover(user.isRequestApprover)
+    setSystemEditIsActive(user.isActive)
+    setSystemEditIsMaterialRequestPurchaser(user.isMaterialRequestPurchaser)
+    setSystemEditIsMaterialRequestPoster(user.isMaterialRequestPoster)
+    setSystemEditIsPurchaseRequestItemManager(user.isPurchaseRequestItemManager)
+    setDialogState({ type: "EDIT_SYSTEM", user })
   }
 
   const closeDialog = () => {
@@ -724,7 +830,12 @@ export function UserAccessPage({
 
   const updateCreateAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setCreateCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -739,7 +850,12 @@ export function UserAccessPage({
 
   const updateLinkAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setLinkCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -754,7 +870,12 @@ export function UserAccessPage({
 
   const updateCompanyAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setEditCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -776,12 +897,12 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: createUsername,
-        email: createEmail,
         password: createPassword,
         companyRole: currentAccess.role,
         isRequestApprover: createApprover,
         isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
         isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: currentAccess.isPurchaseRequestItemManager,
       })
 
       if (!result.ok) {
@@ -831,6 +952,7 @@ export function UserAccessPage({
         isRequestApprover: false,
         isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
         isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: currentAccess.isPurchaseRequestItemManager,
       })
 
       if (!result.ok) {
@@ -869,7 +991,6 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: editUsername,
-        email: editEmail,
         password: editPassword.trim().length > 0 ? editPassword : undefined,
         isActive: editIsActive,
         isRequestApprover: editApprover,
@@ -912,6 +1033,38 @@ export function UserAccessPage({
         isRequestApprover: systemApprover,
         isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
         isMaterialRequestPoster: systemIsMaterialRequestPoster,
+        isPurchaseRequestItemManager: systemIsPurchaseRequestItemManager,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setDialogState({ type: "NONE" })
+      router.refresh()
+    })
+  }
+
+  const submitEditSystemAccount = () => {
+    if (dialogState.type !== "EDIT_SYSTEM") return
+
+    startMutationTransition(async () => {
+      const result = await updateStandaloneSystemUserAction({
+        companyId,
+        userId: dialogState.user.id,
+        firstName: systemEditFirstName,
+        lastName: systemEditLastName,
+        username: systemEditUsername,
+        email: systemEditEmail,
+        password: systemEditPassword.trim().length > 0 ? systemEditPassword : undefined,
+        isActive: systemEditIsActive,
+        companyRole: systemEditRole,
+        isRequestApprover: systemEditApprover,
+        isMaterialRequestPurchaser: systemEditIsMaterialRequestPurchaser,
+        isMaterialRequestPoster: systemEditIsMaterialRequestPoster,
+        isPurchaseRequestItemManager: systemEditIsPurchaseRequestItemManager,
       })
 
       if (!result.ok) {
@@ -942,35 +1095,119 @@ export function UserAccessPage({
     })
   }
 
+  const submitUnlinkSystemAccount = (user: SystemUserAccountRow) => {
+    if (!user.linkedEmployeeId) {
+      toast.error("This account is not linked to an employee.")
+      return
+    }
+
+    startMutationTransition(async () => {
+      const result = await unlinkEmployeeUserAction({
+        companyId,
+        employeeId: user.linkedEmployeeId!,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      router.refresh()
+    })
+  }
+
+  const submitDeleteSystemAccount = () => {
+    if (!systemDeleteTarget) return
+
+    startMutationTransition(async () => {
+      const result = await deleteStandaloneSystemUserAction({
+        companyId,
+        userId: systemDeleteTarget.id,
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.message)
+      setSystemDeleteTarget(null)
+      router.refresh()
+    })
+  }
+
+  const getPreviewAccessFromAssignments = useCallback(
+    (accesses: EditableCompanyAccess[]): EditableCompanyAccess => {
+      return (
+        accesses.find((entry) => entry.companyId === companyId && entry.enabled) ??
+        accesses.find((entry) => entry.enabled) ??
+        buildDefaultCompanyAccesses(companyOptions, companyId)[0]
+      )
+    },
+    [companyId, companyOptions]
+  )
+
+  const managedAccessSummary = useMemo(
+    () => ({
+      approvers: systemUsersState.filter((user) => user.isRequestApprover).length,
+      purchasers: systemUsersState.filter((user) => user.isMaterialRequestPurchaser).length,
+      posters: systemUsersState.filter((user) => user.isMaterialRequestPoster).length,
+      itemManagers: systemUsersState.filter((user) => user.isPurchaseRequestItemManager).length,
+    }),
+    [systemUsersState]
+  )
+
+  const createPreviewAccess = getPreviewAccessFromAssignments(createCompanyAccesses)
+  const linkPreviewAccess = getPreviewAccessFromAssignments(linkCompanyAccesses)
+  const editPreviewAccess = getPreviewAccessFromAssignments(editCompanyAccesses)
+
   return (
     <main className="min-h-screen w-full animate-in fade-in duration-500 bg-background">
-      <section className="relative overflow-hidden border-b border-border/60">
-        <div className="pointer-events-none absolute -right-20 -top-16 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
-        <div className="pointer-events-none absolute left-8 top-8 h-32 w-32 rounded-full bg-primary/10 blur-2xl" />
-        <div className="relative flex flex-col gap-2 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
-          <p className="text-xs text-muted-foreground">HR System</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              <IconShieldCheck className="size-6 text-primary sm:size-7" />
-              System User Creation and Employee Link
-            </h1>
-            <Badge variant="outline" className="h-6 px-2 text-[11px]">
-              <IconBuilding className="mr-1 size-3.5" />
-              {companyName}
-            </Badge>
-            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
-              <IconUsers className="mr-1 size-3.5" />
-              {employeePaginationState.totalItems} Employees
-            </Badge>
-            <Badge variant="secondary" className="h-6 px-2 text-[11px]">
-              <IconShieldCheck className="mr-1 size-3.5" />
-              {systemUserPaginationState.totalItems} System Users
-            </Badge>
+      <section className="relative overflow-hidden border-b border-border/60 bg-muted/20 px-6 py-4">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute left-4 top-2 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <div className="relative">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Human Resources</p>
+                  <h1 className="inline-flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                    <IconShieldCheck className="size-5 text-primary sm:size-6" />
+                    Employee User Access
+                  </h1>
+                  <p className="max-w-3xl text-sm text-muted-foreground">
+                    Set up employee logins, monitor linked access coverage, and keep workflow responsibilities aligned with the rest of your admin workspace.
+                  </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 xl:max-w-[460px] xl:justify-end">
+                <Badge variant="outline" className="h-6 px-2 text-[11px]">
+                  <IconBuilding className="mr-1 size-3.5" />
+                  {companyName}
+                </Badge>
+                <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                  <IconAlertCircle className="mr-1 size-3.5" />
+                  {rowsState.filter((row) => !row.hasLinkedUser).length} Needs Setup
+                </Badge>
+                <Badge variant="secondary" className="h-6 px-2 text-[11px]">
+                  <IconLink className="mr-1 size-3.5" />
+                  {rowsState.filter((row) => row.hasLinkedUser).length} Linked on Page
+                </Badge>
+                <span className="text-xs text-muted-foreground">{managedAccessSummary.approvers} approvers</span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className="text-xs text-muted-foreground">{managedAccessSummary.purchasers} purchasers</span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className="text-xs text-muted-foreground">{managedAccessSummary.posters} posters</span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className="text-xs text-muted-foreground">{managedAccessSummary.itemManagers} item managers</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="px-4 py-4 sm:px-6 lg:px-8">
+      <section className="px-6 py-4">
         <UserAccessWorkspace
           rows={rowsState}
           systemUsers={systemUsersState}
@@ -978,6 +1215,9 @@ export function UserAccessPage({
           onLink={openLink}
           onUnlink={submitUnlink}
           onEdit={openEdit}
+          onEditSystemAccount={openEditSystemAccount}
+          onDeleteSystemAccount={setSystemDeleteTarget}
+          onUnlinkSystemAccount={submitUnlinkSystemAccount}
           onCreateSystemAccount={openCreateSystemAccount}
           filtersToolbar={
             <>
@@ -987,24 +1227,10 @@ export function UserAccessPage({
                   <Input
                     value={queryInput}
                     onChange={(event) => setQueryInput(event.target.value)}
-                    placeholder="Search employee, username, email"
-                    className="h-9 pl-9"
+                    placeholder="Search employee or username"
+                    className="pl-9"
                   />
                 </div>
-                <Select
-                  value={linkFilterInput}
-                  onValueChange={(value) => setLinkFilterInput(value as UserAccessLinkFilter)}
-                >
-                  <SelectTrigger className="h-9 w-full xl:w-[220px]">
-                    <IconLink className="mr-1.5 size-4 text-muted-foreground" />
-                    <SelectValue placeholder="Link Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All</SelectItem>
-                    <SelectItem value="LINKED">Linked</SelectItem>
-                    <SelectItem value="UNLINKED">Unlinked</SelectItem>
-                  </SelectContent>
-                </Select>
                 <Select
                   value={roleFilterInput}
                   onValueChange={(value) => setRoleFilterInput(value as UserAccessRoleFilter)}
@@ -1021,7 +1247,7 @@ export function UserAccessPage({
                     <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button type="button" variant="outline" className="h-9" onClick={resetFilters} disabled={isPending}>
+                <Button type="button" variant="outline" onClick={resetFilters} disabled={isPending}>
                   <IconRefresh className="mr-1.5 size-4" />
                   Reset
                 </Button>
@@ -1053,18 +1279,17 @@ export function UserAccessPage({
               <Input value={createUsername} onChange={(e) => setCreateUsername(e.target.value)} disabled={isPending} />
             </div>
             <div className="space-y-2">
-              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
-              <Input value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} disabled={isPending} />
-            </div>
-            <div className="space-y-2">
               <Label>Temporary Password<span className="ml-1 text-destructive">*</span></Label>
               <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} disabled={isPending} />
             </div>
-            <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+            <p className="border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              Login uses the assigned username. The internal account email is resolved automatically from the employee record when available.
+            </p>
+            <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
               <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
               <Switch checked={createApprover} onCheckedChange={setCreateApprover} disabled={isPending} />
             </div>
-            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
+            <div className="space-y-2 border border-border/60 px-3 py-3">
               <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <IconBuilding className="size-4" />
                 Multi-Company Access
@@ -1073,7 +1298,7 @@ export function UserAccessPage({
                 {createCompanyAccesses.map((access) => {
                   const company = companyOptions.find((option) => option.companyId === access.companyId)
                   return (
-                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                    <div key={access.companyId} className="border border-border/60 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <label className="inline-flex items-center gap-2 text-sm text-foreground">
                           <Checkbox
@@ -1095,7 +1320,7 @@ export function UserAccessPage({
                       </div>
 
                       {access.enabled ? (
-                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                           <Select
                             value={access.role}
                             onValueChange={(value) =>
@@ -1114,7 +1339,7 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
@@ -1126,13 +1351,25 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
                                 updateCreateAccessField(access.companyId, {
                                   isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">Item Manager</span>
+                            <Switch
+                              checked={access.isPurchaseRequestItemManager}
+                              onCheckedChange={(checked) =>
+                                updateCreateAccessField(access.companyId, {
+                                  isPurchaseRequestItemManager: checked,
                                 })
                               }
                               disabled={isPending}
@@ -1145,6 +1382,17 @@ export function UserAccessPage({
                 })}
               </div>
             </div>
+            <EffectiveAccessPreview
+              title="Current Company Access Preview"
+              description="Preview what this employee will be able to open in the active company based on role and flags."
+              companyRole={createPreviewAccess.role}
+              isRequestApprover={createApprover}
+              isMaterialRequestPurchaser={createPreviewAccess.isMaterialRequestPurchaser}
+              isMaterialRequestPoster={createPreviewAccess.isMaterialRequestPoster}
+              isPurchaseRequestItemManager={createPreviewAccess.isPurchaseRequestItemManager}
+              hasEmployeeProfile
+              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            />
           </div>
 
           <DialogFooter>
@@ -1181,7 +1429,7 @@ export function UserAccessPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
+            <div className="space-y-2 border border-border/60 px-3 py-3">
               <p className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <IconBuilding className="size-4" />
                 Multi-Company Access
@@ -1190,7 +1438,7 @@ export function UserAccessPage({
                 {linkCompanyAccesses.map((access) => {
                   const company = companyOptions.find((option) => option.companyId === access.companyId)
                   return (
-                    <div key={access.companyId} className="rounded-md border border-border/60 px-2 py-2">
+                    <div key={access.companyId} className="border border-border/60 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <label className="inline-flex items-center gap-2 text-sm text-foreground">
                           <Checkbox
@@ -1212,7 +1460,7 @@ export function UserAccessPage({
                       </div>
 
                       {access.enabled ? (
-                        <div className="mt-2 grid gap-2 md:grid-cols-3">
+                        <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                           <Select
                             value={access.role}
                             onValueChange={(value) =>
@@ -1231,7 +1479,7 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
@@ -1243,13 +1491,25 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
                                 updateLinkAccessField(access.companyId, {
                                   isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">Item Manager</span>
+                            <Switch
+                              checked={access.isPurchaseRequestItemManager}
+                              onCheckedChange={(checked) =>
+                                updateLinkAccessField(access.companyId, {
+                                  isPurchaseRequestItemManager: checked,
                                 })
                               }
                               disabled={isPending}
@@ -1262,6 +1522,17 @@ export function UserAccessPage({
                 })}
               </div>
             </div>
+            <EffectiveAccessPreview
+              title="Current Company Access Preview"
+              description="Preview how this linked account will behave inside the active company."
+              companyRole={linkPreviewAccess.role}
+              isRequestApprover={false}
+              isMaterialRequestPurchaser={linkPreviewAccess.isMaterialRequestPurchaser}
+              isMaterialRequestPoster={linkPreviewAccess.isMaterialRequestPoster}
+              isPurchaseRequestItemManager={linkPreviewAccess.isPurchaseRequestItemManager}
+              hasEmployeeProfile
+              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            />
           </div>
 
           <DialogFooter>
@@ -1313,12 +1584,12 @@ export function UserAccessPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+            <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
               <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
               <Switch checked={systemApprover} onCheckedChange={setSystemApprover} disabled={isPending} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                 <span className="text-xs text-foreground">MRS Purchaser</span>
                 <Switch
                   checked={systemIsMaterialRequestPurchaser}
@@ -1326,7 +1597,7 @@ export function UserAccessPage({
                   disabled={isPending}
                 />
               </div>
-              <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                 <span className="text-xs text-foreground">MRS Poster</span>
                 <Switch
                   checked={systemIsMaterialRequestPoster}
@@ -1334,12 +1605,137 @@ export function UserAccessPage({
                   disabled={isPending}
                 />
               </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">Item Manager</span>
+                <Switch
+                  checked={systemIsPurchaseRequestItemManager}
+                  onCheckedChange={setSystemIsPurchaseRequestItemManager}
+                  disabled={isPending}
+                />
+              </div>
             </div>
+            <EffectiveAccessPreview
+              title="System Account Access Preview"
+              description="Standalone accounts do not get self-service employee routes unless they are linked to an employee record."
+              companyRole={systemRole}
+              isRequestApprover={systemApprover}
+              isMaterialRequestPurchaser={systemIsMaterialRequestPurchaser}
+              isMaterialRequestPoster={systemIsMaterialRequestPoster}
+              isPurchaseRequestItemManager={systemIsPurchaseRequestItemManager}
+              hasEmployeeProfile={false}
+              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            />
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
             <Button onClick={submitCreateSystemAccount} disabled={isPending}>Create System Account</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogState.type === "EDIT_SYSTEM"} onOpenChange={(open) => (!open ? closeDialog() : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit System Account</DialogTitle>
+            <DialogDescription>
+              {dialogState.type === "EDIT_SYSTEM" ? `${dialogState.user.displayName} (${dialogState.user.username})` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>First Name<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={systemEditFirstName} onChange={(event) => setSystemEditFirstName(event.target.value)} disabled={isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label>Last Name<span className="ml-1 text-destructive">*</span></Label>
+                <Input value={systemEditLastName} onChange={(event) => setSystemEditLastName(event.target.value)} disabled={isPending} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Username<span className="ml-1 text-destructive">*</span></Label>
+              <Input value={systemEditUsername} onChange={(event) => setSystemEditUsername(event.target.value)} disabled={isPending} />
+            </div>
+            <div className="space-y-2">
+              <Label>Email<span className="ml-1 text-destructive">*</span></Label>
+              <Input value={systemEditEmail} onChange={(event) => setSystemEditEmail(event.target.value)} disabled={isPending} />
+            </div>
+            <div className="space-y-2">
+              <Label>New Password</Label>
+              <Input
+                type="password"
+                value={systemEditPassword}
+                onChange={(event) => setSystemEditPassword(event.target.value)}
+                disabled={isPending}
+                placeholder="Leave blank to keep current"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Company Role<span className="ml-1 text-destructive">*</span></Label>
+              <Select value={systemEditRole} onValueChange={(value) => setSystemEditRole(value as EditableCompanyAccess["role"])}>
+                <SelectTrigger><SelectValue placeholder="Role" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EMPLOYEE">EMPLOYEE</SelectItem>
+                  <SelectItem value="HR_ADMIN">HR_ADMIN</SelectItem>
+                  <SelectItem value="PAYROLL_ADMIN">PAYROLL_ADMIN</SelectItem>
+                  <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">Active Account</span>
+                <Switch checked={systemEditIsActive} onCheckedChange={setSystemEditIsActive} disabled={isPending} />
+              </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">Request Approver (Leave & OT)</span>
+                <Switch checked={systemEditApprover} onCheckedChange={setSystemEditApprover} disabled={isPending} />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">MRS Purchaser</span>
+                <Switch
+                  checked={systemEditIsMaterialRequestPurchaser}
+                  onCheckedChange={setSystemEditIsMaterialRequestPurchaser}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">MRS Poster</span>
+                <Switch
+                  checked={systemEditIsMaterialRequestPoster}
+                  onCheckedChange={setSystemEditIsMaterialRequestPoster}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                <span className="text-xs text-foreground">Item Manager</span>
+                <Switch
+                  checked={systemEditIsPurchaseRequestItemManager}
+                  onCheckedChange={setSystemEditIsPurchaseRequestItemManager}
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+            <EffectiveAccessPreview
+              title="System Account Access Preview"
+              description="Use this preview to confirm what this standalone user can view or manage in the active company."
+              companyRole={systemEditRole}
+              isRequestApprover={systemEditApprover}
+              isMaterialRequestPurchaser={systemEditIsMaterialRequestPurchaser}
+              isMaterialRequestPoster={systemEditIsMaterialRequestPoster}
+              isPurchaseRequestItemManager={systemEditIsPurchaseRequestItemManager}
+              hasEmployeeProfile={false}
+              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog} disabled={isPending}>Cancel</Button>
+            <Button onClick={submitEditSystemAccount} disabled={isPending}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1360,14 +1756,10 @@ export function UserAccessPage({
                 <p className="text-sm font-medium text-foreground">Account Credentials</p>
                 <p className="text-xs text-muted-foreground">Login details for this user account.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Username<span className="ml-1 text-destructive">*</span></Label>
                   <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} disabled={isPending} placeholder="e.g. john.doe" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Email<span className="ml-1 text-destructive">*</span></Label>
-                  <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} disabled={isPending} placeholder="e.g. john@company.com" />
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1391,11 +1783,11 @@ export function UserAccessPage({
                 <p className="text-xs text-muted-foreground">Toggle account state and permissions.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                   <span className="text-xs text-foreground">Active Account</span>
                   <Switch checked={editIsActive} onCheckedChange={setEditIsActive} disabled={isPending} />
                 </div>
-                <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                   <span className="text-xs text-foreground">Request Approver (Leave &amp; OT)</span>
                   <Switch checked={editApprover} onCheckedChange={setEditApprover} disabled={isPending} />
                 </div>
@@ -1419,7 +1811,7 @@ export function UserAccessPage({
                   return (
                     <div
                       key={access.companyId}
-                      className="rounded-md border border-border/60 px-3 py-2.5"
+                      className="border border-border/60 px-3 py-2.5"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
@@ -1443,7 +1835,7 @@ export function UserAccessPage({
                       </div>
 
                       {access.enabled ? (
-                        <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
+                        <div className="mt-2.5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                           <Select
                             value={access.role}
                             onValueChange={(value) =>
@@ -1462,7 +1854,7 @@ export function UserAccessPage({
                               <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
                             </SelectContent>
                           </Select>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Purchaser</span>
                             <Switch
                               checked={access.isMaterialRequestPurchaser}
@@ -1474,13 +1866,25 @@ export function UserAccessPage({
                               disabled={isPending}
                             />
                           </div>
-                          <div className="flex h-7 items-center justify-between rounded-md border border-border/60 px-2.5">
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
                             <span className="text-xs text-foreground">MRS Poster</span>
                             <Switch
                               checked={access.isMaterialRequestPoster}
                               onCheckedChange={(checked) =>
                                 updateCompanyAccessField(access.companyId, {
                                   isMaterialRequestPoster: checked,
+                                })
+                              }
+                              disabled={isPending}
+                            />
+                          </div>
+                          <div className="flex h-7 items-center justify-between border border-border/60 px-2.5">
+                            <span className="text-xs text-foreground">Item Manager</span>
+                            <Switch
+                              checked={access.isPurchaseRequestItemManager}
+                              onCheckedChange={(checked) =>
+                                updateCompanyAccessField(access.companyId, {
+                                  isPurchaseRequestItemManager: checked,
                                 })
                               }
                               disabled={isPending}
@@ -1493,6 +1897,18 @@ export function UserAccessPage({
                 })}
               </div>
             </section>
+
+            <EffectiveAccessPreview
+              title="Current Company Access Preview"
+              description="This preview updates live while you edit role and company flags."
+              companyRole={editPreviewAccess.role}
+              isRequestApprover={editApprover}
+              isMaterialRequestPurchaser={editPreviewAccess.isMaterialRequestPurchaser}
+              isMaterialRequestPoster={editPreviewAccess.isMaterialRequestPoster}
+              isPurchaseRequestItemManager={editPreviewAccess.isPurchaseRequestItemManager}
+              hasEmployeeProfile
+              purchaseRequestWorkflowEnabled={purchaseRequestWorkflowEnabled}
+            />
           </div>
 
           <DialogFooter className="border-t border-border/60 bg-muted/10 px-6 py-3">
@@ -1501,6 +1917,163 @@ export function UserAccessPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(systemDeleteTarget)} onOpenChange={(open: boolean) => (!open ? setSystemDeleteTarget(null) : null)}>
+        <AlertDialogContent className="border-border/60 shadow-none">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">Delete System Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              {systemDeleteTarget
+                ? `Delete ${systemDeleteTarget.username}? This is only allowed for orphan single-company accounts with no business history.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Keep account</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isPending}
+              onClick={submitDeleteSystemAccount}
+            >
+              Delete account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
+  )
+}
+
+function EffectiveAccessPreview({
+  title,
+  description,
+  companyRole,
+  isRequestApprover,
+  isMaterialRequestPurchaser,
+  isMaterialRequestPoster,
+  isPurchaseRequestItemManager,
+  hasEmployeeProfile,
+  purchaseRequestWorkflowEnabled,
+}: {
+  title: string
+  description: string
+  companyRole: EditableCompanyAccess["role"]
+  isRequestApprover: boolean
+  isMaterialRequestPurchaser: boolean
+  isMaterialRequestPoster: boolean
+  isPurchaseRequestItemManager: boolean
+  hasEmployeeProfile: boolean
+  purchaseRequestWorkflowEnabled: boolean
+}) {
+  const accessSnapshot: EmployeePortalAccessSnapshot = {
+    companyRole: companyRole as CompanyRole,
+    purchaseRequestWorkflowEnabled,
+    isRequestApprover,
+    isMaterialRequestPurchaser,
+    isMaterialRequestPoster,
+    isPurchaseRequestItemManager,
+    hasEmployeeProfile,
+  }
+
+  const activeFlags = {
+    isRequestApprover,
+    isMaterialRequestPurchaser,
+    isMaterialRequestPoster,
+    isPurchaseRequestItemManager,
+  }
+
+  const activeFlagDefinitions = USER_ACCESS_FLAG_DEFINITIONS.filter(
+    (definition) => activeFlags[definition.key]
+  )
+  const capabilityScopes = resolveEmployeePortalCapabilityScopes(accessSnapshot)
+
+  return (
+    <section className="space-y-3 border border-border/60 bg-muted/10 px-4 py-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="max-w-2xl text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{companyRole}</Badge>
+          <Badge variant={purchaseRequestWorkflowEnabled ? "default" : "outline"}>
+            {purchaseRequestWorkflowEnabled ? "PR Workflow On" : "PR Workflow Off"}
+          </Badge>
+          <Badge variant={hasEmployeeProfile ? "secondary" : "outline"}>
+            {hasEmployeeProfile ? "Employee-linked" : "No employee profile"}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr]">
+        <div className="space-y-3">
+          <div className="border border-border/60 bg-background px-3 py-3">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Special Flags</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {USER_ACCESS_FLAG_DEFINITIONS.map((definition) => (
+                <Badge
+                  key={definition.key}
+                  variant={activeFlags[definition.key] ? "default" : "outline"}
+                  className="gap-1.5"
+                >
+                  <span>{definition.label}</span>
+                  <span className="text-[10px] opacity-70">{definition.assignmentScope}</span>
+                </Badge>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {activeFlagDefinitions.length > 0
+                ? `${activeFlagDefinitions.length} special access flag${activeFlagDefinitions.length > 1 ? "s are" : " is"} active.`
+                : "No extra access flags are active; role defaults will apply."}
+            </p>
+          </div>
+
+          <div className="border border-border/60 bg-background px-3 py-3">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dashboard Modules</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {DASHBOARD_MODULE_PREVIEWS.map((modulePreview) => (
+                <ScopePill
+                  key={modulePreview.key}
+                  label={modulePreview.label}
+                  scope={getModuleAccessScope(companyRole as CompanyRole, modulePreview.key)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="border border-border/60 bg-background px-3 py-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Employee Portal Footprint</p>
+          <div className="mt-2 grid gap-2">
+            {PORTAL_CAPABILITY_PREVIEWS.map((capability) => (
+              <div
+                key={capability.key}
+                className="flex items-center justify-between gap-3 border border-border/50 px-2.5 py-2"
+              >
+                <span className="text-xs font-medium text-foreground">{capability.label}</span>
+                <Badge variant={scopeBadgeVariant(capabilityScopes[capability.key] ?? "NONE")}>
+                  {ACCESS_SCOPE_LABELS[capabilityScopes[capability.key] ?? "NONE"]}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ScopePill({
+  label,
+  scope,
+}: {
+  label: string
+  scope: AccessScope
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 border border-border/60 px-2.5 py-1.5">
+      <span className="text-xs font-medium text-foreground">{label}</span>
+      <Badge variant={scopeBadgeVariant(scope)}>{ACCESS_SCOPE_LABELS[scope]}</Badge>
+    </div>
   )
 }

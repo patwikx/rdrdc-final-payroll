@@ -46,7 +46,7 @@ export async function GET(request: Request, context: RouteContext) {
     const employeeLinkFilter =
       employeeLinkRaw === "LINKED" || employeeLinkRaw === "UNLINKED" ? employeeLinkRaw : undefined
     const systemLinkFilter =
-      systemLinkRaw === "LINKED" || systemLinkRaw === "UNLINKED" ? systemLinkRaw : undefined
+      systemLinkRaw === "LINKED" || systemLinkRaw === "UNLINKED" ? systemLinkRaw : "LINKED"
     const roleFilter =
       roleRaw === "EMPLOYEE" ||
       roleRaw === "HR_ADMIN" ||

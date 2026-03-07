@@ -6,6 +6,7 @@ import {
   getEmployeePortalMaterialRequestPostingPageReadModel,
 } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestPostingPageProps = {
   params: Promise<{ companyId: string }>
@@ -19,11 +20,7 @@ export default async function MaterialRequestPostingPage({ params }: MaterialReq
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canPost = context.isMaterialRequestPoster || isHR
+  const canPost = hasEmployeePortalCapability(context.capabilities, "material_requests.posting.manage")
 
   if (!canPost) {
     redirect(`/${context.companyId}/employee-portal`)

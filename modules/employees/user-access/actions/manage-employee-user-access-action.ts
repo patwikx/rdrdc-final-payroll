@@ -1,9 +1,10 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { randomUUID } from "node:crypto"
 
 import bcrypt from "bcryptjs"
-import { PlatformRole, type CompanyRole } from "@prisma/client"
+import { Prisma, PlatformRole, type CompanyRole } from "@prisma/client"
 import { z } from "zod"
 
 import { db } from "@/lib/db"
@@ -11,19 +12,29 @@ import { createAuditLog } from "@/modules/audit/utils/audit-log"
 import { getActiveCompanyContext } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess } from "@/modules/auth/utils/authorization-policy"
 import {
+  isEmployeePortalCapability,
+  toEmployeePortalCapabilityOverrideEntries,
+} from "@/modules/employee-portal/utils/employee-portal-access-policy"
+import {
   createEmployeeSystemUserInputSchema,
   createStandaloneSystemUserInputSchema,
   linkEmployeeToUserInputSchema,
   unlinkEmployeeUserInputSchema,
+  deleteStandaloneSystemUserInputSchema,
   updateEmployeeCompanyAccessInputSchema,
+  updateEmployeePortalCapabilityOverridesInputSchema,
   updateLinkedUserCredentialsInputSchema,
+  updateStandaloneSystemUserInputSchema,
   updateEmployeeRequestApproverInputSchema,
   type CreateEmployeeSystemUserInput,
   type CreateStandaloneSystemUserInput,
+  type DeleteStandaloneSystemUserInput,
   type LinkEmployeeToUserInput,
   type UnlinkEmployeeUserInput,
   type UpdateEmployeeCompanyAccessInput,
+  type UpdateEmployeePortalCapabilityOverridesInput,
   type UpdateLinkedUserCredentialsInput,
+  type UpdateStandaloneSystemUserInput,
   type UpdateEmployeeRequestApproverInput,
 } from "@/modules/employees/user-access/schemas/user-access-actions-schema"
 
@@ -44,6 +55,26 @@ const getAvailableSystemUsersInputSchema = z.object({
   query: z.string().trim().max(120).optional(),
 })
 
+const resolveLinkedEmployeeUserEmail = async (params: {
+  employeeId: string
+  primaryEmail?: string | null
+}): Promise<string> => {
+  const normalizedPrimaryEmail = params.primaryEmail?.trim().toLowerCase() ?? ""
+
+  if (normalizedPrimaryEmail) {
+    const existingUser = await db.user.findUnique({
+      where: { email: normalizedPrimaryEmail },
+      select: { id: true },
+    })
+
+    if (!existingUser) {
+      return normalizedPrimaryEmail
+    }
+  }
+
+  return `employee-${params.employeeId}-${randomUUID()}@local.invalid`
+}
+
 const applyApproverRoleFallback = async (
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   params: {
@@ -53,6 +84,7 @@ const applyApproverRoleFallback = async (
     isRequestApprover: boolean
     isMaterialRequestPurchaser: boolean
     isMaterialRequestPoster: boolean
+    isPurchaseRequestItemManager: boolean
   }
 ): Promise<void> => {
   const normalizedRole: CompanyRole = params.companyRole === "APPROVER" ? "EMPLOYEE" : params.companyRole
@@ -91,6 +123,7 @@ const applyApproverRoleFallback = async (
         role: normalizedRole,
         isMaterialRequestPurchaser: params.isMaterialRequestPurchaser,
         isMaterialRequestPoster: params.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: params.isPurchaseRequestItemManager,
         isActive: true,
         isDefault: true,
       },
@@ -103,6 +136,7 @@ const applyApproverRoleFallback = async (
         role: normalizedRole,
         isMaterialRequestPurchaser: params.isMaterialRequestPurchaser,
         isMaterialRequestPoster: params.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: params.isPurchaseRequestItemManager,
         isActive: true,
         isDefault: true,
       },
@@ -209,7 +243,6 @@ export async function createEmployeeSystemUserAction(
     where: {
       id: payload.employeeId,
       companyId: context.companyId,
-      deletedAt: null,
     },
     select: {
       id: true,
@@ -217,6 +250,16 @@ export async function createEmployeeSystemUserAction(
       lastName: true,
       userId: true,
       employeeNumber: true,
+      emails: {
+        where: {
+          isActive: true,
+        },
+        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        select: {
+          email: true,
+        },
+        take: 1,
+      },
     },
   })
 
@@ -230,32 +273,32 @@ export async function createEmployeeSystemUserAction(
 
   const existingUser = await db.user.findFirst({
     where: {
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (existingUser) {
     return {
       ok: false,
-      error:
-        existingUser.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
+      error: "Username is already in use.",
     }
   }
 
   const passwordHash = await bcrypt.hash(payload.password, 12)
+  const internalEmail = await resolveLinkedEmployeeUserEmail({
+    employeeId: employee.id,
+    primaryEmail: employee.emails[0]?.email ?? null,
+  })
 
   const created = await db.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         username: payload.username,
-        email: payload.email,
+        email: internalEmail,
         passwordHash,
         firstName: employee.firstName,
         lastName: employee.lastName,
@@ -277,6 +320,7 @@ export async function createEmployeeSystemUserAction(
       isRequestApprover: payload.isRequestApprover,
       isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
       isMaterialRequestPoster: payload.isMaterialRequestPoster,
+      isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager,
     })
 
     await tx.employee.update({
@@ -297,6 +341,7 @@ export async function createEmployeeSystemUserAction(
           { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
           { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
           { fieldName: "isMaterialRequestPoster", newValue: payload.isMaterialRequestPoster },
+          { fieldName: "isPurchaseRequestItemManager", newValue: payload.isPurchaseRequestItemManager },
         ],
       },
       tx
@@ -377,6 +422,7 @@ export async function createStandaloneSystemUserAction(
       isRequestApprover: payload.isRequestApprover,
       isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
       isMaterialRequestPoster: payload.isMaterialRequestPoster,
+      isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager,
     })
 
     await createAuditLog(
@@ -393,6 +439,7 @@ export async function createStandaloneSystemUserAction(
           { fieldName: "isRequestApprover", newValue: payload.isRequestApprover },
           { fieldName: "isMaterialRequestPurchaser", newValue: payload.isMaterialRequestPurchaser },
           { fieldName: "isMaterialRequestPoster", newValue: payload.isMaterialRequestPoster },
+          { fieldName: "isPurchaseRequestItemManager", newValue: payload.isPurchaseRequestItemManager },
         ],
       },
       tx
@@ -458,6 +505,7 @@ export async function linkEmployeeToExistingUserAction(
       select: {
         isMaterialRequestPurchaser: true,
         isMaterialRequestPoster: true,
+        isPurchaseRequestItemManager: true,
       },
     }),
   ])
@@ -483,6 +531,7 @@ export async function linkEmployeeToExistingUserAction(
       isRequestApprover: payload.isRequestApprover,
       isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
       isMaterialRequestPoster: payload.isMaterialRequestPoster,
+      isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager,
     })
 
     await tx.user.update({
@@ -522,6 +571,11 @@ export async function linkEmployeeToExistingUserAction(
             oldValue: existingAccess?.isMaterialRequestPoster ?? false,
             newValue: payload.isMaterialRequestPoster,
           },
+          {
+            fieldName: "isPurchaseRequestItemManager",
+            oldValue: existingAccess?.isPurchaseRequestItemManager ?? false,
+            newValue: payload.isPurchaseRequestItemManager,
+          },
         ],
       },
       tx
@@ -554,7 +608,6 @@ export async function unlinkEmployeeUserAction(
     where: {
       id: payload.employeeId,
       companyId: context.companyId,
-      deletedAt: null,
     },
     select: {
       id: true,
@@ -619,7 +672,6 @@ export async function updateEmployeeRequestApproverAction(
     where: {
       id: payload.employeeId,
       companyId: context.companyId,
-      deletedAt: null,
     },
     select: {
       id: true,
@@ -728,8 +780,24 @@ export async function updateEmployeeCompanyAccessAction(
   const employee = await db.employee.findFirst({
     where: {
       id: payload.employeeId,
-      companyId: context.companyId,
-      deletedAt: null,
+      OR: [
+        {
+          companyId: context.companyId,
+        },
+        {
+          user: {
+            companyAccess: {
+              some: {
+                companyId: context.companyId,
+                isActive: true,
+                company: {
+                  isActive: true,
+                },
+              },
+            },
+          },
+        },
+      ],
     },
     select: {
       id: true,
@@ -793,6 +861,7 @@ export async function updateEmployeeCompanyAccessAction(
           isDefault: entry.companyId === nextDefaultCompanyId,
           isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
           isMaterialRequestPoster: entry.isMaterialRequestPoster,
+          isPurchaseRequestItemManager: entry.isPurchaseRequestItemManager,
         },
         create: {
           userId: linkedUser.id,
@@ -802,6 +871,7 @@ export async function updateEmployeeCompanyAccessAction(
           isDefault: entry.companyId === nextDefaultCompanyId,
           isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
           isMaterialRequestPoster: entry.isMaterialRequestPoster,
+          isPurchaseRequestItemManager: entry.isPurchaseRequestItemManager,
         },
       })
     }
@@ -874,8 +944,10 @@ export async function updateLinkedUserCredentialsAction(
   const employee = await db.employee.findFirst({
     where: {
       id: payload.employeeId,
-      companyId: context.companyId,
       deletedAt: null,
+      user: {
+        isNot: null,
+      },
     },
     select: {
       id: true,
@@ -896,6 +968,7 @@ export async function updateLinkedUserCredentialsAction(
             select: {
               isMaterialRequestPurchaser: true,
               isMaterialRequestPoster: true,
+              isPurchaseRequestItemManager: true,
             },
             take: 1,
           },
@@ -913,36 +986,30 @@ export async function updateLinkedUserCredentialsAction(
   const duplicate = await db.user.findFirst({
     where: {
       id: { not: linkedUser.id },
-      OR: [{ username: payload.username }, { email: payload.email }],
+      username: payload.username,
     },
     select: {
       id: true,
       username: true,
-      email: true,
     },
   })
 
   if (duplicate) {
     return {
       ok: false,
-      error:
-        duplicate.username.toLowerCase() === payload.username.toLowerCase()
-          ? "Username is already in use."
-          : "Email is already in use.",
+      error: "Username is already in use.",
     }
   }
 
   await db.$transaction(async (tx) => {
     const data: {
       username: string
-      email: string
       isActive: boolean
       isRequestApprover?: boolean
       isAdmin?: boolean
       passwordHash?: string
     } = {
       username: payload.username,
-      email: payload.email,
       isActive: payload.isActive,
     }
 
@@ -961,10 +1028,13 @@ export async function updateLinkedUserCredentialsAction(
           payload.isMaterialRequestPurchaser ?? linkedUser.companyAccess[0]?.isMaterialRequestPurchaser ?? false,
         isMaterialRequestPoster:
           payload.isMaterialRequestPoster ?? linkedUser.companyAccess[0]?.isMaterialRequestPoster ?? false,
+        isPurchaseRequestItemManager:
+          payload.isPurchaseRequestItemManager ?? linkedUser.companyAccess[0]?.isPurchaseRequestItemManager ?? false,
       })
     } else if (
       typeof payload.isMaterialRequestPurchaser === "boolean" ||
-      typeof payload.isMaterialRequestPoster === "boolean"
+      typeof payload.isMaterialRequestPoster === "boolean" ||
+      typeof payload.isPurchaseRequestItemManager === "boolean"
     ) {
       await tx.userCompanyAccess.updateMany({
         where: {
@@ -978,6 +1048,9 @@ export async function updateLinkedUserCredentialsAction(
             : {}),
           ...(typeof payload.isMaterialRequestPoster === "boolean"
             ? { isMaterialRequestPoster: payload.isMaterialRequestPoster }
+            : {}),
+          ...(typeof payload.isPurchaseRequestItemManager === "boolean"
+            ? { isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager }
             : {}),
         },
       })
@@ -994,7 +1067,6 @@ export async function updateLinkedUserCredentialsAction(
 
     const changes: Array<{ fieldName: string; oldValue?: unknown; newValue?: unknown }> = [
       { fieldName: "username", oldValue: linkedUser.username, newValue: payload.username },
-      { fieldName: "email", oldValue: linkedUser.email, newValue: payload.email },
       { fieldName: "isActive", oldValue: linkedUser.isActive, newValue: payload.isActive },
       { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
     ]
@@ -1023,6 +1095,14 @@ export async function updateLinkedUserCredentialsAction(
       })
     }
 
+    if (typeof payload.isPurchaseRequestItemManager === "boolean") {
+      changes.push({
+        fieldName: "isPurchaseRequestItemManager",
+        oldValue: linkedUser.companyAccess[0]?.isPurchaseRequestItemManager ?? false,
+        newValue: payload.isPurchaseRequestItemManager,
+      })
+    }
+
     await createAuditLog(
       {
         tableName: "User",
@@ -1037,7 +1117,409 @@ export async function updateLinkedUserCredentialsAction(
   })
 
   revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees/user-access/${employee.id}`)
   revalidatePath(`/${context.companyId}/employees`)
 
   return { ok: true, message: `Updated linked user credentials for employee ${employee.employeeNumber}.` }
+}
+
+export async function updateEmployeePortalCapabilityOverridesAction(
+  input: UpdateEmployeePortalCapabilityOverridesInput
+): Promise<ManageEmployeeUserAccessResult> {
+  const parsed = updateEmployeePortalCapabilityOverridesInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid employee portal override payload.",
+    }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const invalidCapability = payload.overrides.find(
+    (entry) => !isEmployeePortalCapability(entry.capability)
+  )
+  if (invalidCapability) {
+    return {
+      ok: false,
+      error: `Unsupported employee portal capability: ${invalidCapability.capability}.`,
+    }
+  }
+
+  const normalizedOverrides = toEmployeePortalCapabilityOverrideEntries(payload.overrides)
+
+  const [linkedUser, employee, companyAccess] = await Promise.all([
+    db.user.findUnique({
+      where: { id: payload.userId },
+      select: {
+        id: true,
+        username: true,
+      },
+    }),
+    db.employee.findFirst({
+      where: {
+        id: payload.employeeId,
+        userId: payload.userId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        employeeNumber: true,
+      },
+    }),
+    db.userCompanyAccess.findUnique({
+      where: {
+        userId_companyId: {
+          userId: payload.userId,
+          companyId: context.companyId,
+        },
+      },
+      select: {
+        isActive: true,
+        company: {
+          select: {
+            isActive: true,
+          },
+        },
+      },
+    }),
+  ])
+
+  if (!linkedUser) {
+    return { ok: false, error: "Employee has no linked user account." }
+  }
+  const linkedUserId = linkedUser.id
+
+  if (
+    normalizedOverrides.length > 0 &&
+    (!companyAccess?.isActive || !companyAccess.company.isActive)
+  ) {
+    return {
+      ok: false,
+      error: "Linked user does not have active access to the selected company.",
+    }
+  }
+
+  const previousOverrides = await db.employeePortalCapabilityOverride.findMany({
+    where: {
+      userId: linkedUserId,
+      companyId: context.companyId,
+    },
+    select: {
+      capability: true,
+      accessScope: true,
+    },
+    orderBy: [{ capability: "asc" }],
+  })
+
+  await db.$transaction(async (tx) => {
+    await tx.employeePortalCapabilityOverride.deleteMany({
+      where: {
+        userId: linkedUserId,
+        companyId: context.companyId,
+      },
+    })
+
+    if (normalizedOverrides.length > 0) {
+      await tx.employeePortalCapabilityOverride.createMany({
+        data: normalizedOverrides.map((override) => ({
+          userId: linkedUserId,
+          companyId: context.companyId,
+          capability: override.capability,
+          accessScope: override.accessScope,
+        })),
+      })
+    }
+
+    await createAuditLog(
+      {
+        tableName: "EmployeePortalCapabilityOverride",
+        recordId: linkedUserId,
+        action: "UPDATE",
+        userId: context.userId,
+        reason: "UPDATE_EMPLOYEE_PORTAL_CAPABILITY_OVERRIDES",
+        changes: [
+          {
+            fieldName: "previousOverrides",
+            oldValue: JSON.stringify(previousOverrides),
+            newValue: JSON.stringify(normalizedOverrides),
+          },
+        ],
+      },
+      tx
+    )
+  })
+
+  revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees/user-access/${payload.employeeId}`)
+  revalidatePath(`/${context.companyId}/employee-portal`)
+
+  return {
+    ok: true,
+    message: `Updated employee portal access overrides for ${employee?.employeeNumber ?? linkedUser.username}.`,
+  }
+}
+
+export async function updateStandaloneSystemUserAction(
+  input: UpdateStandaloneSystemUserInput
+): Promise<ManageEmployeeUserAccessResult> {
+  const parsed = updateStandaloneSystemUserInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid system account payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const currentAccess = await db.userCompanyAccess.findUnique({
+    where: {
+      userId_companyId: {
+        userId: payload.userId,
+        companyId: context.companyId,
+      },
+    },
+    select: {
+      role: true,
+      isMaterialRequestPurchaser: true,
+      isMaterialRequestPoster: true,
+      isPurchaseRequestItemManager: true,
+      user: {
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          isActive: true,
+          isRequestApprover: true,
+        },
+      },
+    },
+  })
+
+  if (!currentAccess?.user?.id) {
+    return { ok: false, error: "System account not found for the active company." }
+  }
+
+  const duplicate = await db.user.findFirst({
+    where: {
+      id: { not: currentAccess.user.id },
+      OR: [{ username: payload.username }, { email: payload.email }],
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+    },
+  })
+
+  if (duplicate) {
+    return {
+      ok: false,
+      error:
+        duplicate.username.toLowerCase() === payload.username.toLowerCase()
+          ? "Username is already in use."
+          : "Email is already in use.",
+    }
+  }
+
+  await db.$transaction(async (tx) => {
+    const normalizedRole: CompanyRole = payload.companyRole === "APPROVER" ? "EMPLOYEE" : payload.companyRole
+    const userData: {
+      firstName: string
+      lastName: string
+      username: string
+      email: string
+      isActive: boolean
+      isRequestApprover: boolean
+      isAdmin: boolean
+      passwordHash?: string
+    } = {
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      username: payload.username,
+      email: payload.email,
+      isActive: payload.isActive,
+      isRequestApprover: payload.isRequestApprover,
+      isAdmin: payload.companyRole === "COMPANY_ADMIN",
+    }
+
+    if (payload.password) {
+      userData.passwordHash = await bcrypt.hash(payload.password, 12)
+    }
+
+    await tx.user.update({
+      where: { id: currentAccess.user.id },
+      data: userData,
+    })
+
+    await tx.userCompanyAccess.update({
+      where: {
+        userId_companyId: {
+          userId: currentAccess.user.id,
+          companyId: context.companyId,
+        },
+      },
+      data: {
+        role: normalizedRole,
+        isActive: true,
+        isMaterialRequestPurchaser: payload.isMaterialRequestPurchaser,
+        isMaterialRequestPoster: payload.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: payload.isPurchaseRequestItemManager,
+      },
+    })
+
+    await createAuditLog(
+      {
+        tableName: "User",
+        recordId: currentAccess.user.id,
+        action: "UPDATE",
+        userId: context.userId,
+        reason: "UPDATE_SYSTEM_ACCOUNT",
+        changes: [
+          { fieldName: "firstName", oldValue: currentAccess.user.firstName, newValue: payload.firstName },
+          { fieldName: "lastName", oldValue: currentAccess.user.lastName, newValue: payload.lastName },
+          { fieldName: "username", oldValue: currentAccess.user.username, newValue: payload.username },
+          { fieldName: "email", oldValue: currentAccess.user.email, newValue: payload.email },
+          { fieldName: "isActive", oldValue: currentAccess.user.isActive, newValue: payload.isActive },
+          {
+            fieldName: "isRequestApprover",
+            oldValue: currentAccess.user.isRequestApprover,
+            newValue: payload.isRequestApprover,
+          },
+          { fieldName: "companyRole", oldValue: currentAccess.role, newValue: normalizedRole },
+          {
+            fieldName: "isMaterialRequestPurchaser",
+            oldValue: currentAccess.isMaterialRequestPurchaser,
+            newValue: payload.isMaterialRequestPurchaser,
+          },
+          {
+            fieldName: "isMaterialRequestPoster",
+            oldValue: currentAccess.isMaterialRequestPoster,
+            newValue: payload.isMaterialRequestPoster,
+          },
+          {
+            fieldName: "isPurchaseRequestItemManager",
+            oldValue: currentAccess.isPurchaseRequestItemManager,
+            newValue: payload.isPurchaseRequestItemManager,
+          },
+          { fieldName: "passwordChanged", newValue: Boolean(payload.password) },
+        ],
+      },
+      tx
+    )
+  })
+
+  revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees`)
+
+  return { ok: true, message: `Updated system account ${currentAccess.user.username}.` }
+}
+
+export async function deleteStandaloneSystemUserAction(
+  input: DeleteStandaloneSystemUserInput
+): Promise<ManageEmployeeUserAccessResult> {
+  const parsed = deleteStandaloneSystemUserInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid delete system account payload." }
+  }
+
+  const payload = parsed.data
+  const context = await getActiveCompanyContext({ companyId: payload.companyId })
+  const actorRole = context.companyRole as CompanyRole
+
+  if (!canManageEmployeeUsers(actorRole)) {
+    return { ok: false, error: "You do not have access to manage employee user accounts." }
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: payload.userId },
+    select: {
+      id: true,
+      username: true,
+      employee: {
+        select: {
+          id: true,
+          employeeNumber: true,
+        },
+      },
+      companyAccess: {
+        where: {
+          isActive: true,
+        },
+        select: {
+          companyId: true,
+        },
+      },
+    },
+  })
+
+  if (!user) {
+    return { ok: false, error: "System account not found." }
+  }
+
+  if (!user.companyAccess.some((access) => access.companyId === context.companyId)) {
+    return { ok: false, error: "System account is not assigned to the active company." }
+  }
+
+  if (user.employee?.id) {
+    return {
+      ok: false,
+      error: `Unlink this account from employee ${user.employee.employeeNumber} before deleting it.`,
+    }
+  }
+
+  if (user.companyAccess.length > 1) {
+    return {
+      ok: false,
+      error: "This account has access to multiple companies. Remove the other company access first before deleting it.",
+    }
+  }
+
+  try {
+    await db.$transaction(async (tx) => {
+      await createAuditLog(
+        {
+          tableName: "User",
+          recordId: user.id,
+          action: "DELETE",
+          userId: context.userId,
+          reason: "DELETE_STANDALONE_SYSTEM_USER",
+          changes: [{ fieldName: "username", oldValue: user.username }],
+        },
+        tx
+      )
+
+      await tx.user.delete({
+        where: {
+          id: user.id,
+        },
+      })
+    })
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return {
+        ok: false,
+        error: "This account already has business history and cannot be deleted. Deactivate it instead.",
+      }
+    }
+
+    throw error
+  }
+
+  revalidatePath(`/${context.companyId}/employees/user-access`)
+  revalidatePath(`/${context.companyId}/employees`)
+
+  return { ok: true, message: `Deleted system account ${user.username}.` }
 }

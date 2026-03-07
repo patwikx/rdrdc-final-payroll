@@ -37,6 +37,7 @@ model Department {
   employees                   Employee[]                             @relation
   materialRequestApprovalFlow DepartmentMaterialRequestApprovalFlow?
   materialRequests            MaterialRequest[]
+  purchaseRequests            PurchaseRequest[]
   previousDepartmentHistories EmployeePositionHistory[]              @relation("PreviousDepartment")
   newDepartmentHistories      EmployeePositionHistory[]              @relation("NewDepartment")
 

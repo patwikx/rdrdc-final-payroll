@@ -70,6 +70,7 @@ type EditableCompanyAccess = {
   isDefault: boolean
   isMaterialRequestPurchaser: boolean
   isMaterialRequestPoster: boolean
+  isPurchaseRequestItemManager: boolean
   enabled: boolean
 }
 
@@ -83,6 +84,7 @@ const buildDefaultCompanyAccesses = (
     isDefault: company.companyId === currentCompanyId,
     isMaterialRequestPurchaser: false,
     isMaterialRequestPoster: false,
+    isPurchaseRequestItemManager: false,
     enabled: company.companyId === currentCompanyId,
   }))
 }
@@ -127,7 +129,12 @@ const setAccessDefaultInList = (list: EditableCompanyAccess[], targetCompanyId: 
 const patchAccessInList = (
   list: EditableCompanyAccess[],
   targetCompanyId: string,
-  patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+  patch: Partial<
+    Pick<
+      EditableCompanyAccess,
+      "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+    >
+  >
 ): EditableCompanyAccess[] => {
   return list.map((entry) => (entry.companyId === targetCompanyId ? { ...entry, ...patch } : entry))
 }
@@ -146,6 +153,7 @@ const normalizeEnabledCompanyAccesses = (list: EditableCompanyAccess[]) => {
     isDefault: hasDefault ? entry.isDefault : index === 0,
     isMaterialRequestPurchaser: entry.isMaterialRequestPurchaser,
     isMaterialRequestPoster: entry.isMaterialRequestPoster,
+    isPurchaseRequestItemManager: entry.isPurchaseRequestItemManager,
   }))
 }
 
@@ -243,6 +251,7 @@ export function UserAccessPage({
         isDefault: existing?.isDefault ?? false,
         isMaterialRequestPurchaser: existing?.isMaterialRequestPurchaser ?? false,
         isMaterialRequestPoster: existing?.isMaterialRequestPoster ?? false,
+        isPurchaseRequestItemManager: existing?.isPurchaseRequestItemManager ?? false,
         enabled: Boolean(existing) || company.companyId === companyId,
       }
     })
@@ -452,7 +461,7 @@ export function UserAccessPage({
 
   const openEdit = (row: UserAccessPreviewRow) => {
     setEditUsername(row.linkedUsername ?? "")
-    setEditEmail(row.linkedEmail ?? "")
+    setEditEmail("")
     setEditPassword("")
     setEditApprover(row.requestApprover)
     setEditIsActive(row.linkedUserActive)
@@ -475,7 +484,12 @@ export function UserAccessPage({
 
   const updateCreateAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setCreateCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -490,7 +504,12 @@ export function UserAccessPage({
 
   const updateLinkAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setLinkCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -505,7 +524,12 @@ export function UserAccessPage({
 
   const updateCompanyAccessField = (
     targetCompanyId: string,
-    patch: Partial<Pick<EditableCompanyAccess, "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster">>
+    patch: Partial<
+      Pick<
+        EditableCompanyAccess,
+        "role" | "isMaterialRequestPurchaser" | "isMaterialRequestPoster" | "isPurchaseRequestItemManager"
+      >
+    >
   ) => {
     setEditCompanyAccesses((previous) => patchAccessInList(previous, targetCompanyId, patch))
   }
@@ -527,12 +551,12 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: createUsername,
-        email: createEmail,
         password: createPassword,
         companyRole: currentAccess.role,
         isRequestApprover: createApprover,
         isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
         isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: currentAccess.isPurchaseRequestItemManager,
       })
 
       if (!result.ok) {
@@ -582,6 +606,7 @@ export function UserAccessPage({
         isRequestApprover: false,
         isMaterialRequestPurchaser: currentAccess.isMaterialRequestPurchaser,
         isMaterialRequestPoster: currentAccess.isMaterialRequestPoster,
+        isPurchaseRequestItemManager: currentAccess.isPurchaseRequestItemManager,
       })
 
       if (!result.ok) {
@@ -620,7 +645,6 @@ export function UserAccessPage({
         companyId,
         employeeId: dialogState.row.employeeId,
         username: editUsername,
-        email: editEmail,
         password: editPassword.trim().length > 0 ? editPassword : undefined,
         isActive: editIsActive,
         isRequestApprover: editApprover,
@@ -663,6 +687,7 @@ export function UserAccessPage({
         isRequestApprover: systemApprover,
         isMaterialRequestPurchaser: systemIsMaterialRequestPurchaser,
         isMaterialRequestPoster: systemIsMaterialRequestPoster,
+        isPurchaseRequestItemManager: false,
       })
 
       if (!result.ok) {
@@ -744,6 +769,9 @@ export function UserAccessPage({
         onLink={openLink}
         onUnlink={submitUnlink}
         onEdit={openEdit}
+        onEditSystemAccount={() => undefined}
+        onDeleteSystemAccount={() => undefined}
+        onUnlinkSystemAccount={() => undefined}
         onCreateSystemAccount={openCreateSystemAccount}
         isPending={isPending}
         employeePagination={employeePagination}

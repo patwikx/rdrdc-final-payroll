@@ -8,6 +8,9 @@ export type WorkspaceProps = {
   onLink: (row: UserAccessPreviewRow) => void
   onUnlink: (row: UserAccessPreviewRow) => void
   onEdit: (row: UserAccessPreviewRow) => void
+  onEditSystemAccount: (row: SystemUserAccountRow) => void
+  onDeleteSystemAccount: (row: SystemUserAccountRow) => void
+  onUnlinkSystemAccount: (row: SystemUserAccountRow) => void
   onCreateSystemAccount: () => void
   filtersToolbar?: ReactNode
   isPending: boolean

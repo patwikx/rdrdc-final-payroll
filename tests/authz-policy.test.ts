@@ -3,8 +3,11 @@ import test from "node:test"
 
 import {
   COMPANY_ROLES,
+  getModuleAccessScope,
+  getUserAccessFlagDefinition,
   hasAttendanceSensitiveAccess,
   hasModuleAccess,
+  isAccessScopeAtLeast,
 } from "../modules/auth/utils/authorization-policy.ts"
 
 test("hasAttendanceSensitiveAccess allows only COMPANY_ADMIN and HR_ADMIN", () => {
@@ -26,4 +29,24 @@ test("reports access is distinct from payroll module access", () => {
   assert.equal(hasModuleAccess("PAYROLL_ADMIN", "reports"), true)
   assert.equal(hasModuleAccess("APPROVER", "reports"), false)
   assert.equal(hasModuleAccess("EMPLOYEE", "reports"), false)
+})
+
+test("module access scopes mirror current company module authorization", () => {
+  assert.equal(getModuleAccessScope("COMPANY_ADMIN", "employees"), "COMPANY")
+  assert.equal(getModuleAccessScope("EMPLOYEE", "employees"), "NONE")
+  assert.equal(getModuleAccessScope("EMPLOYEE", "attendance"), "COMPANY")
+})
+
+test("access scope ordering supports progressive access checks", () => {
+  assert.equal(isAccessScopeAtLeast("COMPANY", "OWN"), true)
+  assert.equal(isAccessScopeAtLeast("APPROVAL_QUEUE", "OWN"), true)
+  assert.equal(isAccessScopeAtLeast("OWN", "APPROVAL_QUEUE"), false)
+})
+
+test("user access flag definitions expose assignment metadata for UI", () => {
+  const approver = getUserAccessFlagDefinition("isRequestApprover")
+  const purchaser = getUserAccessFlagDefinition("isMaterialRequestPurchaser")
+
+  assert.equal(approver.assignmentScope, "user")
+  assert.equal(purchaser.assignmentScope, "company")
 })

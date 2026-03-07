@@ -72,6 +72,22 @@ model User {
   materialRequestReceivingReportsReceived       MaterialRequestReceivingReport[]            @relation("MaterialRequestReceivingReportReceivedByUser")
   materialRequestApprovalStepsAssigned          MaterialRequestApprovalStep[]               @relation("MaterialRequestApprovalStepApprover")
   materialRequestApprovalStepsActed             MaterialRequestApprovalStep[]               @relation("MaterialRequestApprovalStepActor")
+  procurementItemCategoriesCreated              ProcurementItemCategory[]                   @relation("ProcurementItemCategoryCreatedBy")
+  procurementItemCategoriesUpdated              ProcurementItemCategory[]                   @relation("ProcurementItemCategoryUpdatedBy")
+  procurementItemsCreated                       ProcurementItem[]                           @relation("ProcurementItemCreatedBy")
+  procurementItemsUpdated                       ProcurementItem[]                           @relation("ProcurementItemUpdatedBy")
+  purchaseRequestsRequested                     PurchaseRequest[]                           @relation("PurchaseRequestRequesterUser")
+  purchaseRequestsSelectedInitialApprover       PurchaseRequest[]                           @relation("PurchaseRequestSelectedInitialApproverUser")
+  purchaseRequestsSelectedStepTwoApprover       PurchaseRequest[]                           @relation("PurchaseRequestSelectedStepTwoApproverUser")
+  purchaseRequestsSelectedStepThreeApprover     PurchaseRequest[]                           @relation("PurchaseRequestSelectedStepThreeApproverUser")
+  purchaseRequestsSelectedStepFourApprover      PurchaseRequest[]                           @relation("PurchaseRequestSelectedStepFourApproverUser")
+  purchaseRequestsFinalDecision                 PurchaseRequest[]                           @relation("PurchaseRequestFinalDecisionByUser")
+  purchaseRequestsCancelled                     PurchaseRequest[]                           @relation("PurchaseRequestCancelledByUser")
+  purchaseRequestApprovalStepsAssigned          PurchaseRequestApprovalStep[]               @relation("PurchaseRequestApprovalStepApprover")
+  purchaseRequestApprovalStepsActed             PurchaseRequestApprovalStep[]               @relation("PurchaseRequestApprovalStepActor")
+  purchaseOrdersCreated                         PurchaseOrder[]                             @relation("PurchaseOrderCreatedByUser")
+  purchaseOrderGoodsReceiptsReceived           PurchaseOrderGoodsReceipt[]                 @relation("PurchaseOrderGoodsReceiptReceivedByUser")
+  employeePortalCapabilityOverrides           EmployeePortalCapabilityOverride[]
 
   // Audit Relations
   configsCreated        SystemConfig[] @relation("ConfigCreatedBy")
@@ -99,6 +115,22 @@ model User {
   @@index([username])
   @@index([email])
   @@index([selectedCompanyId])
+}
+
+model EmployeePortalCapabilityOverride {
+  id          String            @id @default(uuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  capability  String
+  accessScope PortalAccessScope
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([userId, companyId, capability])
+  @@index([userId, companyId])
+  @@index([companyId, capability])
 }
 
 model AuditLog {

@@ -18,12 +18,12 @@ export type UserAccessPreviewRow = {
   hasLinkedUser: boolean
   linkedUserId: string | null
   linkedUsername: string | null
-  linkedEmail: string | null
   linkedUserActive: boolean
   linkedCompanyRole: string | null
   requestApprover: boolean
   materialRequestPurchaser: boolean
   materialRequestPoster: boolean
+  purchaseRequestItemManager: boolean
   linkedCompanyAccesses: Array<{
     companyId: string
     companyCode: string
@@ -32,6 +32,7 @@ export type UserAccessPreviewRow = {
     isDefault: boolean
     isMaterialRequestPurchaser: boolean
     isMaterialRequestPoster: boolean
+    isPurchaseRequestItemManager: boolean
   }>
 }
 
@@ -39,6 +40,7 @@ export type UserAccessCompanyOption = {
   companyId: string
   companyCode: string
   companyName: string
+  enablePurchaseRequestWorkflow: boolean
 }
 
 export type AvailableSystemUserOption = {
@@ -59,9 +61,21 @@ export type SystemUserAccountRow = {
   isRequestApprover: boolean
   isMaterialRequestPurchaser: boolean
   isMaterialRequestPoster: boolean
+  isPurchaseRequestItemManager: boolean
   isLinked: boolean
+  linkedEmployeeId: string | null
   linkedEmployeeNumber: string | null
   linkedEmployeeName: string | null
+  linkedCompanyAccesses: Array<{
+    companyId: string
+    companyCode: string
+    companyName: string
+    role: string
+    isDefault: boolean
+    isMaterialRequestPurchaser: boolean
+    isMaterialRequestPoster: boolean
+    isPurchaseRequestItemManager: boolean
+  }>
 }
 
 export type UserAccessPreviewQuery = {
@@ -97,6 +111,7 @@ export type UserAccessPreviewData = {
     totalItems: number
     totalPages: number
   }
+  purchaseRequestWorkflowEnabled: boolean
 }
 
 const normalizePage = (value: number | undefined): number => {
@@ -177,7 +192,6 @@ export async function getUserAccessPreviewData(
             { department: { is: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
             { position: { is: { name: { contains: normalizedQuery, mode: "insensitive" as const } } } },
             { user: { is: { username: { contains: normalizedQuery, mode: "insensitive" as const } } } },
-            { user: { is: { email: { contains: normalizedQuery, mode: "insensitive" as const } } } },
           ],
         }
       : {}),
@@ -189,12 +203,11 @@ export async function getUserAccessPreviewData(
     ...(systemLinkFilter === "UNLINKED" ? { user: { employee: null } } : {}),
     ...(roleFilter !== "ALL" ? { role: roleFilter } : {}),
     ...(normalizedQuery
-      ? {
-          OR: [
-            { user: { username: { contains: normalizedQuery, mode: "insensitive" as const } } },
-            { user: { email: { contains: normalizedQuery, mode: "insensitive" as const } } },
-            { user: { firstName: { contains: normalizedQuery, mode: "insensitive" as const } } },
-            { user: { lastName: { contains: normalizedQuery, mode: "insensitive" as const } } },
+        ? {
+            OR: [
+              { user: { username: { contains: normalizedQuery, mode: "insensitive" as const } } },
+              { user: { firstName: { contains: normalizedQuery, mode: "insensitive" as const } } },
+              { user: { lastName: { contains: normalizedQuery, mode: "insensitive" as const } } },
             { user: { employee: { is: { employeeNumber: { contains: normalizedQuery, mode: "insensitive" as const } } } } },
           ],
         }
@@ -217,7 +230,6 @@ export async function getUserAccessPreviewData(
           select: {
             id: true,
             username: true,
-            email: true,
             isActive: true,
             isRequestApprover: true,
             companyAccess: {
@@ -233,6 +245,7 @@ export async function getUserAccessPreviewData(
                 isDefault: true,
                 isMaterialRequestPurchaser: true,
                 isMaterialRequestPoster: true,
+                isPurchaseRequestItemManager: true,
                 company: {
                   select: {
                     code: true,
@@ -256,6 +269,7 @@ export async function getUserAccessPreviewData(
         role: true,
         isMaterialRequestPurchaser: true,
         isMaterialRequestPoster: true,
+        isPurchaseRequestItemManager: true,
         user: {
           select: {
             id: true,
@@ -267,9 +281,32 @@ export async function getUserAccessPreviewData(
             isRequestApprover: true,
             employee: {
               select: {
+                id: true,
                 employeeNumber: true,
                 firstName: true,
                 lastName: true,
+              },
+            },
+            companyAccess: {
+              where: {
+                isActive: true,
+                company: {
+                  isActive: true,
+                },
+              },
+              select: {
+                companyId: true,
+                role: true,
+                isDefault: true,
+                isMaterialRequestPurchaser: true,
+                isMaterialRequestPoster: true,
+                isPurchaseRequestItemManager: true,
+                company: {
+                  select: {
+                    code: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
@@ -289,6 +326,7 @@ export async function getUserAccessPreviewData(
         id: true,
         code: true,
         name: true,
+        enablePurchaseRequestWorkflow: true,
       },
     })
 
@@ -315,13 +353,18 @@ export async function getUserAccessPreviewData(
   const companyOptionsPromise = shouldLoadCompanyOptions
     ? loadCompanyOptions()
     : Promise.resolve([] as Awaited<ReturnType<typeof loadCompanyOptions>>)
+  const companyFeaturePromise = db.company.findUnique({
+    where: { id: companyId },
+    select: { enablePurchaseRequestWorkflow: true },
+  })
 
-  const [employeeTotalItems, systemUserTotalItems, employees, companyUsers, companyOptions] = await Promise.all([
+  const [employeeTotalItems, systemUserTotalItems, employees, companyUsers, companyOptions, companyFeature] = await Promise.all([
     employeeTotalItemsPromise,
     systemUserTotalItemsPromise,
     employeesPromise,
     companyUsersPromise,
     companyOptionsPromise,
+    companyFeaturePromise,
   ])
 
   const employeeTotalPages = shouldLoadEmployees
@@ -339,6 +382,7 @@ export async function getUserAccessPreviewData(
         linkedCompanyRole: currentCompanyAccess?.role ?? null,
         materialRequestPurchaser: currentCompanyAccess?.isMaterialRequestPurchaser ?? false,
         materialRequestPoster: currentCompanyAccess?.isMaterialRequestPoster ?? false,
+        purchaseRequestItemManager: currentCompanyAccess?.isPurchaseRequestItemManager ?? false,
       }
     })(),
     employeeId: employee.id,
@@ -350,7 +394,6 @@ export async function getUserAccessPreviewData(
     hasLinkedUser: Boolean(employee.user?.id),
     linkedUserId: employee.user?.id ?? null,
     linkedUsername: employee.user?.username ?? null,
-    linkedEmail: employee.user?.email ?? null,
     linkedUserActive: employee.user?.isActive ?? false,
     requestApprover: employee.user?.isRequestApprover ?? false,
     linkedCompanyAccesses: (employee.user?.companyAccess ?? []).map((access) => ({
@@ -361,6 +404,7 @@ export async function getUserAccessPreviewData(
       isDefault: access.isDefault,
       isMaterialRequestPurchaser: access.isMaterialRequestPurchaser,
       isMaterialRequestPoster: access.isMaterialRequestPoster,
+      isPurchaseRequestItemManager: access.isPurchaseRequestItemManager,
     })),
   }))
 
@@ -374,11 +418,23 @@ export async function getUserAccessPreviewData(
     isRequestApprover: record.user.isRequestApprover,
     isMaterialRequestPurchaser: record.isMaterialRequestPurchaser,
     isMaterialRequestPoster: record.isMaterialRequestPoster,
+    isPurchaseRequestItemManager: record.isPurchaseRequestItemManager,
     isLinked: Boolean(record.user.employee?.employeeNumber),
+    linkedEmployeeId: record.user.employee?.id ?? null,
     linkedEmployeeNumber: record.user.employee?.employeeNumber ?? null,
     linkedEmployeeName: record.user.employee
       ? `${record.user.employee.lastName}, ${record.user.employee.firstName}`
       : null,
+    linkedCompanyAccesses: record.user.companyAccess.map((access) => ({
+      companyId: access.companyId,
+      companyCode: access.company.code,
+      companyName: access.company.name,
+      role: access.role,
+      isDefault: access.isDefault,
+      isMaterialRequestPurchaser: access.isMaterialRequestPurchaser,
+      isMaterialRequestPoster: access.isMaterialRequestPoster,
+      isPurchaseRequestItemManager: access.isPurchaseRequestItemManager,
+    })),
   }))
 
   return {
@@ -388,6 +444,7 @@ export async function getUserAccessPreviewData(
       companyId: company.id,
       companyCode: company.code,
       companyName: company.name,
+      enablePurchaseRequestWorkflow: Boolean(company.enablePurchaseRequestWorkflow),
     })),
     query: normalizedQuery,
     employeeLinkFilter,
@@ -405,5 +462,6 @@ export async function getUserAccessPreviewData(
       totalItems: systemUserTotalItems,
       totalPages: systemUserTotalPages,
     },
+    purchaseRequestWorkflowEnabled: Boolean(companyFeature?.enablePurchaseRequestWorkflow),
   }
 }

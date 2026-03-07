@@ -6,6 +6,7 @@ import {
 } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import { getEmployeePortalContext } from "@/modules/employee-portal/utils/get-employee-portal-context"
 import type { EmployeePortalMaterialRequestKpiRange } from "@/modules/material-requests/types/employee-portal-material-request-types"
+import { hasEmployeePortalCapability } from "@/modules/employee-portal/utils/employee-portal-access-policy"
 
 type MaterialRequestKpiPageProps = {
   params: Promise<{ companyId: string }>
@@ -29,15 +30,14 @@ export default async function MaterialRequestKpiPage({ params, searchParams }: M
     redirect("/login")
   }
 
-  const isHR =
-    context.companyRole === "COMPANY_ADMIN" ||
-    context.companyRole === "HR_ADMIN" ||
-    context.companyRole === "PAYROLL_ADMIN"
-  const canViewCompanyWide =
-    isHR ||
-    context.isRequestApprover ||
-    context.isMaterialRequestPurchaser ||
-    context.isMaterialRequestPoster
+  if (!hasEmployeePortalCapability(context.capabilities, "material_requests.kpi.view")) {
+    redirect(`/${context.companyId}/employee-portal`)
+  }
+
+  const canViewCompanyWide = hasEmployeePortalCapability(
+    context.capabilities,
+    "material_requests.kpi.view_company"
+  )
 
   const rangeCandidate = query.range
   const range = KPI_RANGE_VALUES.includes(rangeCandidate as EmployeePortalMaterialRequestKpiRange)

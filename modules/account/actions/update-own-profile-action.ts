@@ -1,7 +1,6 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { createAuditLog } from "@/modules/audit/utils/audit-log"
@@ -30,7 +29,6 @@ export async function updateOwnProfileAction(
       id: true,
       firstName: true,
       lastName: true,
-      email: true,
       isActive: true,
     },
   })
@@ -39,21 +37,8 @@ export async function updateOwnProfileAction(
     return { ok: false, error: "Active user account not found." }
   }
 
-  const normalizedEmail = payload.email.trim()
   const firstName = payload.firstName.trim()
   const lastName = payload.lastName.trim()
-
-  const emailChanged = existing.email !== normalizedEmail
-  if (emailChanged) {
-    const emailInUse = await db.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true },
-    })
-
-    if (emailInUse && emailInUse.id !== context.userId) {
-      return { ok: false, error: "Email address is already used by another account." }
-    }
-  }
 
   const changes: Array<{ fieldName: string; oldValue?: unknown; newValue?: unknown }> = []
 
@@ -63,10 +48,6 @@ export async function updateOwnProfileAction(
 
   if (existing.lastName !== lastName) {
     changes.push({ fieldName: "lastName", oldValue: existing.lastName, newValue: lastName })
-  }
-
-  if (emailChanged) {
-    changes.push({ fieldName: "email", oldValue: existing.email, newValue: normalizedEmail })
   }
 
   if (changes.length === 0) {
@@ -80,7 +61,6 @@ export async function updateOwnProfileAction(
         data: {
           firstName,
           lastName,
-          email: normalizedEmail,
         },
       })
 
@@ -97,10 +77,6 @@ export async function updateOwnProfileAction(
       )
     })
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { ok: false, error: "Email address is already used by another account." }
-    }
-
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Failed to update account profile.",

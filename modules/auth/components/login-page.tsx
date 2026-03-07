@@ -7,8 +7,8 @@ import {
   IconEye,
   IconEyeOff,
   IconLock,
-  IconMail,
   IconShieldCheck,
+  IconUser,
   IconUsers,
 } from "@tabler/icons-react"
 import { AnimatePresence, motion } from "framer-motion"
@@ -296,18 +296,18 @@ export function LoginPage() {
             {/* Identifier field */}
             <motion.div className="space-y-2" variants={formItemVariants}>
               <Label htmlFor="identifier" className="text-xs font-medium">
-                Employee ID or Work email
+                Username
               </Label>
               <InputGroup className="h-9">
                 <InputGroupAddon align="inline-start">
-                  <IconMail className="size-4 text-muted-foreground/70" />
+                  <IconUser className="size-4 text-muted-foreground/70" />
                 </InputGroupAddon>
                 <InputGroupInput
                   id="identifier"
                   name="identifier"
                   type="text"
                   autoComplete="username"
-                  placeholder="Employee ID"
+                  placeholder="Enter your username"
                   required
                 />
               </InputGroup>

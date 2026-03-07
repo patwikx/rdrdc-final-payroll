@@ -4,8 +4,10 @@ import type { EmployeePortalMaterialRequestApprovalHistoryRow } from "@/modules/
 import { getEmployeePortalMaterialRequestApprovalHistoryPageReadModel } from "@/modules/material-requests/utils/employee-portal-material-request-read-models"
 import type { EmployeePortalOvertimeApprovalHistoryRow } from "@/modules/overtime/types/overtime-domain-types"
 import { getEmployeePortalOvertimeApprovalHistoryPageReadModel } from "@/modules/overtime/utils/overtime-domain"
+import type { PurchaseRequestApprovalHistoryRow } from "@/modules/procurement/types/purchase-request-types"
+import { getPurchaseRequestApprovalHistoryPageReadModel } from "@/modules/procurement/utils/purchase-request-read-models"
 
-export type ConsolidatedApprovalTypeFilter = "ALL" | "LEAVE" | "OVERTIME" | "MATERIAL"
+export type ConsolidatedApprovalTypeFilter = "ALL" | "LEAVE" | "OVERTIME" | "MATERIAL" | "PURCHASE"
 export type ConsolidatedApprovalStatusFilter =
   | "ALL"
   | "APPROVED"
@@ -16,7 +18,7 @@ export type ConsolidatedApprovalStatusFilter =
 
 export type EmployeePortalConsolidatedApprovalHistoryItem = {
   id: string
-  approvalType: "LEAVE" | "OVERTIME" | "MATERIAL"
+  approvalType: "LEAVE" | "OVERTIME" | "MATERIAL" | "PURCHASE"
   requestNumber: string
   employeeName: string
   employeeNumber: string
@@ -36,6 +38,7 @@ export type EmployeePortalConsolidatedApprovalHistoryStats = {
   leave: number
   overtime: number
   material: number
+  purchase: number
 }
 
 export type EmployeePortalConsolidatedApprovalHistoryPage = {
@@ -147,6 +150,28 @@ const toMaterialItem = (
   }
 }
 
+const toPurchaseItem = (
+  companyId: string,
+  row: PurchaseRequestApprovalHistoryRow
+): EmployeePortalConsolidatedApprovalHistoryItem => {
+  return {
+    id: `purchase-${row.id}`,
+    approvalType: "PURCHASE",
+    requestNumber: row.requestNumber,
+    employeeName: row.requesterName,
+    employeeNumber: row.requesterEmployeeNumber,
+    photoUrl: row.requesterPhotoUrl,
+    departmentName: row.departmentName,
+    statusCode: row.status,
+    decidedAtIso: row.actedAtIso,
+    decidedAtLabel: row.actedAtLabel,
+    summaryPrimary: `Prepared ${row.datePreparedLabel} • Required ${row.dateRequiredLabel}`,
+    summarySecondary: `Amount PHP ${currency.format(row.grandTotal)}`,
+    note: row.actedRemarks?.trim() || row.finalDecisionRemarks?.trim() || "No remarks.",
+    requestHref: `/${companyId}/employee-portal/purchase-requests/${row.id}`,
+  }
+}
+
 export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(params: {
   companyId: string
   approverUserId: string
@@ -166,6 +191,7 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
   const shouldQueryLeave = params.type === "ALL" || params.type === "LEAVE"
   const shouldQueryOvertime = params.type === "ALL" || params.type === "OVERTIME"
   const shouldQueryMaterial = params.type === "ALL" || params.type === "MATERIAL"
+  const shouldQueryPurchase = params.type === "ALL" || params.type === "PURCHASE"
 
   const leavePromise = shouldQueryLeave
     ? isLeaveOvertimeStatus(params.status)
@@ -218,14 +244,35 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
       : Promise.resolve({ rows: [], total: 0, page: perTypePage, pageSize: perTypePageSize })
     : Promise.resolve({ rows: [], total: 0, page: perTypePage, pageSize: perTypePageSize })
 
-  const [leavePage, overtimePage, materialPage] = await Promise.all([leavePromise, overtimePromise, materialPromise])
+  const purchasePromise = shouldQueryPurchase
+    ? isMaterialStatus(params.status)
+      ? getPurchaseRequestApprovalHistoryPageReadModel({
+          companyId: params.companyId,
+          approverUserId: params.approverUserId,
+          isHR: params.isHR,
+          page: perTypePage,
+          pageSize: perTypePageSize,
+          search: params.search,
+          status: params.status,
+          departmentId: undefined,
+        })
+      : Promise.resolve({ rows: [], total: 0, page: perTypePage, pageSize: perTypePageSize })
+    : Promise.resolve({ rows: [], total: 0, page: perTypePage, pageSize: perTypePageSize })
+
+  const [leavePage, overtimePage, materialPage, purchasePage] = await Promise.all([
+    leavePromise,
+    overtimePromise,
+    materialPromise,
+    purchasePromise,
+  ])
 
   const mappedLeaveRows = leavePage.rows.map((row) => toLeaveItem(params.companyId, row))
   const mappedOvertimeRows = overtimePage.rows.map((row) => toOvertimeItem(params.companyId, row))
   const mappedMaterialRows = materialPage.rows.map((row) => toMaterialItem(params.companyId, row))
+  const mappedPurchaseRows = purchasePage.rows.map((row) => toPurchaseItem(params.companyId, row))
 
-  const mergedRows = [...mappedLeaveRows, ...mappedOvertimeRows, ...mappedMaterialRows].sort((left, right) =>
-    right.decidedAtIso.localeCompare(left.decidedAtIso)
+  const mergedRows = [...mappedLeaveRows, ...mappedOvertimeRows, ...mappedMaterialRows, ...mappedPurchaseRows].sort(
+    (left, right) => right.decidedAtIso.localeCompare(left.decidedAtIso)
   )
 
   const rows = isAllTypes
@@ -233,16 +280,17 @@ export async function getEmployeePortalConsolidatedApprovalHistoryPageReadModel(
     : mergedRows
 
   const stats = {
-    total: leavePage.total + overtimePage.total + materialPage.total,
+    total: leavePage.total + overtimePage.total + materialPage.total + purchasePage.total,
     leave: leavePage.total,
     overtime: overtimePage.total,
     material: materialPage.total,
+    purchase: purchasePage.total,
   }
 
   const statusOptions: ConsolidatedApprovalStatusFilter[] =
     params.type === "LEAVE" || params.type === "OVERTIME"
       ? LEAVE_OVERTIME_STATUS_OPTIONS
-      : params.type === "MATERIAL"
+      : params.type === "MATERIAL" || params.type === "PURCHASE"
         ? MATERIAL_STATUS_OPTIONS
         : ALL_STATUS_OPTIONS
 

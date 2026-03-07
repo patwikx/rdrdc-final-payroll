@@ -8,7 +8,7 @@ export type AccountSettingsViewModel = {
     id: string
     firstName: string
     lastName: string
-    email: string
+    username: string
   }
 }
 
@@ -21,7 +21,7 @@ export async function getAccountSettingsViewModel(
       id: true,
       firstName: true,
       lastName: true,
-      email: true,
+      username: true,
       isActive: true,
     },
   })
@@ -37,7 +37,7 @@ export async function getAccountSettingsViewModel(
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
-      email: user.email,
+      username: user.username,
     },
   }
 }

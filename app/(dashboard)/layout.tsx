@@ -65,7 +65,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       select: {
         firstName: true,
         lastName: true,
-        email: true,
+        username: true,
       },
     }),
   ])
@@ -75,7 +75,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       session.user.name ||
       `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() ||
       "User")
-  const userEmail = currentUser?.email ?? session.user.email ?? ""
+  const username = currentUser?.username ?? session.user.username ?? ""
   const activeCompanyRole =
     companyOptions.find((company) => company.companyId === activeCompanyId)?.role ??
     companyOptions[0]?.role ??
@@ -116,7 +116,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <NavUser
                   user={{
                     name: userName,
-                    email: userEmail,
+                    username,
                     avatar: userAvatar,
                   }}
                   accountHref={`/${activeCompanyId}/account`}

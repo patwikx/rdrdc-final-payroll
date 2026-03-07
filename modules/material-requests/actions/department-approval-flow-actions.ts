@@ -50,6 +50,7 @@ const createDepartmentFlowRevalidationPaths = (companyId: string): string[] => {
     `/${companyId}/settings/organization/departments`,
     `/${companyId}/settings/organization`,
     `/${companyId}/settings/material-requests`,
+    `/${companyId}/employee-portal/request-settings`,
   ]
 }
 

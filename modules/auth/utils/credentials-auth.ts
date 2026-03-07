@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 
 type LoginUserRecord = {
   id: string
+  username: string
   email: string
   passwordHash: string
   firstName: string
@@ -26,6 +27,7 @@ type LoginUserRecord = {
 
 export type AuthenticatedCredentialsUser = {
   id: string
+  username: string
   email: string
   firstName: string
   lastName: string
@@ -50,10 +52,11 @@ export async function getLoginUser(identifier: string): Promise<LoginUserRecord 
   try {
     const user = await db.user.findFirst({
       where: {
-        OR: [{ email: identifier }, { username: identifier }],
+        username: identifier,
       },
       select: {
         id: true,
+        username: true,
         email: true,
         passwordHash: true,
         firstName: true,
@@ -136,6 +139,7 @@ export async function authenticateCredentials(input: AuthenticateCredentialsInpu
     ok: true,
     user: {
       id: user.id,
+      username: user.username,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -161,6 +165,7 @@ export async function getUserSessionForCompany(params: {
     },
     select: {
       id: true,
+      username: true,
       email: true,
       firstName: true,
       lastName: true,
@@ -198,6 +203,7 @@ export async function getUserSessionForCompany(params: {
 
   return {
     id: user.id,
+    username: user.username,
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,

@@ -142,7 +142,7 @@ export function UserAccessWorkspace({
                         </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{row.department}</td>
-                      <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.linkedEmail}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
+                      <td className="px-3 py-2">{row.hasLinkedUser ? <div><div>{row.linkedUsername}</div><div className="text-[11px] text-muted-foreground">{row.employeeNumber}</div></div> : <span className="text-muted-foreground">No linked account</span>}</td>
                       <td className="px-3 py-2">{row.linkedCompanyRole ? <Badge variant="secondary">{row.linkedCompanyRole}</Badge> : <Badge variant="outline">-</Badge>}</td>
                       <td className="px-3 py-2">
                         <Badge variant={row.requestApprover ? "default" : "destructive"}>

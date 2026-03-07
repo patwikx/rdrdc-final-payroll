@@ -6,8 +6,6 @@ import {
   getActiveCompanyContext,
 } from "@/modules/auth/utils/active-company-context"
 import { hasModuleAccess, type CompanyRole } from "@/modules/auth/utils/authorization-policy"
-import { MaterialRequestApprovalSettingsPage } from "@/modules/settings/material-requests/components/material-request-approval-settings-page"
-import { getMaterialRequestApprovalSettingsViewModel } from "@/modules/settings/material-requests/utils/get-material-request-approval-settings-view-model"
 
 type MaterialRequestSettingsRouteProps = {
   params: Promise<{ companyId: string }>
@@ -64,11 +62,5 @@ export default async function MaterialRequestSettingsRoutePage({ params }: Mater
   if (!hasModuleAccess(company.companyRole as CompanyRole, "approval-workflows")) {
     redirect(`/${company.companyId}/dashboard`)
   }
-
-  const viewModel = await getMaterialRequestApprovalSettingsViewModel({
-    companyId: company.companyId,
-    companyName: company.companyName,
-  })
-
-  return <MaterialRequestApprovalSettingsPage data={viewModel} />
+  redirect(`/${company.companyId}/employee-portal/request-settings`)
 }
